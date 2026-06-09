@@ -44,41 +44,41 @@ app.add_middleware(
 ORACLE_URL = "https://fa-epxp-test-saasfaprod1.fa.ocs.oraclecloud.com"
 
 class InvoiceItem(BaseModel):
-    Line_ID: Optional[str] = None
-    invoice_number: Optional[str] = None
-    fusion_invoice_number: Optional[str] = None
-    invoice_date: Optional[str] = None
-    fusion_invoice_date: Optional[str] = None
-    invoice_amount: Optional[float] = None
-    fusion_invoice_amount: Optional[float] = None
-    description: Optional[str] = None
-    customer_invoice_number: Optional[str] = None
-    storeNo: Optional[str] = None
+    Line_ID: Any = None
+    invoice_number: Any = None
+    fusion_invoice_number: Any = None
+    invoice_date: Any = None
+    fusion_invoice_date: Any = None
+    invoice_amount: Any = None
+    fusion_invoice_amount: Any = None
+    description: Any = None
+    customer_invoice_number: Any = None
+    storeNo: Any = None
 
 class MetaInfo(BaseModel):
-    file_kind: Optional[str] = None
-    filename: Optional[str] = None
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    total_tokens: Optional[int] = None
-    api_calls: Optional[int] = None
-    response_time_ms: Optional[float] = None
-    num_pages: Optional[int] = None
+    file_kind: Any = None
+    filename: Any = None
+    input_tokens: Any = None
+    output_tokens: Any = None
+    total_tokens: Any = None
+    api_calls: Any = None
+    response_time_ms: Any = None
+    num_pages: Any = None
     warnings: List[str] = []
 
 class ReconciliationRequest(BaseModel):
-    customer_name: Optional[str] = None
-    fusion_customer_name: Optional[str] = None
-    payment_reference: Optional[str] = None
-    fusion_receipt_number: Optional[str] = None
-    payment_date: Optional[str] = None
-    fusion_receipt_date: Optional[str] = None
-    header_id: Optional[str] = None
+    customer_name: Any = None
+    fusion_customer_name: Any = None
+    payment_reference: Any = None
+    fusion_receipt_number: Any = None
+    payment_date: Any = None
+    fusion_receipt_date: Any = None
+    header_id: Any = None
     invoices: List[InvoiceItem] = []
-    total_amount: Optional[float] = None
-    confidence_score: Optional[float] = None
-    confidence_label: Optional[str] = None
-    invoice_count: Optional[int] = None
+    total_amount: Any = None
+    confidence_score: Any = None
+    confidence_label: Any = None
+    invoice_count: Any = None
     _meta: Optional[dict] = None
 
 def format_oracle_date(date_str: str) -> str:
