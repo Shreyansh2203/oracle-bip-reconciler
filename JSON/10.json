@@ -1,0 +1,62 @@
+{
+    "customer_name": "New Horizon Foods",
+    "fusion_customer_name": "New Horizon Foods",
+    "payment_reference": "RECEIPT003",
+    "fusion_receipt_number": "RECEIPT003",
+    "payment_date": "2026/05/10",
+    "fusion_receipt_date": "2026/05/11",
+    "header_id": null,
+    "invoices": [
+        {
+            "Line_ID": null,
+            "invoice_number": "225812831804",
+            "fusion_invoice_number": null,
+            "invoice_date": "2025/11/14",
+            "fusion_invoice_date": null,
+            "invoice_amount": 51.2,
+            "fusion_invoice_amount": null,
+            "description": null,
+            "customer_invoice_number": null,
+            "storeNo": null
+        },
+        {
+            "Line_ID": null,
+            "invoice_number": "2258128318041",
+            "fusion_invoice_number": null,
+            "invoice_date": "2026/05/02",
+            "fusion_invoice_date": null,
+            "invoice_amount": 100,
+            "fusion_invoice_amount": null,
+            "description": null,
+            "customer_invoice_number": null,
+            "storeNo": null
+        },
+        {
+            "Line_ID": null,
+            "invoice_number": "2258128318042",
+            "fusion_invoice_number": null,
+            "invoice_date": "2026/05/01",
+            "fusion_invoice_date": null,
+            "invoice_amount": 200,
+            "fusion_invoice_amount": null,
+            "description": null,
+            "customer_invoice_number": null,
+            "storeNo": null
+        }
+    ],
+    "total_amount": 451.2,
+    "confidence_score": 0.83,
+    "confidence_label": "HIGH",
+    "invoice_count": 1,
+    "_meta": {
+        "file_kind": "native_pdf",
+        "filename": "144.98 W.pdf",
+        "input_tokens": 5662,
+        "output_tokens": 128,
+        "total_tokens": 5790,
+        "api_calls": 2,
+        "response_time_ms": 2488,
+        "num_pages": 1,
+        "warnings": []
+    }
+}

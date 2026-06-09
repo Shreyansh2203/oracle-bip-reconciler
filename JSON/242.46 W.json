@@ -1,0 +1,46 @@
+{
+  "customer_name": null,
+  "payment_reference": "EFT000000213679",
+  "payment_date": "2025/08/13",
+  "invoices": [
+    {
+      "invoice_number": "225701420553",
+      "invoice_date": "2025/07/24",
+      "invoice_amount": 34.98,
+      "description": null,
+      "customer_invoice_number": "000000771313",
+      "storeNo": null
+    },
+    {
+      "invoice_number": "225701420905",
+      "invoice_date": "2025/07/28",
+      "invoice_amount": 130.92,
+      "description": null,
+      "customer_invoice_number": "000000771311",
+      "storeNo": null
+    },
+    {
+      "invoice_number": "225701421264",
+      "invoice_date": "2025/07/31",
+      "invoice_amount": 76.56,
+      "description": null,
+      "customer_invoice_number": "000000771312",
+      "storeNo": null
+    }
+  ],
+  "total_amount": 242.46,
+  "confidence_score": 0.8,
+  "confidence_label": "HIGH",
+  "invoice_count": 3,
+  "_meta": {
+    "file_kind": "native_pdf",
+    "filename": "242.46 W.pdf",
+    "input_tokens": 5728,
+    "output_tokens": 259,
+    "total_tokens": 5987,
+    "api_calls": 2,
+    "response_time_ms": 2675,
+    "num_pages": 1,
+    "warnings": []
+  }
+}
