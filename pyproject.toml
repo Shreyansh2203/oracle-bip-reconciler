@@ -1,11 +1,35 @@
 [project]
-name = "test"
-version = "0.1.0"
-description = "Add your description here"
+name = "oracle-reconciliation-api"
+version = "4.0.0"
+description = "Professional enterprise API for Oracle ERP Cloud reconciliation matching."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.136.3",
     "httpx>=0.28.1",
     "python-dotenv>=1.2.2",
+    "uvicorn>=0.30.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501", # line too long (handled by formatting)
 ]
