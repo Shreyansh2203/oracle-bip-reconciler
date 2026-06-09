@@ -132,6 +132,10 @@ async def check_invoice_cascading(client, username, password, inv_num, inv_date,
 
     return {"invoice_number": inv_num, "matched_in_oracle": False, "error": "No single match found after cascading rules"}
 
+@app.get("/")
+async def root():
+    return {"status": "online", "message": "Oracle Reconciliation API is running"}
+
 @app.post("/reconcile")
 async def reconcile_data(payload: ReconciliationRequest):
     """
