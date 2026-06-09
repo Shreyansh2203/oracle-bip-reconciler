@@ -55,16 +55,6 @@ class InvoiceItem(BaseModel):
     customer_invoice_number: Any = None
     storeNo: Any = None
 
-class MetaInfo(BaseModel):
-    file_kind: Any = None
-    filename: Any = None
-    input_tokens: Any = None
-    output_tokens: Any = None
-    total_tokens: Any = None
-    api_calls: Any = None
-    response_time_ms: Any = None
-    num_pages: Any = None
-    warnings: List[str] = []
 
 class ReconciliationRequest(BaseModel):
     customer_name: Any = None
