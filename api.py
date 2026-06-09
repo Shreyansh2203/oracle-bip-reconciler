@@ -81,16 +81,38 @@ class ReconciliationRequest(BaseModel):
     invoice_count: Optional[int] = None
     _meta: Optional[dict] = None
 
+def format_oracle_date(date_str: str) -> str:
+    if not date_str:
+        return ""
+    date_str = str(date_str).strip()
+    date_str = date_str.replace('/', '-')
+    
+    formats = [
+        "%Y-%m-%d", "%d-%m-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
+        "%d-%m-%y", "%m-%d-%Y"
+    ]
+    from datetime import datetime
+    for fmt in formats:
+        try:
+            d = datetime.strptime(date_str, fmt)
+            return d.strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return date_str
+
 async def check_receipt_cascading(client, username, password, receipt_num, amount, date, customer_name):
     queries = []
+    
+    date = format_oracle_date(date)
+    cust_filter = f" and CustomerName='{customer_name}'" if customer_name else ""
     
     # Scenario A
     if receipt_num:
         if amount is not None and str(amount).strip():
-            queries.append(f"ReceiptNumber='{receipt_num}' and Amount={amount}")
-        queries.append(f"ReceiptNumber='{receipt_num}'")
+            queries.append(f"ReceiptNumber='{receipt_num}' and Amount={amount}{cust_filter}")
+        queries.append(f"ReceiptNumber='{receipt_num}'{cust_filter}")
         if amount is not None and str(amount).strip() and date:
-            queries.append(f"ReceiptNumber='{receipt_num}' and Amount={amount} and ReceiptDate='{date}'")
+            queries.append(f"ReceiptNumber='{receipt_num}' and Amount={amount} and ReceiptDate='{date}'{cust_filter}")
         if customer_name and amount is not None and str(amount).strip():
             queries.append(f"CustomerName='{customer_name}' and Amount={amount}")
         if customer_name and date:
@@ -98,7 +120,7 @@ async def check_receipt_cascading(client, username, password, receipt_num, amoun
     # Scenario B
     else:
         if amount is not None and str(amount).strip() and date:
-            queries.append(f"Amount={amount} and ReceiptDate='{date}'")
+            queries.append(f"Amount={amount} and ReceiptDate='{date}'{cust_filter}")
         if customer_name and amount is not None and str(amount).strip():
             queries.append(f"CustomerName='{customer_name}' and Amount={amount}")
         if customer_name and date:
@@ -145,6 +167,8 @@ async def check_receipt_cascading(client, username, password, receipt_num, amoun
 
 async def check_invoice_cascading(client, username, password, inv_num, inv_date, inv_amount, doc_num, customer_name):
     queries = []
+    
+    inv_date = format_oracle_date(inv_date)
     
     if inv_num:
         queries.append(f"TrxNumber='{inv_num}'")
