@@ -78,7 +78,7 @@ async def check_receipt_cascading(client, username, password, receipt_num, amoun
     if not queries:
         return {"receipt_reference": receipt_num, "matched_in_oracle": False, "error": "No receipt query rules could be formed"}
 
-    for idx, q in enumerate(queries):
+    async def fetch_query(idx, q):
         encoded_q = urllib.parse.quote(q)
         endpoint = f"{ORACLE_URL}/fscmRestApi/resources/11.13.18.05/standardReceipts?q={encoded_q}"
         try:
@@ -87,11 +87,22 @@ async def check_receipt_cascading(client, username, password, receipt_num, amoun
                 data = res.json()
                 items = data.get("items", [])
                 if len(items) == 1:
-                    return {"receipt_reference": receipt_num, "matched_in_oracle": True, "method": f"Rule A/B {idx+1}", "query": q, "error": None}
+                    return idx, {"receipt_reference": receipt_num, "matched_in_oracle": True, "method": f"Rule A/B {idx+1}", "query": q, "error": None}, True
             elif res.status_code in (401, 403):
-                return {"receipt_reference": receipt_num, "matched_in_oracle": False, "error": f"HTTP {res.status_code}"}
+                return idx, {"receipt_reference": receipt_num, "matched_in_oracle": False, "error": f"HTTP {res.status_code}"}, False
+            return idx, None, False
         except Exception as e:
-            return {"receipt_reference": receipt_num, "matched_in_oracle": False, "error": str(e)}
+            return idx, {"receipt_reference": receipt_num, "matched_in_oracle": False, "error": str(e)}, False
+
+    tasks = [fetch_query(idx, q) for idx, q in enumerate(queries)]
+    results = await asyncio.gather(*tasks)
+    results.sort(key=lambda x: x[0])
+    
+    for idx, result_dict, is_match in results:
+        if is_match:
+            return result_dict
+        if result_dict and result_dict.get("error"):
+            return result_dict
 
     return {"receipt_reference": receipt_num, "matched_in_oracle": False, "error": "No single match found after cascading rules"}
 
@@ -115,7 +126,7 @@ async def check_invoice_cascading(client, username, password, inv_num, inv_date,
     if not queries:
         return {"invoice_number": inv_num, "matched_in_oracle": False, "error": "No invoice query rules could be formed"}
 
-    for idx, q in enumerate(queries):
+    async def fetch_invoice_query(idx, q):
         encoded_q = urllib.parse.quote(q)
         endpoint = f"{ORACLE_URL}/fscmRestApi/resources/11.13.18.05/receivablesInvoices?q={encoded_q}"
         try:
@@ -124,11 +135,22 @@ async def check_invoice_cascading(client, username, password, inv_num, inv_date,
                 data = res.json()
                 items = data.get("items", [])
                 if len(items) == 1:
-                    return {"invoice_number": inv_num, "matched_in_oracle": True, "method": f"Rule {idx+1}", "query": q, "error": None}
+                    return idx, {"invoice_number": inv_num, "matched_in_oracle": True, "method": f"Rule {idx+1}", "query": q, "error": None}, True
             elif res.status_code in (401, 403):
-                return {"invoice_number": inv_num, "matched_in_oracle": False, "error": f"HTTP {res.status_code}"}
+                return idx, {"invoice_number": inv_num, "matched_in_oracle": False, "error": f"HTTP {res.status_code}"}, False
+            return idx, None, False
         except Exception as e:
-            return {"invoice_number": inv_num, "matched_in_oracle": False, "error": str(e)}
+            return idx, {"invoice_number": inv_num, "matched_in_oracle": False, "error": str(e)}, False
+
+    tasks = [fetch_invoice_query(idx, q) for idx, q in enumerate(queries)]
+    results = await asyncio.gather(*tasks)
+    results.sort(key=lambda x: x[0])
+    
+    for idx, result_dict, is_match in results:
+        if is_match:
+            return result_dict
+        if result_dict and result_dict.get("error"):
+            return result_dict
 
     return {"invoice_number": inv_num, "matched_in_oracle": False, "error": "No single match found after cascading rules"}
 
