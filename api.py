@@ -116,7 +116,15 @@ async def check_receipt_cascading(client, username, password, receipt_num, amoun
                 data = res.json()
                 items = data.get("items", [])
                 if len(items) == 1:
-                    return idx, {"receipt_reference": receipt_num, "matched_in_oracle": True, "method": f"Rule A/B {idx+1}", "query": q, "error": None}, True
+                    item = items[0]
+                    return idx, {
+                        "matched_in_oracle": True,
+                        "fusion_receipt_number": item.get("ReceiptNumber"),
+                        "fusion_receipt_date": item.get("ReceiptDate"),
+                        "fusion_customer_name": item.get("CustomerName"),
+                        "method": f"Rule A/B {idx+1}",
+                        "error": None
+                    }, True
             elif res.status_code in (401, 403):
                 return idx, {"receipt_reference": receipt_num, "matched_in_oracle": False, "error": f"HTTP {res.status_code}"}, False
             return idx, None, False
@@ -164,7 +172,15 @@ async def check_invoice_cascading(client, username, password, inv_num, inv_date,
                 data = res.json()
                 items = data.get("items", [])
                 if len(items) == 1:
-                    return idx, {"invoice_number": inv_num, "matched_in_oracle": True, "method": f"Rule {idx+1}", "query": q, "error": None}, True
+                    item = items[0]
+                    return idx, {
+                        "matched_in_oracle": True,
+                        "fusion_invoice_number": item.get("TrxNumber"),
+                        "fusion_invoice_date": item.get("TrxDate"),
+                        "fusion_invoice_amount": item.get("InvoiceAmount"),
+                        "method": f"Rule {idx+1}",
+                        "error": None
+                    }, True
             elif res.status_code in (401, 403):
                 return idx, {"invoice_number": inv_num, "matched_in_oracle": False, "error": f"HTTP {res.status_code}"}, False
             return idx, None, False
@@ -223,8 +239,19 @@ async def reconcile_data(payload: ReconciliationRequest):
         http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name
     )
     
-    if receipt_result.get("error"):
+    if receipt_result.get("matched_in_oracle"):
+        payload.fusion_receipt_number = receipt_result.get("fusion_receipt_number")
+        payload.fusion_receipt_date = receipt_result.get("fusion_receipt_date")
+        payload.fusion_customer_name = receipt_result.get("fusion_customer_name")
+    else:
         logger.warning(f"Receipt match error or not found: {receipt_result.get('error')}")
+        if hasattr(payload, "_meta"):
+            if payload._meta is None:
+                payload._meta = {}
+            if isinstance(payload._meta, dict):
+                if "warnings" not in payload._meta:
+                    payload._meta["warnings"] = []
+                payload._meta["warnings"].append(f"Receipt match failed: {receipt_result.get('error')}")
             
     # 2. Check Invoices concurrently (Each invoice has cascading rules)
     tasks = []
@@ -246,18 +273,24 @@ async def reconcile_data(payload: ReconciliationRequest):
         
     invoice_results = await asyncio.gather(*tasks)
     
+    # 3. Map invoice results back to the payload
+    for idx, inv in enumerate(payload.invoices):
+        inv_res = invoice_results[idx]
+        if inv_res and inv_res.get("matched_in_oracle"):
+            inv.fusion_invoice_number = inv_res.get("fusion_invoice_number")
+            inv.fusion_invoice_date = inv_res.get("fusion_invoice_date")
+            inv.fusion_invoice_amount = inv_res.get("fusion_invoice_amount")
+        elif inv_res and inv_res.get("error"):
+            if hasattr(payload, "_meta"):
+                if payload._meta is None:
+                    payload._meta = {}
+                if isinstance(payload._meta, dict):
+                    if "warnings" not in payload._meta:
+                        payload._meta["warnings"] = []
+                    payload._meta["warnings"].append(f"Invoice {inv.invoice_number} match failed: {inv_res.get('error')}")
+    
     execution_time = round(time.time() - start_time, 2)
     logger.info(f"Reconciliation completed in {execution_time}s. Invoices checked: {len(invoice_results)}")
         
-    # 3. Return the results
-    return {
-        "status": "success",
-        "message": "Live Oracle REST API check complete using cascading rules",
-        "execution_time_seconds": execution_time,
-        "receipt_reference": receipt_num,
-        "receipt_matched_in_oracle": receipt_result.get("matched_in_oracle"),
-        "receipt_method_used": receipt_result.get("method", ""),
-        "receipt_error": receipt_result.get("error"),
-        "invoices_checked": len(invoice_results),
-        "invoice_details": invoice_results
-    }
+    # 4. Return the enriched payload
+    return payload
