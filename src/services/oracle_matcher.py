@@ -120,10 +120,10 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
     
     # 1. Fetch Candidates
     if inv_num:
-        candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"TrxNumber='{inv_num}'")
+        candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"TransactionNumber='{inv_num}'")
         
     if not candidates and doc_num:
-        candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"CustomerReference='{doc_num}'")
+        candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"DocumentNumber='{doc_num}'")
         
     if not candidates and customer_name:
         candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"BillToCustomerName='{customer_name}'")
@@ -133,11 +133,11 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
         
     # 2. Local Filtering Rules
     rules = [
-        ("1a", lambda c: safe_str_match(c.get("TrxNumber"), inv_num)),
-        ("1b", lambda c: safe_str_match(c.get("TrxNumber"), inv_num) and c.get("TrxDate") == formatted_date),
-        ("2",  lambda c: bool(doc_num) and safe_str_match(c.get("CustomerReference"), doc_num) and c.get("TrxDate") == formatted_date),
-        ("3",  lambda c: bool(inv_num) and str(inv_num).lower() in str(c.get("TrxNumber", "")).lower() and c.get("TrxDate") == formatted_date),
-        ("4",  lambda c: bool(customer_name) and safe_str_match(c.get("BillToCustomerName"), customer_name) and c.get("TrxDate") == formatted_date and safe_float_match(c.get("InvoiceAmount"), amount)),
+        ("1a", lambda c: safe_str_match(c.get("TransactionNumber"), inv_num)),
+        ("1b", lambda c: safe_str_match(c.get("TransactionNumber"), inv_num) and c.get("TransactionDate") == formatted_date),
+        ("2",  lambda c: bool(doc_num) and safe_str_match(c.get("DocumentNumber"), doc_num) and c.get("TransactionDate") == formatted_date),
+        ("3",  lambda c: bool(inv_num) and str(inv_num).lower() in str(c.get("TransactionNumber", "")).lower() and c.get("TransactionDate") == formatted_date),
+        ("4",  lambda c: bool(customer_name) and safe_str_match(c.get("BillToCustomerName"), customer_name) and c.get("TransactionDate") == formatted_date and safe_float_match(c.get("InvoiceAmount"), amount)),
     ]
     
     # Phase 1: Search Open Invoices
@@ -156,8 +156,8 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
     if match:
         return {
             "matched_in_oracle": True,
-            "fusion_invoice_number": match.get("TrxNumber"),
-            "fusion_invoice_date": match.get("TrxDate"),
+            "fusion_invoice_number": match.get("TransactionNumber"),
+            "fusion_invoice_date": match.get("TransactionDate"),
             "fusion_invoice_amount": match.get("InvoiceAmount"),
             "match_phase": "OPEN" if is_invoice_open(match) else "CLOSED",
             "match_rule": rule_name
