@@ -1,7 +1,14 @@
-import pytest
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
-from src.services.oracle_matcher import check_receipt_cascading, check_invoice_cascading, is_receipt_unapplied, is_invoice_open
+
+import pytest
+
+from src.services.oracle_matcher import (
+    check_invoice_cascading,
+    check_receipt_cascading,
+    is_invoice_open,
+    is_receipt_unapplied,
+)
+
 
 @pytest.fixture
 def mock_client():
@@ -23,11 +30,11 @@ async def test_check_receipt_two_phase_priority(mock_client):
         {"ReceiptNumber": "REC123", "Amount": 100.0, "State": "Applied", "CustomerName": "Test Customer", "ReceiptDate": "2026-05-10"},
         {"ReceiptNumber": "REC123", "Amount": 100.0, "State": "Unapplied", "CustomerName": "Test Customer", "ReceiptDate": "2026-05-10"}
     ])
-    
+
     result = await check_receipt_cascading(
         mock_client, "user", "pass", "REC123", 100.0, "2026-05-10", "Test Customer"
     )
-    
+
     assert result["matched_in_oracle"] is True
     assert result["match_phase"] == "UNAPPLIED"
 
@@ -37,11 +44,11 @@ async def test_check_receipt_fallback_to_applied(mock_client):
     mock_client.get.return_value = create_mock_response(200, [
         {"ReceiptNumber": "REC123", "Amount": 100.0, "State": "Applied", "CustomerName": "Test Customer", "ReceiptDate": "2026-05-10"}
     ])
-    
+
     result = await check_receipt_cascading(
         mock_client, "user", "pass", "REC123", 100.0, "2026-05-10", "Test Customer"
     )
-    
+
     assert result["matched_in_oracle"] is True
     assert result["match_phase"] == "APPLIED"
 
@@ -53,11 +60,11 @@ async def test_check_invoice_two_phase_priority(mock_client):
         {"TransactionNumber": "INV123", "InvoiceStatus": "Closed", "TransactionDate": "2026-05-10"},
         {"TransactionNumber": "INV123", "InvoiceStatus": "Incomplete", "TransactionDate": "2026-05-10"}
     ])
-    
+
     result = await check_invoice_cascading(
         mock_client, "user", "pass", "INV123", "2026-05-10", 100.0, "DOC1", "Cust"
     )
-    
+
     assert result["matched_in_oracle"] is True
     assert result["match_phase"] == "OPEN"
 

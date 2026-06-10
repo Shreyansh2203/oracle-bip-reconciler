@@ -1,5 +1,7 @@
+from typing import Any
+
 from pydantic import BaseModel
-from typing import List, Optional, Any
+
 
 class InvoiceItem(BaseModel):
     Line_ID: Any = None
@@ -21,9 +23,9 @@ class ReconciliationRequest(BaseModel):
     payment_date: Any = None
     fusion_receipt_date: Any = None
     header_id: Any = None
-    invoices: List[InvoiceItem] = []
+    invoices: list[InvoiceItem] = []
     total_amount: Any = None
     confidence_score: Any = None
     confidence_label: Any = None
     invoice_count: Any = None
-    meta_data: Optional[dict] = None
+    meta_data: dict | None = None
