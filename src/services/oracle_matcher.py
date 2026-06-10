@@ -17,10 +17,10 @@ async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=200)
             return response.json().get("items", [])
         else:
             logger.error(f"Oracle fetch error ({response.status_code}): {response.text}")
-            return []
+            raise Exception(f"Oracle API Error {response.status_code}: {response.text}")
     except Exception as e:
         logger.error(f"Oracle fetch exception: {e}")
-        return []
+        raise e
 
 def safe_float_match(val1, val2, tolerance=0.01):
     try:
@@ -68,11 +68,14 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
     candidates = []
     
     # 1. Fetch Candidates (Bypass Oracle's 400 Bad Request on Amount/Date)
-    if receipt_num:
-        candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", f"ReceiptNumber='{receipt_num}'")
-    
-    if not candidates and customer_name:
-        candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", f"CustomerName='{customer_name}'")
+    try:
+        if receipt_num:
+            candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", f"ReceiptNumber='{receipt_num}'")
+        
+        if not candidates and customer_name:
+            candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", f"CustomerName='{customer_name}'")
+    except Exception as e:
+        return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
         
     if not candidates:
         return {"matched_in_oracle": False, "error": "No candidates found in Oracle for ReceiptNumber or CustomerName."}
@@ -119,14 +122,17 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
     candidates = []
     
     # 1. Fetch Candidates
-    if inv_num:
-        candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"TransactionNumber='{inv_num}'")
-        
-    if not candidates and doc_num:
-        candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"DocumentNumber='{doc_num}'")
-        
-    if not candidates and customer_name:
-        candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"BillToCustomerName='{customer_name}'")
+    try:
+        if inv_num:
+            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"TransactionNumber='{inv_num}'")
+            
+        if not candidates and doc_num:
+            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"DocumentNumber='{doc_num}'")
+            
+        if not candidates and customer_name:
+            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"BillToCustomerName='{customer_name}'")
+    except Exception as e:
+        return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
         
     if not candidates:
         return {"matched_in_oracle": False, "error": f"No candidates found for invoice {inv_num}."}

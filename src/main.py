@@ -92,15 +92,21 @@ async def reconcile_data(payload: ReconciliationRequest):
         payload.fusion_customer_name = receipt_result.get("fusion_customer_name")
     else:
         logger.warning(f"Receipt match error or not found: {receipt_result.get('error')}")
-        if hasattr(payload, "_meta"):
-            if payload._meta is None:
-                payload._meta = {}
-            if isinstance(payload._meta, dict):
-                if "warnings" not in payload._meta:
-                    payload._meta["warnings"] = []
-                payload._meta["warnings"].append(f"Receipt match failed: {receipt_result.get('error')}")
+        if hasattr(payload, "meta_data"):
+            if payload.meta_data is None:
+                payload.meta_data = {}
+            if isinstance(payload.meta_data, dict):
+                if "warnings" not in payload.meta_data:
+                    payload.meta_data["warnings"] = []
+                payload.meta_data["warnings"].append(f"Receipt match failed: {receipt_result.get('error')}")
             
     # 2. Check Invoices concurrently (Each invoice has cascading rules)
+    sem = asyncio.Semaphore(15)
+    
+    async def sem_check_invoice(*args, **kwargs):
+        async with sem:
+            return await check_invoice_cascading(*args, **kwargs)
+
     tasks = []
     for inv in payload.invoices:
         inv_num = str(inv.invoice_number).strip() if inv.invoice_number is not None else ""
@@ -111,7 +117,7 @@ async def reconcile_data(payload: ReconciliationRequest):
         doc_num = str(inv.customer_invoice_number).strip() if inv.customer_invoice_number is not None else ""
         if doc_num == "None": doc_num = ""
             
-        tasks.append(check_invoice_cascading(
+        tasks.append(sem_check_invoice(
             http_client, x_oracle_user, x_oracle_pass, inv_num, inv_date, inv_amount, doc_num, customer_name
         ))
         
@@ -125,13 +131,13 @@ async def reconcile_data(payload: ReconciliationRequest):
             inv.fusion_invoice_date = inv_res.get("fusion_invoice_date")
             inv.fusion_invoice_amount = inv_res.get("fusion_invoice_amount")
         elif inv_res and inv_res.get("error"):
-            if hasattr(payload, "_meta"):
-                if payload._meta is None:
-                    payload._meta = {}
-                if isinstance(payload._meta, dict):
-                    if "warnings" not in payload._meta:
-                        payload._meta["warnings"] = []
-                    payload._meta["warnings"].append(f"Invoice {inv.invoice_number} match failed: {inv_res.get('error')}")
+            if hasattr(payload, "meta_data"):
+                if payload.meta_data is None:
+                    payload.meta_data = {}
+                if isinstance(payload.meta_data, dict):
+                    if "warnings" not in payload.meta_data:
+                        payload.meta_data["warnings"] = []
+                    payload.meta_data["warnings"].append(f"Invoice {inv.invoice_number} match failed: {inv_res.get('error')}")
     
     execution_time = round(time.time() - start_time, 2)
     logger.info(f"Reconciliation completed in {execution_time}s. Invoices checked: {len(invoice_results)}")
