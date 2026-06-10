@@ -33,9 +33,36 @@ def safe_str_match(val1, val2):
     if not val1 or not val2: return False
     return str(val1).strip().lower() == str(val2).strip().lower()
 
+def is_receipt_unapplied(c):
+    state = str(c.get("State", "")).strip().lower()
+    return state in ["unapplied", "unapp"]
+
+def is_invoice_open(c):
+    status = str(c.get("InvoiceStatus", "")).strip().lower()
+    if status == "closed":
+        return False
+    
+    # Try to parse InvoiceBalanceAmount if available
+    bal = c.get("InvoiceBalanceAmount")
+    if bal is not None:
+        try:
+            return float(bal) > 0
+        except ValueError:
+            pass
+            
+    # Default to Open if not explicitly closed
+    return True
+
+def apply_rules_to_candidates(candidates, rules):
+    for rule_name, condition in rules:
+        matches = [c for c in candidates if condition(c)]
+        if len(matches) == 1:
+            return matches[0], rule_name
+    return None, None
+
 async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receipt_date, customer_name):
     """
-    Receipt Cascading matching with local filtering.
+    Receipt Cascading matching: Two-Phase Search (Unapplied first, then Applied).
     """
     formatted_date = format_oracle_date(receipt_date)
     candidates = []
@@ -59,23 +86,34 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
         ("A5", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and bool(formatted_date) and c.get("ReceiptDate") == formatted_date),
     ]
     
-    for rule_name, condition in rules:
-        matches = [c for c in candidates if condition(c)]
-        if len(matches) == 1:
-            match = matches[0]
-            logger.info(f"Receipt Rule {rule_name} Matched!")
-            return {
-                "matched_in_oracle": True,
-                "fusion_receipt_number": match.get("ReceiptNumber"),
-                "fusion_receipt_date": match.get("ReceiptDate"),
-                "fusion_customer_name": match.get("CustomerName")
-            }
+    # Phase 1: Search Unapplied Receipts
+    unapplied_candidates = [c for c in candidates if is_receipt_unapplied(c)]
+    match, rule_name = apply_rules_to_candidates(unapplied_candidates, rules)
+    
+    if match:
+        logger.info(f"Receipt Rule {rule_name} Matched in UNAPPLIED phase!")
+    else:
+        # Phase 2: Search Applied Receipts
+        applied_candidates = [c for c in candidates if not is_receipt_unapplied(c)]
+        match, rule_name = apply_rules_to_candidates(applied_candidates, rules)
+        if match:
+            logger.info(f"Receipt Rule {rule_name} Matched in APPLIED fallback phase!")
             
-    return {"matched_in_oracle": False, "error": "No single match found after cascading rules."}
+    if match:
+        return {
+            "matched_in_oracle": True,
+            "fusion_receipt_number": match.get("ReceiptNumber"),
+            "fusion_receipt_date": match.get("ReceiptDate"),
+            "fusion_customer_name": match.get("CustomerName"),
+            "match_phase": "UNAPPLIED" if is_receipt_unapplied(match) else "APPLIED",
+            "match_rule": rule_name
+        }
+            
+    return {"matched_in_oracle": False, "error": "No single match found after two-phase cascading rules."}
 
 async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name):
     """
-    Invoice Cascading matching with local filtering.
+    Invoice Cascading matching: Two-Phase Search (Open first, then Closed).
     """
     formatted_date = format_oracle_date(inv_date)
     candidates = []
@@ -102,16 +140,27 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
         ("4",  lambda c: bool(customer_name) and safe_str_match(c.get("BillToCustomerName"), customer_name) and c.get("TrxDate") == formatted_date and safe_float_match(c.get("InvoiceAmount"), amount)),
     ]
     
-    for rule_name, condition in rules:
-        matches = [c for c in candidates if condition(c)]
-        if len(matches) == 1:
-            match = matches[0]
-            logger.info(f"Invoice Rule {rule_name} Matched!")
-            return {
-                "matched_in_oracle": True,
-                "fusion_invoice_number": match.get("TrxNumber"),
-                "fusion_invoice_date": match.get("TrxDate"),
-                "fusion_invoice_amount": match.get("InvoiceAmount")
-            }
+    # Phase 1: Search Open Invoices
+    open_candidates = [c for c in candidates if is_invoice_open(c)]
+    match, rule_name = apply_rules_to_candidates(open_candidates, rules)
+    
+    if match:
+        logger.info(f"Invoice Rule {rule_name} Matched in OPEN phase!")
+    else:
+        # Phase 2: Search Closed Invoices
+        closed_candidates = [c for c in candidates if not is_invoice_open(c)]
+        match, rule_name = apply_rules_to_candidates(closed_candidates, rules)
+        if match:
+            logger.info(f"Invoice Rule {rule_name} Matched in CLOSED fallback phase!")
+            
+    if match:
+        return {
+            "matched_in_oracle": True,
+            "fusion_invoice_number": match.get("TrxNumber"),
+            "fusion_invoice_date": match.get("TrxDate"),
+            "fusion_invoice_amount": match.get("InvoiceAmount"),
+            "match_phase": "OPEN" if is_invoice_open(match) else "CLOSED",
+            "match_rule": rule_name
+        }
             
     return {"matched_in_oracle": False, "error": f"No single match found for invoice {inv_num}."}
