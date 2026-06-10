@@ -3,9 +3,10 @@
 This document outlines the standard cascading rules used to reconcile incoming extracted data (Payload) with the source-of-truth Oracle ERP data (Reports). 
 
 ## 1. Universal Principles
-1. **Cascading Priority:** Execute the rules in numerical order (A1, then A2, etc.). The moment any rule yields **exactly one match**, stop immediately and use that match.
-2. **Exact Amounts:** Amount matching must be exact. No fuzzy matching or rounding is allowed.
-3. **Optional Parameters:** If a field like `[+ Optional Customer]` is listed, it means: "If the customer name exists in the payload, add it to the search criteria to make it more accurate."
+1. **Two-Phase Status Priority:** The system will ALWAYS search for matches among **Unapplied Receipts / Open Invoices** first. If a match is found, it will immediately process it. Only if no match is found among open records will it fall back to searching **Applied Receipts / Closed Invoices** to identify partially settled or previously matched items.
+2. **Cascading Priority:** Within a search phase (e.g. Open records), execute the rules in numerical order (A1, then A2, etc.). The moment any rule yields **exactly one match**, stop immediately and use that match.
+3. **Exact Amounts:** Amount matching must be exact. No fuzzy matching or rounding is allowed.
+4. **Optional Parameters:** If a field like `[+ Optional Customer]` is listed, it means: "If the customer name exists in the payload, add it to the search criteria to make it more accurate."
 
 ---
 
