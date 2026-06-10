@@ -26,4 +26,4 @@ class ReconciliationRequest(BaseModel):
     confidence_score: Any = None
     confidence_label: Any = None
     invoice_count: Any = None
-    _meta: Optional[dict] = None
+    meta_data: Optional[dict] = None
