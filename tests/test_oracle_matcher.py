@@ -50,8 +50,8 @@ async def test_check_invoice_two_phase_priority(mock_client):
     # Two invoices, one Closed, one Open.
     # The Open one should be chosen first.
     mock_client.get.return_value = create_mock_response(200, [
-        {"TrxNumber": "INV123", "InvoiceStatus": "Closed", "TrxDate": "2026-05-10"},
-        {"TrxNumber": "INV123", "InvoiceStatus": "Incomplete", "TrxDate": "2026-05-10"}
+        {"TransactionNumber": "INV123", "InvoiceStatus": "Closed", "TransactionDate": "2026-05-10"},
+        {"TransactionNumber": "INV123", "InvoiceStatus": "Incomplete", "TransactionDate": "2026-05-10"}
     ])
     
     result = await check_invoice_cascading(
