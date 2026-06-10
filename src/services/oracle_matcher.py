@@ -129,23 +129,37 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
     candidates = []
 
     # 1. Fetch Candidates
-    fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
+    inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
+    cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
+    
     try:
         if inv_num:
-            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"TransactionNumber='{inv_num}'", fields=fields)
+            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"TransactionNumber='{inv_num}'", fields=inv_fields)
             if not candidates:
                 # Fallback to Credit Memos
-                candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"TransactionNumber='{inv_num}'", fields=fields)
+                cm_candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"TransactionNumber='{inv_num}'", fields=cm_fields)
+                for c in cm_candidates:
+                    c["InvoiceStatus"] = c.get("CreditMemoStatus")
+                    c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
+                candidates = cm_candidates
             
         if not candidates and doc_num:
-            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"DocumentNumber='{doc_num}'", fields=fields)
+            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"DocumentNumber='{doc_num}'", fields=inv_fields)
             if not candidates:
-                candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"DocumentNumber='{doc_num}'", fields=fields)
+                cm_candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"DocumentNumber='{doc_num}'", fields=cm_fields)
+                for c in cm_candidates:
+                    c["InvoiceStatus"] = c.get("CreditMemoStatus")
+                    c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
+                candidates = cm_candidates
             
         if not candidates and customer_name:
-            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"BillToCustomerName='{customer_name}'", fields=fields)
+            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"BillToCustomerName='{customer_name}'", fields=inv_fields)
             if not candidates:
-                candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"BillToCustomerName='{customer_name}'", fields=fields)
+                cm_candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"BillToCustomerName='{customer_name}'", fields=cm_fields)
+                for c in cm_candidates:
+                    c["InvoiceStatus"] = c.get("CreditMemoStatus")
+                    c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
+                candidates = cm_candidates
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 
