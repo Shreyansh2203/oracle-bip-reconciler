@@ -133,12 +133,19 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
     try:
         if inv_num:
             candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"TransactionNumber='{inv_num}'", fields=fields)
+            if not candidates:
+                # Fallback to Credit Memos
+                candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"TransactionNumber='{inv_num}'", fields=fields)
             
         if not candidates and doc_num:
             candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"DocumentNumber='{doc_num}'", fields=fields)
+            if not candidates:
+                candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"DocumentNumber='{doc_num}'", fields=fields)
             
         if not candidates and customer_name:
             candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"BillToCustomerName='{customer_name}'", fields=fields)
+            if not candidates:
+                candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"BillToCustomerName='{customer_name}'", fields=fields)
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 
