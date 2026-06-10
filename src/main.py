@@ -1,15 +1,16 @@
+import asyncio
+import logging
 import os
 import time
-import logging
-import asyncio
+from contextlib import asynccontextmanager
+
 import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from dotenv import load_dotenv
 
 from src.models import ReconciliationRequest
-from src.services.oracle_matcher import check_receipt_cascading, check_invoice_cascading
+from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading
 
 load_dotenv()
 
@@ -32,8 +33,8 @@ async def lifespan(app: FastAPI):
         await http_client.aclose()
 
 app = FastAPI(
-    title="Oracle Reconciliation Live API", 
-    version="4.0.0", 
+    title="Oracle Reconciliation Live API",
+    version="4.0.0",
     description="Professional enterprise API for Oracle ERP Cloud reconciliation matching.",
     lifespan=lifespan
 )
@@ -58,34 +59,37 @@ async def reconcile_data(payload: ReconciliationRequest):
     Expects a JSON payload and returns the same payload enriched with 'fusion_' mapped fields.
     """
     logger.info(f"Received reconcile request for payment_reference: {payload.payment_reference}")
-    
+
     x_oracle_user = os.getenv("ORACLE_USER")
     x_oracle_pass = os.getenv("ORACLE_PASS")
-    
+
     if not x_oracle_user or not x_oracle_pass or x_oracle_user == "YOUR_USERNAME_HERE":
         logger.error("Oracle credentials are not configured in the .env file.")
         raise HTTPException(status_code=500, detail="Oracle credentials are not configured in the .env file.")
-        
+
     if not http_client:
         logger.error("Global HTTP client is not initialized")
         raise HTTPException(status_code=500, detail="Internal server error: HTTP client not initialized")
-        
+
     start_time = time.time()
-    
+
     # Clean input strings
     receipt_num = str(payload.payment_reference).strip() if payload.payment_reference is not None else ""
-    if receipt_num == "None": receipt_num = ""
+    if receipt_num == "None":
+        receipt_num = ""
     receipt_amount = payload.total_amount
     receipt_date = str(payload.payment_date).strip() if payload.payment_date is not None else ""
-    if receipt_date == "None": receipt_date = ""
+    if receipt_date == "None":
+        receipt_date = ""
     customer_name = str(payload.customer_name).strip() if payload.customer_name is not None else ""
-    if customer_name == "None": customer_name = ""
+    if customer_name == "None":
+        customer_name = ""
 
     # 1. Check Receipt (Cascading)
     receipt_result = await check_receipt_cascading(
         http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name
     )
-    
+
     if receipt_result.get("matched_in_oracle"):
         payload.fusion_receipt_number = receipt_result.get("fusion_receipt_number")
         payload.fusion_receipt_date = receipt_result.get("fusion_receipt_date")
@@ -99,10 +103,10 @@ async def reconcile_data(payload: ReconciliationRequest):
                 if "warnings" not in payload.meta_data:
                     payload.meta_data["warnings"] = []
                 payload.meta_data["warnings"].append(f"Receipt match failed: {receipt_result.get('error')}")
-            
+
     # 2. Check Invoices concurrently (Each invoice has cascading rules)
     sem = asyncio.Semaphore(100)
-    
+
     async def sem_check_invoice(*args, **kwargs):
         async with sem:
             return await check_invoice_cascading(*args, **kwargs)
@@ -110,19 +114,22 @@ async def reconcile_data(payload: ReconciliationRequest):
     tasks = []
     for inv in payload.invoices:
         inv_num = str(inv.invoice_number).strip() if inv.invoice_number is not None else ""
-        if inv_num == "None": inv_num = ""
+        if inv_num == "None":
+            inv_num = ""
         inv_date = str(inv.invoice_date).strip() if inv.invoice_date is not None else ""
-        if inv_date == "None": inv_date = ""
+        if inv_date == "None":
+            inv_date = ""
         inv_amount = inv.invoice_amount
         doc_num = str(inv.customer_invoice_number).strip() if inv.customer_invoice_number is not None else ""
-        if doc_num == "None": doc_num = ""
-            
+        if doc_num == "None":
+            doc_num = ""
+
         tasks.append(sem_check_invoice(
             http_client, x_oracle_user, x_oracle_pass, inv_num, inv_date, inv_amount, doc_num, customer_name
         ))
-        
+
     invoice_results = await asyncio.gather(*tasks)
-    
+
     # 3. Map invoice results back to the payload
     for idx, inv in enumerate(payload.invoices):
         inv_res = invoice_results[idx]
@@ -138,9 +145,9 @@ async def reconcile_data(payload: ReconciliationRequest):
                     if "warnings" not in payload.meta_data:
                         payload.meta_data["warnings"] = []
                     payload.meta_data["warnings"].append(f"Invoice {inv.invoice_number} match failed: {inv_res.get('error')}")
-    
+
     execution_time = round(time.time() - start_time, 2)
     logger.info(f"Reconciliation completed in {execution_time}s. Invoices checked: {len(invoice_results)}")
-        
+
     # 4. Return the enriched payload
     return payload

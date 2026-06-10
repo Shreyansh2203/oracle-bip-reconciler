@@ -1,5 +1,6 @@
 import logging
 import urllib.parse
+
 from src.utils.date_formatter import format_oracle_date
 
 logger = logging.getLogger(__name__)
@@ -24,13 +25,15 @@ async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=200)
 
 def safe_float_match(val1, val2, tolerance=0.01):
     try:
-        if val1 is None or val2 is None: return False
+        if val1 is None or val2 is None:
+            return False
         return abs(float(val1) - float(val2)) < tolerance
     except ValueError:
         return False
 
 def safe_str_match(val1, val2):
-    if not val1 or not val2: return False
+    if not val1 or not val2:
+        return False
     return str(val1).strip().lower() == str(val2).strip().lower()
 
 def is_receipt_unapplied(c):
@@ -41,7 +44,7 @@ def is_invoice_open(c):
     status = str(c.get("InvoiceStatus", "")).strip().lower()
     if status == "closed":
         return False
-    
+
     # Try to parse InvoiceBalanceAmount if available
     bal = c.get("InvoiceBalanceAmount")
     if bal is not None:
@@ -49,7 +52,7 @@ def is_invoice_open(c):
             return float(bal) > 0
         except ValueError:
             pass
-            
+
     # Default to Open if not explicitly closed
     return True
 
@@ -66,20 +69,20 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
     """
     formatted_date = format_oracle_date(receipt_date)
     candidates = []
-    
+
     # 1. Fetch Candidates (Bypass Oracle's 400 Bad Request on Amount/Date)
     try:
         if receipt_num:
             candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", f"ReceiptNumber='{receipt_num}'")
-        
+
         if not candidates and customer_name:
             candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", f"CustomerName='{customer_name}'")
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
-        
+
     if not candidates:
         return {"matched_in_oracle": False, "error": "No candidates found in Oracle for ReceiptNumber or CustomerName."}
-        
+
     # 2. Local Filtering Rules
     rules = [
         ("A1", lambda c: safe_str_match(c.get("ReceiptNumber"), receipt_num) and safe_float_match(c.get("Amount"), amount) and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
@@ -88,11 +91,11 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
         ("A4", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and safe_float_match(c.get("Amount"), amount)),
         ("A5", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and bool(formatted_date) and c.get("ReceiptDate") == formatted_date),
     ]
-    
+
     # Phase 1: Search Unapplied Receipts
     unapplied_candidates = [c for c in candidates if is_receipt_unapplied(c)]
     match, rule_name = apply_rules_to_candidates(unapplied_candidates, rules)
-    
+
     if match:
         logger.info(f"Receipt Rule {rule_name} Matched in UNAPPLIED phase!")
     else:
@@ -101,7 +104,7 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
         match, rule_name = apply_rules_to_candidates(applied_candidates, rules)
         if match:
             logger.info(f"Receipt Rule {rule_name} Matched in APPLIED fallback phase!")
-            
+
     if match:
         return {
             "matched_in_oracle": True,
@@ -111,7 +114,7 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
             "match_phase": "UNAPPLIED" if is_receipt_unapplied(match) else "APPLIED",
             "match_rule": rule_name
         }
-            
+
     return {"matched_in_oracle": False, "error": "No single match found after two-phase cascading rules."}
 
 async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name):
@@ -120,23 +123,23 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
     """
     formatted_date = format_oracle_date(inv_date)
     candidates = []
-    
+
     # 1. Fetch Candidates
     try:
         if inv_num:
             candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"TransactionNumber='{inv_num}'")
-            
+
         if not candidates and doc_num:
             candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"DocumentNumber='{doc_num}'")
-            
+
         if not candidates and customer_name:
             candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"BillToCustomerName='{customer_name}'")
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
-        
+
     if not candidates:
         return {"matched_in_oracle": False, "error": f"No candidates found for invoice {inv_num}."}
-        
+
     # 2. Local Filtering Rules
     rules = [
         ("1a", lambda c: safe_str_match(c.get("TransactionNumber"), inv_num)),
@@ -145,11 +148,11 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
         ("3",  lambda c: bool(inv_num) and str(inv_num).lower() in str(c.get("TransactionNumber", "")).lower() and c.get("TransactionDate") == formatted_date),
         ("4",  lambda c: bool(customer_name) and safe_str_match(c.get("BillToCustomerName"), customer_name) and c.get("TransactionDate") == formatted_date and safe_float_match(c.get("EnteredAmount"), amount)),
     ]
-    
+
     # Phase 1: Search Open Invoices
     open_candidates = [c for c in candidates if is_invoice_open(c)]
     match, rule_name = apply_rules_to_candidates(open_candidates, rules)
-    
+
     if match:
         logger.info(f"Invoice Rule {rule_name} Matched in OPEN phase!")
     else:
@@ -158,7 +161,7 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
         match, rule_name = apply_rules_to_candidates(closed_candidates, rules)
         if match:
             logger.info(f"Invoice Rule {rule_name} Matched in CLOSED fallback phase!")
-            
+
     if match:
         return {
             "matched_in_oracle": True,
@@ -168,5 +171,5 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
             "match_phase": "OPEN" if is_invoice_open(match) else "CLOSED",
             "match_rule": rule_name
         }
-            
+
     return {"matched_in_oracle": False, "error": f"No single match found for invoice {inv_num}."}
