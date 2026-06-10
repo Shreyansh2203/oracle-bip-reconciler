@@ -137,7 +137,7 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
         ("1b", lambda c: safe_str_match(c.get("TransactionNumber"), inv_num) and c.get("TransactionDate") == formatted_date),
         ("2",  lambda c: bool(doc_num) and safe_str_match(c.get("DocumentNumber"), doc_num) and c.get("TransactionDate") == formatted_date),
         ("3",  lambda c: bool(inv_num) and str(inv_num).lower() in str(c.get("TransactionNumber", "")).lower() and c.get("TransactionDate") == formatted_date),
-        ("4",  lambda c: bool(customer_name) and safe_str_match(c.get("BillToCustomerName"), customer_name) and c.get("TransactionDate") == formatted_date and safe_float_match(c.get("InvoiceAmount"), amount)),
+        ("4",  lambda c: bool(customer_name) and safe_str_match(c.get("BillToCustomerName"), customer_name) and c.get("TransactionDate") == formatted_date and safe_float_match(c.get("EnteredAmount"), amount)),
     ]
     
     # Phase 1: Search Open Invoices
@@ -158,7 +158,7 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
             "matched_in_oracle": True,
             "fusion_invoice_number": match.get("TransactionNumber"),
             "fusion_invoice_date": match.get("TransactionDate"),
-            "fusion_invoice_amount": match.get("InvoiceAmount"),
+            "fusion_invoice_amount": match.get("EnteredAmount"),
             "match_phase": "OPEN" if is_invoice_open(match) else "CLOSED",
             "match_rule": rule_name
         }
