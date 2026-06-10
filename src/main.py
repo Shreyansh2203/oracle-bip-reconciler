@@ -24,7 +24,7 @@ http_client = None
 async def lifespan(app: FastAPI):
     global http_client
     # Timeout set to 15s (below typical 60s Vercel limit) to fail gracefully
-    http_client = httpx.AsyncClient(timeout=15.0)
+    http_client = httpx.AsyncClient(timeout=15.0, limits=httpx.Limits(max_connections=150, max_keepalive_connections=50))
     logger.info("Starting up global HTTP client")
     yield
     logger.info("Shutting down global HTTP client")
@@ -101,7 +101,7 @@ async def reconcile_data(payload: ReconciliationRequest):
                 payload.meta_data["warnings"].append(f"Receipt match failed: {receipt_result.get('error')}")
             
     # 2. Check Invoices concurrently (Each invoice has cascading rules)
-    sem = asyncio.Semaphore(15)
+    sem = asyncio.Semaphore(100)
     
     async def sem_check_invoice(*args, **kwargs):
         async with sem:
