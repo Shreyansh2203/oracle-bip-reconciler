@@ -41,7 +41,7 @@ def safe_str_match(val1, val2):
 
 def is_receipt_unapplied(c):
     state = str(c.get("State", "")).strip().lower()
-    return state in ["unapplied", "unapp"]
+    return state in ["unapplied", "unapp", "unid"]
 
 def is_invoice_open(c):
     status = str(c.get("InvoiceStatus", "")).strip().lower()
@@ -52,7 +52,7 @@ def is_invoice_open(c):
     bal = c.get("InvoiceBalanceAmount")
     if bal is not None:
         try:
-            return float(bal) > 0
+            return abs(float(bal)) > 0
         except ValueError:
             pass
 
