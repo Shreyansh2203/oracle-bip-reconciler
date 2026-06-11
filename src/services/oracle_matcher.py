@@ -1,11 +1,22 @@
 import logging
 import urllib.parse
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import httpx
 
 from src.utils.date_formatter import format_oracle_date
 
 logger = logging.getLogger(__name__)
 ORACLE_URL = "https://fa-epxp-test-saasfaprod1.fa.ocs.oraclecloud.com"
 
+class OracleTransientError(Exception):
+    pass
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type((OracleTransientError, httpx.RequestError)),
+    reraise=True
+)
 async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=200, fields=""):
     """
     Fetch candidates from Oracle using only indexable fields.
@@ -19,11 +30,17 @@ async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=200,
         response = await client.get(url, auth=(user, pwd))
         if response.status_code == 200:
             return response.json().get("items", [])
+        elif response.status_code in [429, 500, 502, 503, 504]:
+            logger.warning(f"Transient Oracle fetch error ({response.status_code}): {response.text}. Retrying...")
+            raise OracleTransientError(f"Transient Oracle API Error {response.status_code}: {response.text}")
         else:
             logger.error(f"Oracle fetch error ({response.status_code}): {response.text}")
             raise Exception(f"Oracle API Error {response.status_code}: {response.text}")
+    except (OracleTransientError, httpx.RequestError) as e:
+        logger.warning(f"Transient Oracle fetch exception: {e}")
+        raise e
     except Exception as e:
-        logger.error(f"Oracle fetch exception: {e}")
+        logger.error(f"Permanent Oracle fetch exception: {e}")
         raise e
 
 def safe_float_match(val1, val2, tolerance=0.01):
