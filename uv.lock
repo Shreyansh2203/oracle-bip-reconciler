@@ -141,6 +141,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "tenacity" },
     { name = "uvicorn" },
@@ -155,11 +156,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.136.3" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "python-dotenv", specifier = ">=1.2.2" },
-    { name = "tenacity" },
-    { name = "uvicorn", specifier = ">=0.30.0" },
+    { name = "fastapi", specifier = ">=0.100.0" },
+    { name = "httpx", specifier = ">=0.24.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "tenacity", specifier = ">=8.0.0" },
+    { name = "uvicorn", specifier = ">=0.23.0" },
 ]
 
 [package.metadata.requires-dev]

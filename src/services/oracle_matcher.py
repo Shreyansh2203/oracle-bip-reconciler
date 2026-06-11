@@ -121,6 +121,10 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
         if not candidates and customer_name:
             query = f"CustomerName='{escape_oracle(customer_name)}'"
             candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
+            
+        if not candidates and amount and formatted_date:
+            query = f"Amount={amount} and ReceiptDate='{formatted_date}'"
+            candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 
@@ -128,13 +132,20 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
         return {"matched_in_oracle": False, "error": "No candidates found in Oracle for ReceiptNumber or CustomerName."}
 
     # 2. Local Filtering Rules
-    rules = [
-        ("A1", lambda c: safe_str_match(c.get("ReceiptNumber"), receipt_num) and safe_float_match(c.get("Amount"), amount) and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
-        ("A2", lambda c: safe_str_match(c.get("ReceiptNumber"), receipt_num) and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
-        ("A3", lambda c: safe_str_match(c.get("ReceiptNumber"), receipt_num) and safe_float_match(c.get("Amount"), amount) and c.get("ReceiptDate") == formatted_date and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
-        ("A4", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and safe_float_match(c.get("Amount"), amount)),
-        ("A5", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and bool(formatted_date) and c.get("ReceiptDate") == formatted_date),
-    ]
+    if receipt_num:
+        rules = [
+            ("A1", lambda c: safe_str_match(c.get("ReceiptNumber"), receipt_num) and safe_float_match(c.get("Amount"), amount) and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
+            ("A2", lambda c: safe_str_match(c.get("ReceiptNumber"), receipt_num) and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
+            ("A3", lambda c: safe_str_match(c.get("ReceiptNumber"), receipt_num) and safe_float_match(c.get("Amount"), amount) and c.get("ReceiptDate") == formatted_date and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
+            ("A4", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and safe_float_match(c.get("Amount"), amount)),
+            ("A5", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and bool(formatted_date) and c.get("ReceiptDate") == formatted_date),
+        ]
+    else:
+        rules = [
+            ("B1", lambda c: safe_float_match(c.get("Amount"), amount) and bool(formatted_date) and c.get("ReceiptDate") == formatted_date and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
+            ("B2", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and safe_float_match(c.get("Amount"), amount)),
+            ("B3", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and bool(formatted_date) and c.get("ReceiptDate") == formatted_date),
+        ]
 
     # Phase 1: Search Unapplied Receipts
     unapplied_candidates = [c for c in candidates if is_receipt_unapplied(c)]
