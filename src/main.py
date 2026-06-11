@@ -84,11 +84,27 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
     if customer_name == "None":
         customer_name = ""
 
-    # 1. Check Receipt (Cascading)
-    receipt_result = await check_receipt_cascading(
-        http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name
+    # 1. Pre-fetch network data concurrently
+    inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
+    cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
+    
+    inv_nums_to_fetch = [str(inv.invoice_number) for inv in payload.invoices]
+    doc_nums_to_fetch = [str(inv.customer_invoice_number) for inv in payload.invoices]
+    
+    logger.info("Concurrently fetching Receipt data and Bulk Invoice/CM candidates...")
+    receipt_result, cache_inv_num, cache_doc_num = await asyncio.gather(
+        check_receipt_cascading(
+            http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name
+        ),
+        prefetch_candidates_in_bulk(
+            http_client, x_oracle_user, x_oracle_pass, "TransactionNumber", inv_nums_to_fetch, inv_fields, cm_fields
+        ),
+        prefetch_candidates_in_bulk(
+            http_client, x_oracle_user, x_oracle_pass, "DocumentNumber", doc_nums_to_fetch, inv_fields, cm_fields
+        )
     )
 
+    # 2. Process Receipt Result
     if receipt_result.get("matched_in_oracle"):
         payload.fusion_receipt_number = receipt_result.get("fusion_receipt_number")
         payload.fusion_receipt_date = receipt_result.get("fusion_receipt_date")
@@ -104,20 +120,6 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
                 if "warnings" not in payload.meta_data:
                     payload.meta_data["warnings"] = []
                 payload.meta_data["warnings"].append(f"Receipt match failed: {clean_error}")
-
-    # 2. Check Invoices concurrently
-    # Bulk fetch step: pre-load all candidates in massive chunked queries to avoid N+1 problem
-    inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
-    cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
-    
-    inv_nums_to_fetch = [str(inv.invoice_number) for inv in payload.invoices]
-    doc_nums_to_fetch = [str(inv.customer_invoice_number) for inv in payload.invoices]
-    
-    logger.info("Bulk pre-fetching Invoices/Credit Memos by TransactionNumber...")
-    cache_inv_num = await prefetch_candidates_in_bulk(http_client, x_oracle_user, x_oracle_pass, "TransactionNumber", inv_nums_to_fetch, inv_fields, cm_fields)
-    
-    logger.info("Bulk pre-fetching Invoices/Credit Memos by DocumentNumber...")
-    cache_doc_num = await prefetch_candidates_in_bulk(http_client, x_oracle_user, x_oracle_pass, "DocumentNumber", doc_nums_to_fetch, inv_fields, cm_fields)
 
     # Fix 9: Reduce concurrency to 150 to prevent Oracle connection exhaustion
     sem = asyncio.Semaphore(150)
