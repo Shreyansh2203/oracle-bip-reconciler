@@ -161,10 +161,8 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
 
     return {"matched_in_oracle": False, "error": "No single match found after two-phase cascading rules."}
 
-async def fetch_both_inv_and_cm(client, user, pwd, query_key, raw_value, inv_fields, cm_fields):
-    """Fix 5: Concurrent fetch for Invoices and Credit Memos to prevent N+1 fallback."""
-    query = f"{query_key}='{escape_oracle(raw_value)}'"
-    
+async def fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields):
+    """Raw version of fetch_both_inv_and_cm that accepts a full custom query string."""
     inv_task = fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", query, fields=inv_fields)
     cm_task = fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", query, fields=cm_fields)
     
@@ -181,9 +179,45 @@ async def fetch_both_inv_and_cm(client, user, pwd, query_key, raw_value, inv_fie
         
     return candidates
 
-async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name):
+async def fetch_both_inv_and_cm(client, user, pwd, query_key, raw_value, inv_fields, cm_fields):
+    """Fix 5: Concurrent fetch for Invoices and Credit Memos to prevent N+1 fallback."""
+    query = f"{query_key}='{escape_oracle(raw_value)}'"
+    return await fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields)
+
+async def prefetch_candidates_in_bulk(client, user, pwd, query_key, values, inv_fields, cm_fields, chunk_size=40):
+    """
+    Groups values into massive OR queries and fetches all matching candidates concurrently.
+    Returns a dictionary mapping the lowercase query_key value to a list of candidates.
+    """
+    candidates_dict = {}
+    
+    unique_vals = list(set([str(v).strip() for v in values if v and str(v).strip() != "None"]))
+    if not unique_vals:
+        return candidates_dict
+        
+    tasks = []
+    for i in range(0, len(unique_vals), chunk_size):
+        chunk = unique_vals[i:i+chunk_size]
+        query_parts = [f"{query_key}='{escape_oracle(v)}'" for v in chunk]
+        query = " OR ".join(query_parts)
+        tasks.append(fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields))
+        
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    for res_list in results:
+        if isinstance(res_list, list):
+            for c in res_list:
+                key_val = str(c.get(query_key, "")).strip().lower()
+                if key_val not in candidates_dict:
+                    candidates_dict[key_val] = []
+                candidates_dict[key_val].append(c)
+            
+    return candidates_dict
+
+async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name, cache_inv_num=None, cache_doc_num=None):
     """
     Invoice Cascading matching: Two-Phase Search (Open first, then Closed).
+    Uses pre-fetched dictionaries (cache_inv_num, cache_doc_num) if available to avoid HTTP calls.
     """
     formatted_date = format_oracle_date(inv_date)
     candidates = []
@@ -193,10 +227,16 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
     
     try:
         if inv_num:
-            candidates = await fetch_both_inv_and_cm(client, user, pwd, "TransactionNumber", inv_num, inv_fields, cm_fields)
+            if cache_inv_num is not None:
+                candidates = cache_inv_num.get(inv_num.lower(), [])
+            else:
+                candidates = await fetch_both_inv_and_cm(client, user, pwd, "TransactionNumber", inv_num, inv_fields, cm_fields)
             
         if not candidates and doc_num:
-            candidates = await fetch_both_inv_and_cm(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
+            if cache_doc_num is not None:
+                candidates = cache_doc_num.get(doc_num.lower(), [])
+            else:
+                candidates = await fetch_both_inv_and_cm(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
             
         if not candidates and customer_name:
             candidates = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
