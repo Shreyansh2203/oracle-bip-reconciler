@@ -2,12 +2,12 @@ import asyncio
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 
 from src.models import ReconciliationRequest
 from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading
@@ -20,6 +20,9 @@ logger = logging.getLogger("reconciliation_api")
 
 # Global HTTP client
 http_client = None
+
+# Global Job Store for Async Polling (Warning: In-memory only. Will reset on server restart)
+JOB_STORE = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,6 +43,7 @@ app = FastAPI(
 )
 
 # Setup CORS
+from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -52,24 +56,20 @@ app.add_middleware(
 async def root():
     return {"status": "online", "message": "Oracle Reconciliation API is running"}
 
-@app.post("/reconcile", response_model=ReconciliationRequest)
-async def reconcile_data(payload: ReconciliationRequest):
+async def _process_reconciliation(payload: ReconciliationRequest) -> ReconciliationRequest:
     """
-    Endpoint for real-time Oracle matching using Cascading Rules.
-    Expects a JSON payload and returns the same payload enriched with 'fusion_' mapped fields.
+    Core logic for executing the reconciliation matching.
     """
-    logger.info(f"Received reconcile request for payment_reference: {payload.payment_reference}")
-
     x_oracle_user = os.getenv("ORACLE_USER")
     x_oracle_pass = os.getenv("ORACLE_PASS")
 
     if not x_oracle_user or not x_oracle_pass or x_oracle_user == "YOUR_USERNAME_HERE":
         logger.error("Oracle credentials are not configured in the .env file.")
-        raise HTTPException(status_code=500, detail="Oracle credentials are not configured in the .env file.")
+        raise Exception("Oracle credentials are not configured.")
 
     if not http_client:
         logger.error("Global HTTP client is not initialized")
-        raise HTTPException(status_code=500, detail="Internal server error: HTTP client not initialized")
+        raise Exception("Internal server error: HTTP client not initialized")
 
     start_time = time.time()
 
@@ -149,5 +149,80 @@ async def reconcile_data(payload: ReconciliationRequest):
     execution_time = round(time.time() - start_time, 2)
     logger.info(f"Reconciliation completed in {execution_time}s. Invoices checked: {len(invoice_results)}")
 
-    # 4. Return the enriched payload
     return payload
+
+async def background_job_runner(job_id: str, payload: ReconciliationRequest):
+    """
+    Executes the reconciliation and updates the JOB_STORE when done or failed.
+    """
+    logger.info(f"Background Job {job_id} Started.")
+    try:
+        JOB_STORE[job_id]["status"] = "PROCESSING"
+        result_payload = await _process_reconciliation(payload)
+        JOB_STORE[job_id]["status"] = "COMPLETED"
+        JOB_STORE[job_id]["result"] = result_payload.model_dump()
+        logger.info(f"Background Job {job_id} Completed successfully.")
+    except Exception as e:
+        logger.error(f"Background Job {job_id} Failed: {str(e)}")
+        JOB_STORE[job_id]["status"] = "FAILED"
+        JOB_STORE[job_id]["error"] = str(e)
+
+@app.post("/reconcile/async")
+async def reconcile_data_async(payload: ReconciliationRequest, background_tasks: BackgroundTasks):
+    """
+    Endpoint for asynchronous Oracle matching.
+    Returns a job_id instantly. The processing happens in the background.
+    """
+    job_id = str(uuid.uuid4())
+    JOB_STORE[job_id] = {
+        "status": "QUEUED",
+        "result": None,
+        "error": None
+    }
+    
+    background_tasks.add_task(background_job_runner, job_id, payload)
+    
+    return {
+        "job_id": job_id,
+        "status": "QUEUED",
+        "message": "Reconciliation job is queued and processing in the background."
+    }
+
+@app.get("/reconcile/status/{job_id}")
+async def get_reconciliation_status(job_id: str):
+    """
+    Poll this endpoint with the job_id to get the status or the completed payload.
+    """
+    if job_id not in JOB_STORE:
+        raise HTTPException(status_code=404, detail="Job ID not found")
+        
+    job_data = JOB_STORE[job_id]
+    
+    if job_data["status"] == "COMPLETED":
+        return {
+            "status": "COMPLETED",
+            "result": job_data["result"]
+        }
+    elif job_data["status"] == "FAILED":
+        return {
+            "status": "FAILED",
+            "error": job_data["error"]
+        }
+    else:
+        return {
+            "status": job_data["status"],
+            "message": "Job is still processing. Please check back later."
+        }
+
+@app.post("/reconcile", response_model=ReconciliationRequest)
+async def reconcile_data(payload: ReconciliationRequest):
+    """
+    Synchronous endpoint for real-time Oracle matching.
+    Expects a JSON payload and returns the same payload enriched with 'fusion_' mapped fields.
+    Warning: May timeout on large payloads if HTTP client drops connection.
+    """
+    logger.info(f"Received sync reconcile request for payment_reference: {payload.payment_reference}")
+    try:
+        return await _process_reconciliation(payload)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
