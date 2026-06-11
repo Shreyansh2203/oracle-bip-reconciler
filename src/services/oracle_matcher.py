@@ -1,5 +1,6 @@
 import logging
 import urllib.parse
+import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import httpx
 
@@ -11,31 +12,48 @@ ORACLE_URL = "https://fa-epxp-test-saasfaprod1.fa.ocs.oraclecloud.com"
 class OracleTransientError(Exception):
     pass
 
+def escape_oracle(val):
+    """Fix 3: Escape single quotes for Oracle REST API query injection prevention."""
+    if val is None:
+        return ""
+    return str(val).replace("'", "''")
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=10),
     retry=retry_if_exception_type((OracleTransientError, httpx.RequestError)),
     reraise=True
 )
-async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=200, fields=""):
+async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=499, fields=""):
     """
-    Fetch candidates from Oracle using only indexable fields.
+    Fetch candidates from Oracle using indexable fields, with pagination to fix truncation (Fix 4).
     """
     try:
         q = urllib.parse.quote(query)
-        url = f"{ORACLE_URL}/fscmRestApi/resources/11.13.18.05/{endpoint}?q={q}&limit={limit}"
-        if fields:
-            url += f"&fields={fields}"
+        all_items = []
+        offset = 0
+        has_more = True
         
-        response = await client.get(url, auth=(user, pwd))
-        if response.status_code == 200:
-            return response.json().get("items", [])
-        elif response.status_code in [429, 500, 502, 503, 504]:
-            logger.warning(f"Transient Oracle fetch error ({response.status_code}): {response.text}. Retrying...")
-            raise OracleTransientError(f"Transient Oracle API Error {response.status_code}: {response.text}")
-        else:
-            logger.error(f"Oracle fetch error ({response.status_code}): {response.text}")
-            raise Exception(f"Oracle API Error {response.status_code}: {response.text}")
+        while has_more:
+            url = f"{ORACLE_URL}/fscmRestApi/resources/11.13.18.05/{endpoint}?q={q}&limit={limit}&offset={offset}"
+            if fields:
+                url += f"&fields={fields}"
+            
+            response = await client.get(url, auth=(user, pwd))
+            if response.status_code == 200:
+                data = response.json()
+                items = data.get("items", [])
+                all_items.extend(items)
+                has_more = data.get("hasMore", False)
+                offset += limit
+            elif response.status_code in [429, 500, 502, 503, 504]:
+                logger.warning(f"Transient Oracle fetch error ({response.status_code}): {response.text}. Retrying...")
+                raise OracleTransientError(f"Transient Oracle API Error {response.status_code}: {response.text}")
+            else:
+                logger.error(f"Oracle fetch error ({response.status_code}): {response.text}")
+                raise Exception(f"Oracle API Error {response.status_code}: {response.text}")
+                
+        return all_items
     except (OracleTransientError, httpx.RequestError) as e:
         logger.warning(f"Transient Oracle fetch exception: {e}")
         raise e
@@ -81,6 +99,10 @@ def apply_rules_to_candidates(candidates, rules):
         matches = [c for c in candidates if condition(c)]
         if len(matches) == 1:
             return matches[0], rule_name
+        elif len(matches) > 1:
+            # Fix 6: Handle Duplicate Matches safely
+            logger.warning(f"Duplicate matches ({len(matches)}) found for rule {rule_name}. Using the first one.")
+            return matches[0], rule_name
     return None, None
 
 async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receipt_date, customer_name):
@@ -90,14 +112,15 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
     formatted_date = format_oracle_date(receipt_date)
     candidates = []
 
-    # 1. Fetch Candidates (Bypass Oracle's 400 Bad Request on Amount/Date)
     fields = "ReceiptNumber,Amount,State,CustomerName,ReceiptDate"
     try:
         if receipt_num:
-            candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", f"ReceiptNumber='{receipt_num}'", fields=fields)
+            query = f"ReceiptNumber='{escape_oracle(receipt_num)}'"
+            candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
         
         if not candidates and customer_name:
-            candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", f"CustomerName='{customer_name}'", fields=fields)
+            query = f"CustomerName='{escape_oracle(customer_name)}'"
+            candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 
@@ -138,6 +161,26 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
 
     return {"matched_in_oracle": False, "error": "No single match found after two-phase cascading rules."}
 
+async def fetch_both_inv_and_cm(client, user, pwd, query_key, raw_value, inv_fields, cm_fields):
+    """Fix 5: Concurrent fetch for Invoices and Credit Memos to prevent N+1 fallback."""
+    query = f"{query_key}='{escape_oracle(raw_value)}'"
+    
+    inv_task = fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", query, fields=inv_fields)
+    cm_task = fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", query, fields=cm_fields)
+    
+    inv_res, cm_res = await asyncio.gather(inv_task, cm_task, return_exceptions=True)
+    
+    candidates = []
+    if isinstance(inv_res, list):
+        candidates.extend(inv_res)
+    if isinstance(cm_res, list):
+        for c in cm_res:
+            c["InvoiceStatus"] = c.get("CreditMemoStatus")
+            c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
+        candidates.extend(cm_res)
+        
+    return candidates
+
 async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name):
     """
     Invoice Cascading matching: Two-Phase Search (Open first, then Closed).
@@ -145,38 +188,19 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
     formatted_date = format_oracle_date(inv_date)
     candidates = []
 
-    # 1. Fetch Candidates
     inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
     cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
     
     try:
         if inv_num:
-            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"TransactionNumber='{inv_num}'", fields=inv_fields)
-            if not candidates:
-                # Fallback to Credit Memos
-                cm_candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"TransactionNumber='{inv_num}'", fields=cm_fields)
-                for c in cm_candidates:
-                    c["InvoiceStatus"] = c.get("CreditMemoStatus")
-                    c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
-                candidates = cm_candidates
+            candidates = await fetch_both_inv_and_cm(client, user, pwd, "TransactionNumber", inv_num, inv_fields, cm_fields)
             
         if not candidates and doc_num:
-            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"DocumentNumber='{doc_num}'", fields=inv_fields)
-            if not candidates:
-                cm_candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"DocumentNumber='{doc_num}'", fields=cm_fields)
-                for c in cm_candidates:
-                    c["InvoiceStatus"] = c.get("CreditMemoStatus")
-                    c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
-                candidates = cm_candidates
+            candidates = await fetch_both_inv_and_cm(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
             
         if not candidates and customer_name:
-            candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", f"BillToCustomerName='{customer_name}'", fields=inv_fields)
-            if not candidates:
-                cm_candidates = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", f"BillToCustomerName='{customer_name}'", fields=cm_fields)
-                for c in cm_candidates:
-                    c["InvoiceStatus"] = c.get("CreditMemoStatus")
-                    c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
-                candidates = cm_candidates
+            candidates = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+            
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 

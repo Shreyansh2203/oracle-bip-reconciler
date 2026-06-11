@@ -3,11 +3,15 @@ import logging
 import os
 import time
 import uuid
+import json
+import sqlite3
+import aiosqlite
 from contextlib import asynccontextmanager
 
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.models import ReconciliationRequest
 from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading
@@ -21,12 +25,37 @@ logger = logging.getLogger("reconciliation_api")
 # Global HTTP client
 http_client = None
 
-# Global Job Store for Async Polling (Warning: In-memory only. Will reset on server restart)
-JOB_STORE = {}
+DB_PATH = "jobs.db"
+
+async def init_db():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS jobs (
+                job_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                result TEXT,
+                error TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await db.commit()
+
+async def cleanup_old_jobs():
+    """Background task to delete jobs older than 24 hours to prevent disk leak."""
+    while True:
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("DELETE FROM jobs WHERE created_at < datetime('now', '-1 day')")
+                await db.commit()
+        except Exception as e:
+            logger.error(f"Failed to cleanup old jobs: {str(e).replace(chr(10), ' ').replace(chr(13), ' ')}")
+        await asyncio.sleep(3600)  # Run once an hour
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global http_client
+    await init_db()
+    asyncio.create_task(cleanup_old_jobs())
     # Increase keepalive connections to match max_connections to avoid TLS handshake overhead
     http_client = httpx.AsyncClient(timeout=15.0, limits=httpx.Limits(max_connections=200, max_keepalive_connections=200))
     logger.info("Starting up global HTTP client")
@@ -42,12 +71,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Setup CORS
-from fastapi.middleware.cors import CORSMiddleware
+# Setup CORS - Fix 7
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -63,8 +91,9 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
     x_oracle_user = os.getenv("ORACLE_USER")
     x_oracle_pass = os.getenv("ORACLE_PASS")
 
-    if not x_oracle_user or not x_oracle_pass or x_oracle_user == "YOUR_USERNAME_HERE":
-        logger.error("Oracle credentials are not configured in the .env file.")
+    # Fix 11: Remove hardcoded dummy credentials check
+    if not x_oracle_user or not x_oracle_pass:
+        logger.error("Oracle credentials are not configured in the environment.")
         raise Exception("Oracle credentials are not configured.")
 
     if not http_client:
@@ -95,17 +124,20 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
         payload.fusion_receipt_date = receipt_result.get("fusion_receipt_date")
         payload.fusion_customer_name = receipt_result.get("fusion_customer_name")
     else:
-        logger.warning(f"Receipt match error or not found: {receipt_result.get('error')}")
+        # Fix 10: Sanitize log string
+        clean_error = str(receipt_result.get('error', '')).replace("\n", " ").replace("\r", " ")
+        logger.warning(f"Receipt match error or not found: {clean_error}")
         if hasattr(payload, "meta_data"):
             if payload.meta_data is None:
                 payload.meta_data = {}
             if isinstance(payload.meta_data, dict):
                 if "warnings" not in payload.meta_data:
                     payload.meta_data["warnings"] = []
-                payload.meta_data["warnings"].append(f"Receipt match failed: {receipt_result.get('error')}")
+                payload.meta_data["warnings"].append(f"Receipt match failed: {clean_error}")
 
-    # 2. Check Invoices concurrently (Each invoice has cascading rules)
-    sem = asyncio.Semaphore(150)
+    # 2. Check Invoices concurrently
+    # Fix 9: Reduce concurrency to 50 to prevent Oracle connection exhaustion
+    sem = asyncio.Semaphore(50)
 
     async def sem_check_invoice(*args, **kwargs):
         async with sem:
@@ -151,21 +183,30 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
 
     return payload
 
+async def set_job_status(job_id: str, status: str, result: dict = None, error: str = None):
+    """Helper to update job status in SQLite."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        result_str = json.dumps(result) if result else None
+        await db.execute('''
+            UPDATE jobs SET status = ?, result = ?, error = ? WHERE job_id = ?
+        ''', (status, result_str, error, job_id))
+        await db.commit()
+
 async def background_job_runner(job_id: str, payload: ReconciliationRequest):
     """
-    Executes the reconciliation and updates the JOB_STORE when done or failed.
+    Executes the reconciliation and updates SQLite when done or failed.
     """
     logger.info(f"Background Job {job_id} Started.")
     try:
-        JOB_STORE[job_id]["status"] = "PROCESSING"
+        await set_job_status(job_id, "PROCESSING")
         result_payload = await _process_reconciliation(payload)
-        JOB_STORE[job_id]["status"] = "COMPLETED"
-        JOB_STORE[job_id]["result"] = result_payload.model_dump()
+        await set_job_status(job_id, "COMPLETED", result=result_payload.model_dump())
         logger.info(f"Background Job {job_id} Completed successfully.")
     except Exception as e:
-        logger.error(f"Background Job {job_id} Failed: {str(e)}")
-        JOB_STORE[job_id]["status"] = "FAILED"
-        JOB_STORE[job_id]["error"] = str(e)
+        # Fix 8: Use logger.exception to log the traceback, and fix 10: Sanitize string
+        clean_error = str(e).replace("\n", " ").replace("\r", " ")
+        logger.exception(f"Background Job {job_id} Failed: {clean_error}")
+        await set_job_status(job_id, "FAILED", error=clean_error)
 
 @app.post("/reconcile")
 async def reconcile_data_async(payload: ReconciliationRequest, background_tasks: BackgroundTasks):
@@ -174,11 +215,12 @@ async def reconcile_data_async(payload: ReconciliationRequest, background_tasks:
     Returns a job_id instantly. The processing happens in the background.
     """
     job_id = str(uuid.uuid4())
-    JOB_STORE[job_id] = {
-        "status": "QUEUED",
-        "result": None,
-        "error": None
-    }
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''
+            INSERT INTO jobs (job_id, status) VALUES (?, ?)
+        ''', (job_id, "QUEUED"))
+        await db.commit()
     
     background_tasks.add_task(background_job_runner, job_id, payload)
     
@@ -193,24 +235,28 @@ async def get_reconciliation_status(job_id: str):
     """
     Poll this endpoint with the job_id to get the status or the completed payload.
     """
-    if job_id not in JOB_STORE:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute('SELECT status, result, error FROM jobs WHERE job_id = ?', (job_id,)) as cursor:
+            row = await cursor.fetchone()
+            
+    if not row:
         raise HTTPException(status_code=404, detail="Job ID not found")
         
-    job_data = JOB_STORE[job_id]
+    status, result_str, error = row
     
-    if job_data["status"] == "COMPLETED":
+    if status == "COMPLETED":
         return {
             "status": "COMPLETED",
-            "result": job_data["result"]
+            "result": json.loads(result_str) if result_str else None
         }
-    elif job_data["status"] == "FAILED":
+    elif status == "FAILED":
         return {
             "status": "FAILED",
-            "error": job_data["error"]
+            "error": error
         }
     else:
         return {
-            "status": job_data["status"],
+            "status": status,
             "message": "Job is still processing. Please check back later."
         }
 
