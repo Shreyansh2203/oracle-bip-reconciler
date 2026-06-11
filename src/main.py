@@ -214,15 +214,4 @@ async def get_reconciliation_status(job_id: str):
             "message": "Job is still processing. Please check back later."
         }
 
-@app.post("/reconcile", response_model=ReconciliationRequest)
-async def reconcile_data(payload: ReconciliationRequest):
-    """
-    Synchronous endpoint for real-time Oracle matching.
-    Expects a JSON payload and returns the same payload enriched with 'fusion_' mapped fields.
-    Warning: May timeout on large payloads if HTTP client drops connection.
-    """
-    logger.info(f"Received sync reconcile request for payment_reference: {payload.payment_reference}")
-    try:
-        return await _process_reconciliation(payload)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
