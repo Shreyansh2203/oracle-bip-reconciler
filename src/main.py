@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.models import ReconciliationRequest
-from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading
+from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading, prefetch_candidates_in_bulk
 
 load_dotenv()
 
@@ -106,8 +106,21 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
                 payload.meta_data["warnings"].append(f"Receipt match failed: {clean_error}")
 
     # 2. Check Invoices concurrently
-    # Fix 9: Reduce concurrency to 50 to prevent Oracle connection exhaustion
-    sem = asyncio.Semaphore(50)
+    # Bulk fetch step: pre-load all candidates in massive chunked queries to avoid N+1 problem
+    inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
+    cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
+    
+    inv_nums_to_fetch = [str(inv.invoice_number) for inv in payload.invoices]
+    doc_nums_to_fetch = [str(inv.customer_invoice_number) for inv in payload.invoices]
+    
+    logger.info("Bulk pre-fetching Invoices/Credit Memos by TransactionNumber...")
+    cache_inv_num = await prefetch_candidates_in_bulk(http_client, x_oracle_user, x_oracle_pass, "TransactionNumber", inv_nums_to_fetch, inv_fields, cm_fields)
+    
+    logger.info("Bulk pre-fetching Invoices/Credit Memos by DocumentNumber...")
+    cache_doc_num = await prefetch_candidates_in_bulk(http_client, x_oracle_user, x_oracle_pass, "DocumentNumber", doc_nums_to_fetch, inv_fields, cm_fields)
+
+    # Fix 9: Reduce concurrency to 150 to prevent Oracle connection exhaustion
+    sem = asyncio.Semaphore(150)
 
     async def sem_check_invoice(*args, **kwargs):
         async with sem:
@@ -127,7 +140,8 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
             doc_num = ""
 
         tasks.append(sem_check_invoice(
-            http_client, x_oracle_user, x_oracle_pass, inv_num, inv_date, inv_amount, doc_num, customer_name
+            http_client, x_oracle_user, x_oracle_pass, inv_num, inv_date, inv_amount, doc_num, customer_name,
+            cache_inv_num=cache_inv_num, cache_doc_num=cache_doc_num
         ))
 
     invoice_results = await asyncio.gather(*tasks)
