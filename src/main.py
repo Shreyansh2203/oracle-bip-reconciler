@@ -4,8 +4,6 @@ import os
 import time
 import uuid
 import json
-import sqlite3
-import aiosqlite
 from contextlib import asynccontextmanager
 
 import httpx
@@ -25,37 +23,9 @@ logger = logging.getLogger("reconciliation_api")
 # Global HTTP client
 http_client = None
 
-DB_PATH = "jobs.db"
-
-async def init_db():
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS jobs (
-                job_id TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
-                result TEXT,
-                error TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        await db.commit()
-
-async def cleanup_old_jobs():
-    """Background task to delete jobs older than 24 hours to prevent disk leak."""
-    while True:
-        try:
-            async with aiosqlite.connect(DB_PATH) as db:
-                await db.execute("DELETE FROM jobs WHERE created_at < datetime('now', '-1 day')")
-                await db.commit()
-        except Exception as e:
-            logger.error(f"Failed to cleanup old jobs: {str(e).replace(chr(10), ' ').replace(chr(13), ' ')}")
-        await asyncio.sleep(3600)  # Run once an hour
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global http_client
-    await init_db()
-    asyncio.create_task(cleanup_old_jobs())
     # Increase keepalive connections to match max_connections to avoid TLS handshake overhead
     http_client = httpx.AsyncClient(timeout=15.0, limits=httpx.Limits(max_connections=200, max_keepalive_connections=200))
     logger.info("Starting up global HTTP client")
@@ -183,81 +153,17 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
 
     return payload
 
-async def set_job_status(job_id: str, status: str, result: dict = None, error: str = None):
-    """Helper to update job status in SQLite."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        result_str = json.dumps(result) if result else None
-        await db.execute('''
-            UPDATE jobs SET status = ?, result = ?, error = ? WHERE job_id = ?
-        ''', (status, result_str, error, job_id))
-        await db.commit()
-
-async def background_job_runner(job_id: str, payload: ReconciliationRequest):
+@app.post("/reconcile", response_model=ReconciliationRequest)
+async def reconcile_data(payload: ReconciliationRequest):
     """
-    Executes the reconciliation and updates SQLite when done or failed.
+    Synchronous endpoint for real-time Oracle matching.
+    Expects a JSON payload and returns the same payload enriched with 'fusion_' mapped fields.
     """
-    logger.info(f"Background Job {job_id} Started.")
+    logger.info(f"Received sync reconcile request for payment_reference: {payload.payment_reference}")
     try:
-        await set_job_status(job_id, "PROCESSING")
-        result_payload = await _process_reconciliation(payload)
-        await set_job_status(job_id, "COMPLETED", result=result_payload.model_dump())
-        logger.info(f"Background Job {job_id} Completed successfully.")
+        return await _process_reconciliation(payload)
     except Exception as e:
-        # Fix 8: Use logger.exception to log the traceback, and fix 10: Sanitize string
-        clean_error = str(e).replace("\n", " ").replace("\r", " ")
-        logger.exception(f"Background Job {job_id} Failed: {clean_error}")
-        await set_job_status(job_id, "FAILED", error=clean_error)
-
-@app.post("/reconcile")
-async def reconcile_data_async(payload: ReconciliationRequest, background_tasks: BackgroundTasks):
-    """
-    Endpoint for asynchronous Oracle matching.
-    Returns a job_id instantly. The processing happens in the background.
-    """
-    job_id = str(uuid.uuid4())
-    
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute('''
-            INSERT INTO jobs (job_id, status) VALUES (?, ?)
-        ''', (job_id, "QUEUED"))
-        await db.commit()
-    
-    background_tasks.add_task(background_job_runner, job_id, payload)
-    
-    return {
-        "job_id": job_id,
-        "status": "QUEUED",
-        "message": "Reconciliation job is queued and processing in the background."
-    }
-
-@app.get("/reconcile/{job_id}")
-async def get_reconciliation_status(job_id: str):
-    """
-    Poll this endpoint with the job_id to get the status or the completed payload.
-    """
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute('SELECT status, result, error FROM jobs WHERE job_id = ?', (job_id,)) as cursor:
-            row = await cursor.fetchone()
-            
-    if not row:
-        raise HTTPException(status_code=404, detail="Job ID not found")
-        
-    status, result_str, error = row
-    
-    if status == "COMPLETED":
-        return {
-            "status": "COMPLETED",
-            "result": json.loads(result_str) if result_str else None
-        }
-    elif status == "FAILED":
-        return {
-            "status": "FAILED",
-            "error": error
-        }
-    else:
-        return {
-            "status": status,
-            "message": "Job is still processing. Please check back later."
-        }
+        logger.exception(f"Reconciliation Failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
