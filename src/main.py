@@ -23,29 +23,9 @@ logger = logging.getLogger("reconciliation_api")
 # Global HTTP client
 http_client = None
 
-# Global Job Store for Async Polling
-JOB_STORE = {}
-
-async def cleanup_stale_jobs():
-    """Background task to delete jobs older than 1 hour to prevent memory leaks."""
-    while True:
-        try:
-            current_time = time.time()
-            stale_keys = [
-                k for k, v in JOB_STORE.items() 
-                if current_time - v.get("created_at", current_time) > 3600
-            ]
-            for k in stale_keys:
-                del JOB_STORE[k]
-                logger.info(f"Cleaned up stale job {k} from memory.")
-        except Exception as e:
-            logger.error(f"Failed to cleanup old jobs: {str(e).replace(chr(10), ' ').replace(chr(13), ' ')}")
-        await asyncio.sleep(600)  # Check every 10 minutes
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global http_client
-    asyncio.create_task(cleanup_stale_jobs())
     # Increase keepalive connections to match max_connections to avoid TLS handshake overhead
     http_client = httpx.AsyncClient(timeout=15.0, limits=httpx.Limits(max_connections=200, max_keepalive_connections=200))
     logger.info("Starting up global HTTP client")
@@ -173,70 +153,17 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
 
     return payload
 
-async def background_job_runner(job_id: str, payload: ReconciliationRequest):
+@app.post("/reconcile", response_model=ReconciliationRequest)
+async def reconcile_data(payload: ReconciliationRequest):
     """
-    Executes the reconciliation and updates the in-memory dictionary when done or failed.
+    Synchronous endpoint for real-time Oracle matching.
+    Expects a JSON payload and returns the same payload enriched with 'fusion_' mapped fields.
     """
-    logger.info(f"Background Job {job_id} Started.")
+    logger.info(f"Received sync reconcile request for payment_reference: {payload.payment_reference}")
     try:
-        JOB_STORE[job_id]["status"] = "PROCESSING"
-        result_payload = await _process_reconciliation(payload)
-        JOB_STORE[job_id]["status"] = "COMPLETED"
-        JOB_STORE[job_id]["result"] = result_payload.model_dump()
-        logger.info(f"Background Job {job_id} Completed successfully.")
+        return await _process_reconciliation(payload)
     except Exception as e:
-        clean_error = str(e).replace("\n", " ").replace("\r", " ")
-        logger.exception(f"Background Job {job_id} Failed: {clean_error}")
-        JOB_STORE[job_id]["status"] = "FAILED"
-        JOB_STORE[job_id]["error"] = clean_error
-
-@app.post("/reconcile")
-async def reconcile_data_async(payload: ReconciliationRequest, background_tasks: BackgroundTasks):
-    """
-    Endpoint for asynchronous Oracle matching.
-    Returns a job_id instantly. The processing happens in the background.
-    """
-    job_id = str(uuid.uuid4())
-    
-    JOB_STORE[job_id] = {
-        "status": "QUEUED",
-        "result": None,
-        "error": None,
-        "created_at": time.time()
-    }
-    
-    background_tasks.add_task(background_job_runner, job_id, payload)
-    
-    return {
-        "job_id": job_id,
-        "status": "QUEUED",
-        "message": "Reconciliation job is queued and processing in the background."
-    }
-
-@app.get("/reconcile/{job_id}")
-async def get_reconciliation_status(job_id: str):
-    """
-    Poll this endpoint with the job_id to get the status or the completed payload.
-    """
-    if job_id not in JOB_STORE:
-        raise HTTPException(status_code=404, detail="Job ID not found or has expired")
-        
-    job_data = JOB_STORE[job_id]
-    
-    if job_data["status"] == "COMPLETED":
-        return {
-            "status": "COMPLETED",
-            "result": job_data["result"]
-        }
-    elif job_data["status"] == "FAILED":
-        return {
-            "status": "FAILED",
-            "error": job_data["error"]
-        }
-    else:
-        return {
-            "status": job_data["status"],
-            "message": "Job is still processing. Please check back later."
-        }
+        logger.exception(f"Reconciliation Failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
