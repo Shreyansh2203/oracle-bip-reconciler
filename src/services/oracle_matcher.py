@@ -168,14 +168,24 @@ async def fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fie
     
     inv_res, cm_res = await asyncio.gather(inv_task, cm_task, return_exceptions=True)
     
+    # If both failed, the syntax might be bad, raise so caller knows it failed
+    if isinstance(inv_res, Exception) and isinstance(cm_res, Exception):
+        logger.error(f"Raw fetch failed completely for query {query}. Errors: {inv_res}, {cm_res}")
+        raise inv_res
+
     candidates = []
     if isinstance(inv_res, list):
         candidates.extend(inv_res)
+    else:
+        logger.warning(f"Raw Invoice fetch exception: {inv_res}")
+
     if isinstance(cm_res, list):
         for c in cm_res:
             c["InvoiceStatus"] = c.get("CreditMemoStatus")
             c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
         candidates.extend(cm_res)
+    else:
+        logger.warning(f"Raw CM fetch exception: {cm_res}")
         
     return candidates
 
@@ -186,8 +196,9 @@ async def fetch_both_inv_and_cm(client, user, pwd, query_key, raw_value, inv_fie
 
 async def prefetch_candidates_in_bulk(client, user, pwd, query_key, values, inv_fields, cm_fields, chunk_size=40):
     """
-    Groups values into massive OR queries and fetches all matching candidates concurrently.
+    Groups values into massive IN queries and fetches all matching candidates concurrently.
     Returns a dictionary mapping the lowercase query_key value to a list of candidates.
+    If the bulk fetch fails, returns None to trigger individual fetching fallbacks.
     """
     candidates_dict = {}
     
@@ -198,14 +209,18 @@ async def prefetch_candidates_in_bulk(client, user, pwd, query_key, values, inv_
     tasks = []
     for i in range(0, len(unique_vals), chunk_size):
         chunk = unique_vals[i:i+chunk_size]
-        query_parts = [f"{query_key}='{escape_oracle(v)}'" for v in chunk]
-        query = " OR ".join(query_parts)
+        # Use 'IN' operator which is standard for Oracle REST and much shorter
+        val_list = ",".join([f"'{escape_oracle(v)}'" for v in chunk])
+        query = f"{query_key} IN ({val_list})"
         tasks.append(fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields))
         
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
     for res_list in results:
-        if isinstance(res_list, list):
+        if isinstance(res_list, Exception):
+            logger.error(f"Bulk fetch chunk failed with: {res_list}. Falling back to individual fetching.")
+            return None # Return None to trigger safe fallback
+        elif isinstance(res_list, list):
             for c in res_list:
                 key_val = str(c.get(query_key, "")).strip().lower()
                 if key_val not in candidates_dict:
