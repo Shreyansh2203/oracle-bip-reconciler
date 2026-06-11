@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: oracle-reconciliation-api
+    env: python
+    region: ohio
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn src.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: ORACLE_USER
+        sync: false
+      - key: ORACLE_PASS
+        sync: false
