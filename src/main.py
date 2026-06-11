@@ -167,7 +167,7 @@ async def background_job_runner(job_id: str, payload: ReconciliationRequest):
         JOB_STORE[job_id]["status"] = "FAILED"
         JOB_STORE[job_id]["error"] = str(e)
 
-@app.post("/api/v1/reconciliations/jobs")
+@app.post("/reconcile")
 async def reconcile_data_async(payload: ReconciliationRequest, background_tasks: BackgroundTasks):
     """
     Endpoint for asynchronous Oracle matching.
@@ -188,7 +188,7 @@ async def reconcile_data_async(payload: ReconciliationRequest, background_tasks:
         "message": "Reconciliation job is queued and processing in the background."
     }
 
-@app.get("/api/v1/reconciliations/jobs/{job_id}")
+@app.get("/reconcile/{job_id}")
 async def get_reconciliation_status(job_id: str):
     """
     Poll this endpoint with the job_id to get the status or the completed payload.
