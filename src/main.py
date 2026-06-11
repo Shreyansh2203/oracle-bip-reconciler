@@ -123,6 +123,10 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
 
     # Fix 9: Reduce concurrency to 150 to prevent Oracle connection exhaustion
     sem = asyncio.Semaphore(150)
+    
+    # Shared state for lazy fetching Customer Name fallback
+    shared_customer_cache = {}
+    customer_lock = asyncio.Lock()
 
     async def sem_check_invoice(*args, **kwargs):
         async with sem:
@@ -143,7 +147,8 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
 
         tasks.append(sem_check_invoice(
             http_client, x_oracle_user, x_oracle_pass, inv_num, inv_date, inv_amount, doc_num, customer_name,
-            cache_inv_num=cache_inv_num, cache_doc_num=cache_doc_num
+            cache_inv_num=cache_inv_num, cache_doc_num=cache_doc_num,
+            cache_customer=shared_customer_cache, customer_lock=customer_lock
         ))
 
     invoice_results = await asyncio.gather(*tasks)
