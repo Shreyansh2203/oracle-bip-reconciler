@@ -5,12 +5,12 @@ description = "Professional enterprise API for Oracle ERP Cloud reconciliation m
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "aiosqlite>=0.22.1",
-    "fastapi>=0.136.3",
-    "httpx>=0.28.1",
-    "python-dotenv>=1.2.2",
-    "tenacity",
-    "uvicorn>=0.30.0",
+    "fastapi>=0.100.0",
+    "pydantic>=2.0.0",
+    "uvicorn>=0.23.0",
+    "httpx>=0.24.0",
+    "python-dotenv>=1.0.0",
+    "tenacity>=8.0.0"
 ]
 
 [dependency-groups]
