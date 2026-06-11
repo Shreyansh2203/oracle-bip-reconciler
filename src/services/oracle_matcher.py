@@ -205,7 +205,7 @@ async def fetch_both_inv_and_cm(client, user, pwd, query_key, raw_value, inv_fie
     query = f"{query_key}='{escape_oracle(raw_value)}'"
     return await fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields)
 
-async def prefetch_candidates_in_bulk(client, user, pwd, query_key, values, inv_fields, cm_fields, chunk_size=40):
+async def prefetch_candidates_in_bulk(client, user, pwd, query_key, values, inv_fields, cm_fields, chunk_size=80):
     """
     Groups values into massive IN queries and fetches all matching candidates concurrently.
     Returns a dictionary mapping the lowercase query_key value to a list of candidates.
@@ -240,10 +240,11 @@ async def prefetch_candidates_in_bulk(client, user, pwd, query_key, values, inv_
             
     return candidates_dict
 
-async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name, cache_inv_num=None, cache_doc_num=None):
+async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name, cache_inv_num=None, cache_doc_num=None, cache_customer=None, customer_lock=None):
     """
     Invoice Cascading matching: Two-Phase Search (Open first, then Closed).
     Uses pre-fetched dictionaries (cache_inv_num, cache_doc_num) if available to avoid HTTP calls.
+    Lazily fetches and caches customer_name fallbacks using customer_lock to prevent N+1 duplicate calls.
     """
     formatted_date = format_oracle_date(inv_date)
     candidates = []
@@ -265,7 +266,15 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
                 candidates = await fetch_both_inv_and_cm(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
             
         if not candidates and customer_name:
-            candidates = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+            if cache_customer is not None and customer_lock is not None:
+                # Lazy fetching with lock to prevent N+1 duplicate calls
+                c_name_lower = customer_name.lower()
+                async with customer_lock:
+                    if c_name_lower not in cache_customer:
+                        cache_customer[c_name_lower] = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                candidates = cache_customer[c_name_lower]
+            else:
+                candidates = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
             
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
