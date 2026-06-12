@@ -174,30 +174,29 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
     return {"matched_in_oracle": False, "error": "No single match found after two-phase cascading rules."}
 
 async def fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields):
-    """Raw version of fetch_both_inv_and_cm that accepts a full custom query string."""
-    inv_task = fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", query, fields=inv_fields)
-    cm_task = fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", query, fields=cm_fields)
-
-    inv_res, cm_res = await asyncio.gather(inv_task, cm_task, return_exceptions=True)
-
-    # If both failed, the syntax might be bad, raise so caller knows it failed
-    if isinstance(inv_res, Exception) and isinstance(cm_res, Exception):
-        logger.error(f"Raw fetch failed completely for query {query}. Errors: {inv_res}, {cm_res}")
-        raise inv_res
-
+    """
+    Sequentially fetches invoices, then credit memos (if no invoices found).
+    This cuts total HTTP requests in half since TransactionNumber is unique, massively improving Oracle throughput.
+    """
     candidates = []
-    if isinstance(inv_res, list):
-        candidates.extend(inv_res)
-    else:
-        logger.warning(f"Raw Invoice fetch exception: {inv_res}")
+    
+    try:
+        inv_res = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", query, fields=inv_fields)
+        if isinstance(inv_res, list):
+            candidates.extend(inv_res)
+    except Exception as e:
+        logger.warning(f"Raw Invoice fetch exception: {e}")
 
-    if isinstance(cm_res, list):
-        for c in cm_res:
-            c["InvoiceStatus"] = c.get("CreditMemoStatus")
-            c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
-        candidates.extend(cm_res)
-    else:
-        logger.warning(f"Raw CM fetch exception: {cm_res}")
+    if not candidates:
+        try:
+            cm_res = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", query, fields=cm_fields)
+            if isinstance(cm_res, list):
+                for c in cm_res:
+                    c["InvoiceStatus"] = c.get("CreditMemoStatus")
+                    c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
+                candidates.extend(cm_res)
+        except Exception as e:
+            logger.warning(f"Raw CM fetch exception: {e}")
 
     return candidates
 
