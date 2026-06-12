@@ -280,10 +280,12 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
             amount_matches = safe_float_match(inv.invoice_amount, fusion_amount)
             formatted_date = format_oracle_date(str(inv.invoice_date)) if inv.invoice_date else ""
             oracle_date = match.get("TRANSACTION_DATE") or match.get("INVOICEDATE") or match.get("TRANSACTIONDATE")
-
+            
             date_matches = True
-            if formatted_date and oracle_date and formatted_date != oracle_date:
-                date_matches = False
+            if formatted_date and oracle_date:
+                oracle_date_fmt = format_oracle_date(str(oracle_date))
+                if formatted_date != oracle_date_fmt and oracle_date_fmt != "":
+                    date_matches = False
 
             if amount_matches and date_matches:
                 inv.fusion_invoice_number = match.get("TRANSACTION_NUMBER") or match.get("INVOICENUMBER") or match.get("TRANSACTIONNUMBER")
