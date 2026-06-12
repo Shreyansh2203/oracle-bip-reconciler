@@ -1,0 +1,97 @@
+import pytest
+import respx
+import httpx
+from fastapi.testclient import TestClient
+from src.main import app
+from src.models import ReconciliationRequest, InvoiceItem
+
+client = TestClient(app)
+
+@pytest.fixture
+def override_env(monkeypatch):
+    monkeypatch.setenv("ORACLE_USER", "test_user")
+    monkeypatch.setenv("ORACLE_PASS", "test_pass")
+    monkeypatch.setenv("API_KEY", "test_key")
+
+@pytest.mark.asyncio
+async def test_reconcile_integration_hybrid(override_env):
+    """
+    End-to-end integration test spanning the full hybrid pipeline:
+    - BIP successfully matches 1 invoice
+    - BIP misses 1 invoice -> Falls back to REST
+    - REST successfully matches the fallback invoice
+    """
+    
+    # We must mock the httpx client used inside main.py 
+    # Since main.py uses a global http_client initialized in lifespan, we mock it using respx.
+    with respx.mock:
+        # 1. Mock Receipt fetch (which happens first)
+        respx.get(url__regex=r".*standardReceipts.*").mock(return_value=httpx.Response(200, json={
+            "items": [],
+            "hasMore": False
+        }))
+
+        # 2. Mock BIP Chunk POST request
+        respx.post(url__regex=r".*xmlpserver.*").mock(return_value=httpx.Response(200, text="""
+            <DATA_DS>
+                <G_1>
+                    <TransactionNumber>INV-100</TransactionNumber>
+                    <TransactionDate>2026-05-10</TransactionDate>
+                    <EnteredAmount>150.0</EnteredAmount>
+                </G_1>
+            </DATA_DS>
+        """))
+
+        # 3. Mock REST Fallback for the unmatched invoice
+        respx.get(url__regex=r".*receivablesInvoices.*").mock(return_value=httpx.Response(200, json={
+            "items": [
+                {
+                    "TransactionNumber": "INV-200",
+                    "TransactionDate": "2026-05-11",
+                    "EnteredAmount": 250.0,
+                    "InvoiceStatus": "Open",
+                    "InvoiceBalanceAmount": 250.0
+                }
+            ],
+            "hasMore": False
+        }))
+
+        # Create payload
+        payload = {
+            "customer_name": "Test Customer",
+            "payment_reference": "REC-001",
+            "payment_date": "2026-05-10",
+            "total_amount": 400.0,
+            "invoices": [
+                {
+                    "invoice_number": "INV-100",
+                    "invoice_date": "2026-05-10",
+                    "invoice_amount": 150.0
+                },
+                {
+                    "invoice_number": "INV-200",
+                    "invoice_date": "2026-05-11",
+                    "invoice_amount": 250.0
+                }
+            ]
+        }
+
+        # Instead of TestClient which bypasses lifespan in some async contexts,
+        # let's trigger it directly or ensure lifespan is running.
+        with TestClient(app) as live_client:
+            response = live_client.post(
+                "/v1/reconcile",
+                json=payload,
+                headers={"X-API-Key": "test_key"}
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify BIP mapped invoice
+        assert data["invoices"][0]["fusion_invoice_number"] == "INV-100"
+        assert data["invoices"][0]["fusion_invoice_amount"] == 150.0
+
+        # Verify REST mapped invoice
+        assert data["invoices"][1]["fusion_invoice_number"] == "INV-200"
+        assert data["invoices"][1]["fusion_invoice_amount"] == 250.0

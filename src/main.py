@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -76,6 +78,18 @@ app.add_middleware(
 @app.get("/")
 async def root() -> dict[str, str]:
     return {"status": "online", "message": "Oracle Reconciliation API is running"}
+
+@app.get("/health")
+async def health_check() -> dict[str, str]:
+    return {"status": "ok"}
+
+@app.get("/ready")
+async def readiness_check() -> dict[str, str]:
+    if not http_client:
+        raise HTTPException(status_code=503, detail="HTTP client not initialized")
+    if not os.getenv("ORACLE_USER") or not os.getenv("ORACLE_PASS") or not os.getenv("ORACLE_URL"):
+        raise HTTPException(status_code=503, detail="Oracle credentials not configured")
+    return {"status": "ready"}
 
 async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str) -> None:
     receipt_num = str(payload.payment_reference) if payload.payment_reference else ""
@@ -157,7 +171,7 @@ def _map_invoice_results(payload: ReconciliationRequest, unmatched_invoices: lis
                 payload.meta_data = MetaDataModel()
             payload.meta_data.warnings.append(f"Invoice {inv.invoice_number} match failed: {inv_res.get('error')}")
 
-async def _process_reconciliation(payload: ReconciliationRequest) -> ReconciliationRequest:
+async def _process_reconciliation(payload: ReconciliationRequest, request_id: str) -> ReconciliationRequest:
     """
     Core logic for executing the reconciliation matching.
     """
@@ -186,23 +200,40 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
         _map_invoice_results(payload, unmatched_invoices, invoice_results)
 
     execution_time = round(time.time() - start_time, 2)
-    # At 150, Oracle throttles to 26 TPS. At 50, it peaks at 52 TPS.
-    logger.info(f"Reconciliation completed in {execution_time}s. Total invoices: {len(payload.invoices)}")
+    bip_matched_count = len(payload.invoices) - len(unmatched_invoices)
+    rest_matched_count = len([inv for inv in unmatched_invoices if inv.fusion_invoice_number])
+
+    # Structured JSON Log
+    log_data = {
+        "request_id": request_id,
+        "invoice_count": len(payload.invoices),
+        "bip_matched": bip_matched_count,
+        "rest_matched": rest_matched_count,
+        "duration_ms": int(execution_time * 1000),
+        "oracle_calls": len(invoice_results) if unmatched_invoices else 0, # Approximation of REST calls
+    }
+    logger.info(f"Reconciliation Summary: {json.dumps(log_data)}")
 
     return payload
 
-@app.post("/reconcile", response_model=ReconciliationRequest)
-async def reconcile_data(payload: ReconciliationRequest, api_key: str = Depends(get_api_key)):
+@app.post("/v1/reconcile", response_model=ReconciliationRequest)
+async def reconcile_data_v1(payload: ReconciliationRequest, api_key: str = Depends(get_api_key)):
     """
     Core hybrid endpoint executing BI Publisher bulk match with concurrent REST API fallback.
     """
+    request_id = str(uuid.uuid4())
     try:
-        return await _process_reconciliation(payload)
+        return await _process_reconciliation(payload, request_id)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Top-level processing exception: {e}", exc_info=True)
+        logger.error(f"[{request_id}] Top-level processing exception: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected system error occurred during reconciliation.")
+
+@app.post("/reconcile", response_model=ReconciliationRequest, deprecated=True)
+async def reconcile_data_legacy(payload: ReconciliationRequest, api_key: str = Depends(get_api_key)):
+    """Legacy alias for /v1/reconcile."""
+    return await reconcile_data_v1(payload, api_key)
 
 async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str) -> dict[str, Any]:
     invoice_numbers = set()
