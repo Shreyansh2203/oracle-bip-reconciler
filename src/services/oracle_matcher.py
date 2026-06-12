@@ -271,10 +271,20 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
                 c_name_lower = customer_name.lower()
                 async with customer_lock:
                     if c_name_lower not in cache_customer:
-                        cache_customer[c_name_lower] = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                        try:
+                            cache_customer[c_name_lower] = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                        except Exception as e:
+                            # If BillToCustomerName is not queriable (400) or fails, cache the empty failure 
+                            # so 500 subsequent invoices don't sequentially retry and cause a 120s timeout!
+                            logger.error(f"Customer fallback query failed: {str(e)}")
+                            cache_customer[c_name_lower] = []
                 candidates = cache_customer[c_name_lower]
             else:
-                candidates = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                try:
+                    candidates = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                except Exception as e:
+                    logger.error(f"Customer fallback query failed: {str(e)}")
+                    candidates = []
             
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
