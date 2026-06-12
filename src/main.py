@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.models import ReconciliationRequest
-from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading, prefetch_candidates_in_bulk
+from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading
 
 load_dotenv()
 
@@ -83,25 +83,13 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
         customer_name = ""
 
     # 1. Pre-fetch network data concurrently
-    inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
-    cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
-
-    inv_nums_to_fetch = [str(inv.invoice_number) for inv in payload.invoices]
-    doc_nums_to_fetch = [str(inv.customer_invoice_number) for inv in payload.invoices]
-
-    logger.info("Concurrently fetching Receipt data and Bulk Invoice/CM candidates...")
-    receipt_result, cache_inv_num, cache_doc_num = await asyncio.gather(
-        check_receipt_cascading(
-            http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name
-        ),
-        prefetch_candidates_in_bulk(
-            http_client, x_oracle_user, x_oracle_pass, "TransactionNumber", inv_nums_to_fetch, inv_fields, cm_fields
-        ),
-        prefetch_candidates_in_bulk(
-            http_client, x_oracle_user, x_oracle_pass, "DocumentNumber", doc_nums_to_fetch, inv_fields, cm_fields
-        )
-    )
-
+    logger.info("Fetching Receipt data...")
+    receipt_result = await check_receipt_cascading(http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name)
+    
+    # 2. Extract Valid Candidates & Map Fallback Keys
+    # 3. Match Invoices concurrently
+    # Note: Oracle REST silently ignores IN/OR queries for TransactionNumber, so we MUST do concurrent individual queries.
+    
     # 2. Process Receipt Result
     if receipt_result.get("matched_in_oracle"):
         payload.fusion_receipt_number = receipt_result.get("fusion_receipt_number")
@@ -145,7 +133,6 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
 
         tasks.append(sem_check_invoice(
             http_client, x_oracle_user, x_oracle_pass, inv_num, inv_date, inv_amount, doc_num, customer_name,
-            cache_inv_num=cache_inv_num, cache_doc_num=cache_doc_num,
             cache_customer=shared_customer_cache, customer_lock=customer_lock
         ))
 

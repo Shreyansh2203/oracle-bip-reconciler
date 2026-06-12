@@ -206,42 +206,7 @@ async def fetch_both_inv_and_cm(client, user, pwd, query_key, raw_value, inv_fie
     query = f"{query_key}='{escape_oracle(raw_value)}'"
     return await fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields)
 
-async def prefetch_candidates_in_bulk(client, user, pwd, query_key, values, inv_fields, cm_fields, chunk_size=80):
-    """
-    Groups values into massive IN queries and fetches all matching candidates concurrently.
-    Returns a dictionary mapping the lowercase query_key value to a list of candidates.
-    If the bulk fetch fails, returns None to trigger individual fetching fallbacks.
-    """
-    candidates_dict = {}
-
-    unique_vals = list({str(v).strip() for v in values if v and str(v).strip() != "None"})
-    if not unique_vals:
-        return candidates_dict
-
-    tasks = []
-    for i in range(0, len(unique_vals), chunk_size):
-        chunk = unique_vals[i:i+chunk_size]
-        # Use 'IN' operator which is standard for Oracle REST and much shorter
-        val_list = ",".join([f"'{escape_oracle(v)}'" for v in chunk])
-        query = f"{query_key} IN ({val_list})"
-        tasks.append(fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields))
-
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    for res_list in results:
-        if isinstance(res_list, Exception):
-            logger.error(f"Bulk fetch chunk failed with: {res_list}. Falling back to individual fetching.")
-            return None # Return None to trigger safe fallback
-        elif isinstance(res_list, list):
-            for c in res_list:
-                key_val = str(c.get(query_key, "")).strip().lower()
-                if key_val not in candidates_dict:
-                    candidates_dict[key_val] = []
-                candidates_dict[key_val].append(c)
-
-    return candidates_dict
-
-async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name, cache_inv_num=None, cache_doc_num=None, cache_customer=None, customer_lock=None):
+async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name, cache_customer=None, customer_lock=None):
     """
     Invoice Cascading matching: Two-Phase Search (Open first, then Closed).
     Uses pre-fetched dictionaries (cache_inv_num, cache_doc_num) if available to avoid HTTP calls.
@@ -255,17 +220,11 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
 
     try:
         if inv_num:
-            if cache_inv_num is not None:
-                candidates = cache_inv_num.get(inv_num.lower(), [])
-            else:
-                candidates = await fetch_both_inv_and_cm(client, user, pwd, "TransactionNumber", inv_num, inv_fields, cm_fields)
-
+            candidates = await fetch_both_inv_and_cm(client, user, pwd, "TransactionNumber", inv_num, inv_fields, cm_fields)
+            
         if not candidates and doc_num:
-            if cache_doc_num is not None:
-                candidates = cache_doc_num.get(doc_num.lower(), [])
-            else:
-                candidates = await fetch_both_inv_and_cm(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
-
+            candidates = await fetch_both_inv_and_cm(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
+            
         if not candidates and customer_name:
             if cache_customer is not None and customer_lock is not None:
                 # Lazy fetching with lock to prevent N+1 duplicate calls
