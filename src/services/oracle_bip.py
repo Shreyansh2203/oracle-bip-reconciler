@@ -58,9 +58,9 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
         reader = csv.DictReader(io.StringIO(csv_text))
 
         for row in reader:
-            clean_row = {k.strip().replace(" ", ""): v.strip() for k, v in row.items() if k}
+            clean_row = {k.strip().upper().replace(" ", ""): v.strip() for k, v in row.items() if k}
 
-            trx_num = clean_row.get("TransactionNumber") or clean_row.get("InvoiceNumber")
+            trx_num = clean_row.get("TRANSACTION_NUMBER") or clean_row.get("INVOICE_NUMBER") or clean_row.get("TRANSACTIONNUMBER")
             if trx_num:
                 invoice_map[trx_num] = clean_row
 
