@@ -1,31 +1,29 @@
-from typing import Any
-
 from pydantic import BaseModel
 
 
 class InvoiceItem(BaseModel):
-    Line_ID: Any = None
-    invoice_number: Any = None
-    fusion_invoice_number: Any = None
-    invoice_date: Any = None
-    fusion_invoice_date: Any = None
-    invoice_amount: Any = None
-    fusion_invoice_amount: Any = None
-    description: Any = None
-    customer_invoice_number: Any = None
-    storeNo: Any = None
+    Line_ID: int | str | None = None
+    invoice_number: str | int | None = None
+    fusion_invoice_number: str | None = None
+    invoice_date: str | None = None
+    fusion_invoice_date: str | None = None
+    invoice_amount: float | None = None
+    fusion_invoice_amount: float | None = None
+    description: str | None = None
+    customer_invoice_number: str | int | None = None
+    storeNo: str | int | None = None
 
 class ReconciliationRequest(BaseModel):
-    customer_name: Any = None
-    fusion_customer_name: Any = None
-    payment_reference: Any = None
-    fusion_receipt_number: Any = None
-    payment_date: Any = None
-    fusion_receipt_date: Any = None
-    header_id: Any = None
+    customer_name: str | None = None
+    fusion_customer_name: str | None = None
+    payment_reference: str | int | None = None
+    fusion_receipt_number: str | None = None
+    payment_date: str | None = None
+    fusion_receipt_date: str | None = None
+    header_id: int | str | None = None
     invoices: list[InvoiceItem] = []
-    total_amount: Any = None
-    confidence_score: Any = None
-    confidence_label: Any = None
-    invoice_count: Any = None
+    total_amount: float | None = None
+    confidence_score: float | None = None
+    confidence_label: str | None = None
+    invoice_count: int | None = None
     meta_data: dict | None = None

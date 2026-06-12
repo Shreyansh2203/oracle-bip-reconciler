@@ -62,11 +62,11 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
     # Fix 11: Remove hardcoded dummy credentials check
     if not x_oracle_user or not x_oracle_pass:
         logger.error("Oracle credentials are not configured in the environment.")
-        raise Exception("Oracle credentials are not configured.")
+        raise HTTPException(status_code=500, detail="Oracle credentials are not configured.")
 
     if not http_client:
         logger.error("Global HTTP client is not initialized")
-        raise Exception("Internal server error: HTTP client not initialized")
+        raise HTTPException(status_code=500, detail="Internal server error: HTTP client not initialized")
 
     start_time = time.time()
 
