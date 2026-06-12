@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status, Security, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
@@ -17,8 +16,6 @@ from src.models import MetaDataModel, ReconciliationRequest
 from src.services.oracle_bip import run_bip_bulk_match
 from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading, safe_float_match
 from src.utils.date_formatter import format_oracle_date
-
-load_dotenv()
 
 # Constants
 DEFAULT_TIMEOUT = 15.0
@@ -37,8 +34,13 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 async def get_api_key(api_key: str = Security(api_key_header)):
     expected_api_key = os.getenv("API_KEY")
+    
     if not expected_api_key:
-        return api_key
+        logger.error("CRITICAL: API_KEY environment variable is missing from deployment!")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server configuration error. API Key not set in deployment.",
+        )
         
     if api_key != expected_api_key:
         raise HTTPException(
