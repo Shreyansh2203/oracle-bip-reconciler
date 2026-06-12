@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from typing import Any
 
 import httpx
 from dotenv import load_dotenv
@@ -56,10 +57,10 @@ app.add_middleware(
 )
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, str]:
     return {"status": "online", "message": "Oracle Reconciliation API is running"}
 
-async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str):
+async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str) -> None:
     receipt_num = str(payload.payment_reference) if payload.payment_reference else ""
     receipt_amount = payload.total_amount
     receipt_date = str(payload.payment_date) if payload.payment_date else ""
@@ -81,7 +82,7 @@ async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str
             payload.meta_data = MetaDataModel()
         payload.meta_data.warnings.append(f"Receipt match failed: {clean_error}")
 
-async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched_invoices: list, x_oracle_user: str, x_oracle_pass: str, customer_name: str):
+async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched_invoices: list[Any], x_oracle_user: str, x_oracle_pass: str, customer_name: str) -> list[Any]:
     sem = app.state.oracle_sem
     shared_customer_cache = {}
     customer_lock = asyncio.Lock()
@@ -104,7 +105,7 @@ async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched
 
     return await asyncio.gather(*tasks, return_exceptions=True)
 
-def _map_invoice_results(payload: ReconciliationRequest, unmatched_invoices: list, invoice_results: list):
+def _map_invoice_results(payload: ReconciliationRequest, unmatched_invoices: list[Any], invoice_results: list[Any]) -> None:
     for idx, inv in enumerate(unmatched_invoices):
         inv_res = invoice_results[idx]
         if isinstance(inv_res, BaseException):
@@ -165,7 +166,7 @@ async def reconcile_data(payload: ReconciliationRequest):
         logger.error(f"Top-level processing exception: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)) from e
 
-async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str) -> dict:
+async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str) -> dict[str, Any]:
     invoice_numbers = set()
     for inv in payload.invoices:
         num = str(inv.invoice_number) if inv.invoice_number else ""
@@ -194,7 +195,7 @@ async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: 
             
     return final_map
 
-def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict) -> list:
+def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any]) -> list[Any]:
     """Maps BIP exact matches and returns a list of unmatched invoices for REST fallback."""
     unmatched_invoices = []
     for inv in payload.invoices:

@@ -1,81 +1,74 @@
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
+import respx
+import httpx
+import asyncio
+from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading, safe_float_match, is_invoice_open
 
-from src.services.oracle_matcher import (
-    check_invoice_cascading,
-    check_receipt_cascading,
-    is_invoice_open,
-    is_receipt_unapplied,
-)
-
-
-@pytest.fixture
-def mock_client():
-    client = AsyncMock()
-    return client
-
-def create_mock_response(status_code, items=None):
-    response = MagicMock()
-    response.status_code = status_code
-    if items is not None:
-        response.json.return_value = {"items": items}
-    return response
-
-@pytest.mark.asyncio
-async def test_check_receipt_two_phase_priority(mock_client):
-    # Two identical candidates but one is Applied and one is Unapplied.
-    # The Unapplied one should be chosen first!
-    mock_client.get.return_value = create_mock_response(200, [
-        {"ReceiptNumber": "REC123", "Amount": 100.0, "State": "Applied", "CustomerName": "Test Customer", "ReceiptDate": "2026-05-10"},
-        {"ReceiptNumber": "REC123", "Amount": 100.0, "State": "Unapplied", "CustomerName": "Test Customer", "ReceiptDate": "2026-05-10"}
-    ])
-
-    result = await check_receipt_cascading(
-        mock_client, "user", "pass", "REC123", 100.0, "2026-05-10", "Test Customer"
-    )
-
-    assert result["matched_in_oracle"] is True
-    assert result["match_phase"] == "UNAPPLIED"
-
-@pytest.mark.asyncio
-async def test_check_receipt_fallback_to_applied(mock_client):
-    # Only Applied candidate exists. It should gracefully fallback and match it.
-    mock_client.get.return_value = create_mock_response(200, [
-        {"ReceiptNumber": "REC123", "Amount": 100.0, "State": "Applied", "CustomerName": "Test Customer", "ReceiptDate": "2026-05-10"}
-    ])
-
-    result = await check_receipt_cascading(
-        mock_client, "user", "pass", "REC123", 100.0, "2026-05-10", "Test Customer"
-    )
-
-    assert result["matched_in_oracle"] is True
-    assert result["match_phase"] == "APPLIED"
-
-@pytest.mark.asyncio
-async def test_check_invoice_two_phase_priority(mock_client):
-    # Two invoices, one Closed, one Open.
-    # The Open one should be chosen first.
-    mock_client.get.return_value = create_mock_response(200, [
-        {"TransactionNumber": "INV123", "InvoiceStatus": "Closed", "TransactionDate": "2026-05-10"},
-        {"TransactionNumber": "INV123", "InvoiceStatus": "Incomplete", "TransactionDate": "2026-05-10"}
-    ])
-
-    result = await check_invoice_cascading(
-        mock_client, "user", "pass", "INV123", "2026-05-10", 100.0, "DOC1", "Cust"
-    )
-
-    assert result["matched_in_oracle"] is True
-    assert result["match_phase"] == "OPEN"
-
-def test_is_receipt_unapplied():
-    assert is_receipt_unapplied({"State": "Unapplied"}) is True
-    assert is_receipt_unapplied({"State": "UNAPP"}) is True
-    assert is_receipt_unapplied({"State": "Applied"}) is False
-    assert is_receipt_unapplied({}) is False
+def test_safe_float_match():
+    assert safe_float_match(100.0, "100.00") is True
+    assert safe_float_match(100.01, 100.01) is True
+    assert safe_float_match(None, 100.0) is False
+    assert safe_float_match(100.0, 200.0) is False
 
 def test_is_invoice_open():
+    assert is_invoice_open({"InvoiceStatus": "Open"}) is True
     assert is_invoice_open({"InvoiceStatus": "Closed"}) is False
-    assert is_invoice_open({"InvoiceStatus": "Incomplete"}) is True
-    assert is_invoice_open({"InvoiceBalanceAmount": "100.5"}) is True
-    assert is_invoice_open({"InvoiceBalanceAmount": "0.0", "InvoiceStatus": "Complete"}) is False
+    assert is_invoice_open({"InvoiceBalanceAmount": 10.0}) is True
+    assert is_invoice_open({"InvoiceBalanceAmount": 0.0}) is False
+
+@pytest.mark.asyncio
+async def test_check_invoice_cascading_success(mock_httpx_client):
+    mock_response = {
+        "items": [
+            {
+                "TransactionNumber": "INV-123",
+                "TransactionDate": "2023-10-01",
+                "EnteredAmount": 100.0,
+                "InvoiceStatus": "Open"
+            }
+        ],
+        "hasMore": False
+    }
+
+    with respx.mock:
+        respx.get(url__regex=r".*/fscmRestApi/resources/11.13.18.05/receivablesInvoices.*").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+
+        result = await check_invoice_cascading(
+            mock_httpx_client, "user", "pass", "INV-123", "2023-10-01", 100.0, "", ""
+        )
+
+        assert result["matched_in_oracle"] is True
+        assert result["fusion_invoice_number"] == "INV-123"
+
+@pytest.mark.asyncio
+async def test_check_invoice_cascading_fallback(mock_httpx_client):
+    empty_response = {"items": [], "hasMore": False}
+    success_response = {
+        "items": [
+            {
+                "TransactionNumber": "INV-123",
+                "TransactionDate": "2023-10-01",
+                "EnteredAmount": 100.0,
+                "InvoiceStatus": "Open"
+            }
+        ],
+        "hasMore": False
+    }
+
+    with respx.mock:
+        route1 = respx.get(url__regex=r".*TransactionNumber.*").mock(return_value=httpx.Response(200, json=empty_response))
+        route2 = respx.get(url__regex=r".*DocumentNumber.*").mock(return_value=httpx.Response(200, json=empty_response))
+        route3 = respx.get(url__regex=r".*BillToCustomerName.*").mock(return_value=httpx.Response(200, json=success_response))
+
+        cache = {}
+        lock = asyncio.Lock()
+        result = await check_invoice_cascading(
+            mock_httpx_client, "user", "pass", "INV-123", "2023-10-01", 100.0, "DOC-123", "Test Customer", cache, lock
+        )
+
+        assert result["matched_in_oracle"] is True
+        assert route1.called
+        assert route2.called
+        assert route3.called

@@ -1,7 +1,9 @@
+import asyncio
 import logging
 import os
 import urllib.parse
 from dataclasses import dataclass
+from typing import Any, Callable
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -26,7 +28,7 @@ class OracleClientContext:
 class OracleTransientError(Exception):
     pass
 
-def escape_oracle(val):
+def escape_oracle(val: Any) -> str:
     """Escape single quotes for Oracle REST API query injection prevention."""
     if val is None:
         return ""
@@ -38,7 +40,7 @@ def escape_oracle(val):
     retry=retry_if_exception_type((OracleTransientError, httpx.RequestError)),
     reraise=True
 )
-async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, query: str, limit=None, fields=""):
+async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, query: str, limit: int | None = None, fields: str = "") -> list[dict[str, Any]]:
     """
     Fetch candidates from Oracle using indexable fields, with pagination to fix truncation.
     """
@@ -77,7 +79,7 @@ async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, q
         logger.error(f"Permanent Oracle fetch exception: {e}")
         raise e
 
-def safe_float_match(expected_amount, actual_amount) -> bool:
+def safe_float_match(expected_amount: float | str | None, actual_amount: float | str | None) -> bool:
     try:
         if expected_amount is None or actual_amount is None:
             return False
@@ -85,16 +87,16 @@ def safe_float_match(expected_amount, actual_amount) -> bool:
     except (ValueError, TypeError):
         return False
 
-def safe_str_match(val1, val2):
+def safe_str_match(val1: Any, val2: Any) -> bool:
     if not val1 or not val2:
         return False
     return str(val1).strip().lower() == str(val2).strip().lower()
 
-def is_receipt_unapplied(candidate):
+def is_receipt_unapplied(candidate: dict[str, Any]) -> bool:
     state = str(candidate.get("State", "")).strip().lower()
     return state in ["unapplied", "unapp", "unid"]
 
-def is_invoice_open(candidate):
+def is_invoice_open(candidate: dict[str, Any]) -> bool:
     status = str(candidate.get("InvoiceStatus", "")).strip().lower()
     if status == "closed":
         return False
@@ -110,7 +112,7 @@ def is_invoice_open(candidate):
     # Default to Open if not explicitly closed
     return True
 
-def apply_rules_to_candidates(candidates, rules):
+def apply_rules_to_candidates(candidates: list[dict[str, Any]], rules: list[tuple[str, Callable[[dict[str, Any]], bool]]]) -> tuple[dict[str, Any] | None, str | None]:
     for rule_name, condition in rules:
         matches = [candidate for candidate in candidates if condition(candidate)]
         if len(matches) == 1:
@@ -119,7 +121,7 @@ def apply_rules_to_candidates(candidates, rules):
             logger.debug(f"Rule {rule_name}: {len(matches)} candidates, continuing to next rule.")
     return None, None
 
-async def check_receipt_cascading(client, user, password, receipt_num, amount, receipt_date, customer_name):
+async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password: str, receipt_num: str, amount: float | None, receipt_date: str, customer_name: str) -> dict[str, Any]:
     """
     Receipt Cascading matching: Two-Phase Search (Unapplied first, then Applied).
     """
@@ -187,7 +189,7 @@ async def check_receipt_cascading(client, user, password, receipt_num, amount, r
 
     return {"matched_in_oracle": False, "error": "No single match found after two-phase cascading rules."}
 
-async def fetch_by_query(context: OracleClientContext, query, inv_fields, cm_fields):
+async def fetch_by_query(context: OracleClientContext, query: str, inv_fields: str, cm_fields: str) -> list[dict[str, Any]]:
     """
     Sequentially fetches invoices, then credit memos (if no invoices found).
     This cuts total HTTP requests in half since TransactionNumber is unique, massively improving Oracle throughput.
@@ -214,12 +216,12 @@ async def fetch_by_query(context: OracleClientContext, query, inv_fields, cm_fie
 
     return candidates
 
-async def fetch_by_field(context: OracleClientContext, query_key, raw_value, inv_fields, cm_fields):
+async def fetch_by_field(context: OracleClientContext, query_key: str, raw_value: str, inv_fields: str, cm_fields: str) -> list[dict[str, Any]]:
     """Concurrent fetch for Invoices and Credit Memos to prevent N+1 fallback."""
     query = f"{query_key}='{escape_oracle(raw_value)}'"
     return await fetch_by_query(context, query, inv_fields, cm_fields)
 
-async def check_invoice_cascading(client, user, password, invoice_number, inv_date, amount, document_number, customer_name, cache_customer=None, customer_lock=None):
+async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password: str, invoice_number: str, inv_date: str, amount: float | None, document_number: str, customer_name: str, cache_customer: dict[str, list[dict[str, Any]]] | None = None, customer_lock: asyncio.Lock | None = None) -> dict[str, Any]:
     """
     Invoice Cascading matching: Two-Phase Search (Open first, then Closed).
     Uses pre-fetched dictionaries (cache_inv_num, cache_doc_num) if available to avoid HTTP calls.
