@@ -151,17 +151,15 @@ async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password
     # 2. Local Filtering Rules
     if receipt_num:
         rules = [
-            ("A1", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
-            ("A2", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
-            ("A3", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount) and candidate.get("ReceiptDate") == formatted_date and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
-            ("A4", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount)),
-            ("A5", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and bool(formatted_date) and candidate.get("ReceiptDate") == formatted_date),
+            ("A1", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount) and candidate.get("ReceiptDate") == formatted_date and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
+            ("A2", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
+            ("A3", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
+            ("A4", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount) and bool(formatted_date) and candidate.get("ReceiptDate") == formatted_date),
         ]
     else:
         rules = [
             ("B1", lambda candidate: safe_float_match(candidate.get("Amount"), amount) and bool(formatted_date) and candidate.get("ReceiptDate") == formatted_date and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
-            ("B2", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount)),
-            ("B3", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and bool(formatted_date) and candidate.get("ReceiptDate") == formatted_date),
+            ("B2", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount) and bool(formatted_date) and candidate.get("ReceiptDate") == formatted_date),
         ]
 
     # Phase 1: Search Unapplied Receipts
@@ -278,10 +276,10 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
 
     # 2. Local Filtering Rules
     rules = [
-        ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number)),
-        ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and candidate.get("TransactionDate") == formatted_date),
-        ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and candidate.get("TransactionDate") == formatted_date),
-        ("3",  lambda candidate: bool(invoice_number) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(invoice_number).lower()) and candidate.get("TransactionDate") == formatted_date),
+        ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+        ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and candidate.get("TransactionDate") == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
+        ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and candidate.get("TransactionDate") == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
+        ("3",  lambda candidate: bool(invoice_number) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(invoice_number).lower()) and candidate.get("TransactionDate") == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
         ("4",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and candidate.get("TransactionDate") == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
     ]
 
