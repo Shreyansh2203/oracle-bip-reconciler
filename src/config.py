@@ -1,3 +1,4 @@
 import os
 
-ORACLE_URL = os.getenv("ORACLE_URL")
+def get_oracle_url():
+    return os.getenv("ORACLE_URL")

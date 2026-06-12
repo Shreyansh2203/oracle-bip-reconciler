@@ -16,7 +16,7 @@ from src.models import MetaDataModel, ReconciliationRequest
 from src.services.oracle_bip import run_bip_bulk_match
 from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading, safe_float_match
 from src.utils.date_formatter import format_oracle_date
-from src.config import ORACLE_URL
+from src.config import get_oracle_url
 
 # Constants
 DEFAULT_TIMEOUT = 15.0
@@ -89,7 +89,7 @@ async def health_check() -> dict[str, str]:
 async def readiness_check() -> dict[str, str]:
     if not http_client:
         raise HTTPException(status_code=503, detail="HTTP client not initialized")
-    if not os.getenv("ORACLE_USER") or not os.getenv("ORACLE_PASS") or not ORACLE_URL:
+    if not os.getenv("ORACLE_USER") or not os.getenv("ORACLE_PASS") or not get_oracle_url():
         raise HTTPException(status_code=503, detail="Oracle credentials or URL not configured")
     return {"status": "ready"}
 

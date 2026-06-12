@@ -39,9 +39,13 @@ async def test_check_invoice_cascading_success(mock_httpx_client):
     }
 
     with respx.mock:
-        respx.get(url__regex=r".*/fscmRestApi/resources/11.13.18.05/receivablesInvoices.*").mock(
-            return_value=httpx.Response(200, json=mock_response)
-        )
+        def side_effect(request):
+            url_str = str(request.url)
+            if "receivablesCreditMemos" in url_str:
+                return httpx.Response(200, json={"items": [], "hasMore": False})
+            return httpx.Response(200, json=mock_response)
+            
+        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
 
         result = await check_invoice_cascading(
             mock_httpx_client, "user", "pass", "INV-123", "2023-10-01", 100.0, "", ""
@@ -66,9 +70,21 @@ async def test_check_invoice_cascading_fallback(mock_httpx_client):
     }
 
     with respx.mock:
-        route1 = respx.get(url__regex=r".*TransactionNumber.*").mock(return_value=httpx.Response(200, json=empty_response))
-        route2 = respx.get(url__regex=r".*DocumentNumber.*").mock(return_value=httpx.Response(200, json=empty_response))
-        route3 = respx.get(url__regex=r".*BillToCustomerName.*").mock(return_value=httpx.Response(200, json=success_response))
+        calls = []
+        def side_effect(request):
+            url_str = str(request.url)
+            calls.append(url_str)
+            if "receivablesCreditMemos" in url_str:
+                return httpx.Response(200, json=empty_response)
+            if "q=TransactionNumber" in url_str:
+                return httpx.Response(200, json=empty_response)
+            if "q=DocumentNumber" in url_str:
+                return httpx.Response(200, json=empty_response)
+            if "q=BillToCustomerName" in url_str:
+                return httpx.Response(200, json=success_response)
+            return httpx.Response(200, json=empty_response)
+
+        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
 
         cache = {}
         lock = asyncio.Lock()
@@ -77,18 +93,18 @@ async def test_check_invoice_cascading_fallback(mock_httpx_client):
         )
 
         assert result["matched_in_oracle"] is True
-        assert route1.called
-        assert route2.called
-        assert route3.called
+        assert any("q=TransactionNumber" in c for c in calls)
+        assert any("q=DocumentNumber" in c for c in calls)
+        assert any("q=BillToCustomerName" in c for c in calls)
 
 @pytest.mark.asyncio
 async def test_fetch_by_query_error_propagation(mock_httpx_client):
     context = OracleClientContext(mock_httpx_client, "user", "pass")
     
     with respx.mock:
-        # Mock both endpoints to return 500 error
-        respx.get(url__regex=r".*receivablesInvoices.*").mock(return_value=httpx.Response(500, text="Internal Server Error"))
-        respx.get(url__regex=r".*receivablesCreditMemos.*").mock(return_value=httpx.Response(500, text="Internal Server Error"))
+        def side_effect(request):
+            return httpx.Response(500, text="Internal Server Error")
+        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
         
         with pytest.raises(Exception) as excinfo:
             await fetch_by_query(context, "TransactionNumber='123'", "", "")

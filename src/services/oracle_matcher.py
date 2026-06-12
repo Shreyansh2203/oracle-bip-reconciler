@@ -9,7 +9,7 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.utils.date_formatter import format_oracle_date
-from src.config import ORACLE_URL
+from src.config import get_oracle_url
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, q
         has_more = True
 
         while has_more:
-            url = f"{ORACLE_URL}/fscmRestApi/resources/11.13.18.05/{endpoint}?q={q}&limit={limit}&offset={offset}"
+            url = f"{get_oracle_url()}/fscmRestApi/resources/11.13.18.05/{endpoint}?q={q}&limit={limit}&offset={offset}"
             if fields:
                 url += f"&fields={fields}"
 
