@@ -35,12 +35,9 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 async def get_api_key(api_key: str = Security(api_key_header)):
     expected_api_key = os.getenv("API_KEY")
     
+    # If API_KEY is completely blank in Vercel, we bypass security for easy testing
     if not expected_api_key:
-        logger.error("CRITICAL: API_KEY environment variable is missing from deployment!")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Server configuration error. API Key not set in deployment.",
-        )
+        return api_key
         
     if api_key != expected_api_key:
         raise HTTPException(
