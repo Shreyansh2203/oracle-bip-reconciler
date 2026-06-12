@@ -12,9 +12,12 @@ def format_oracle_date(date_str: str) -> str:
     date_str = str(date_str).strip()
     date_str = date_str.replace('/', '-')
 
+    import re
+    date_str = re.sub(r'\+00:00$', 'Z', date_str)
+
     formats = [
         "%Y-%m-%d", "%d-%m-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
-        "%d-%m-%y", "%m-%d-%Y"
+        "%m-%d-%Y"
     ]
 
     for fmt in formats:

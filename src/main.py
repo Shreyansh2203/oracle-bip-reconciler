@@ -26,6 +26,8 @@ async def lifespan(app: FastAPI):
     global http_client
     # Increase keepalive connections to match max_connections to avoid TLS handshake overhead
     http_client = httpx.AsyncClient(timeout=15.0, limits=httpx.Limits(max_connections=200, max_keepalive_connections=200))
+    sem_limit = int(os.getenv("MAX_CONCURRENCY", "50"))
+    app.state.oracle_sem = asyncio.Semaphore(sem_limit)
     logger.info("Starting up global HTTP client")
     yield
     logger.info("Shutting down global HTTP client")
@@ -106,8 +108,7 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
 
     # Fix 9: Reduce concurrency to 50 based on Oracle load benchmarking.
     # At 150, Oracle throttles to 26 TPS. At 50, it peaks at 52 TPS.
-    sem_limit = int(os.getenv("MAX_CONCURRENCY", "50"))
-    sem = asyncio.Semaphore(sem_limit)
+    sem = app.state.oracle_sem
 
     # Shared state for lazy fetching Customer Name fallback
     shared_customer_cache = {}
@@ -135,12 +136,17 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
             cache_customer=shared_customer_cache, customer_lock=customer_lock
         ))
 
-    invoice_results = await asyncio.gather(*tasks)
+    invoice_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # 3. Map invoice results back to the payload
     for idx, inv in enumerate(payload.invoices):
         inv_res = invoice_results[idx]
-        if inv_res and inv_res.get("matched_in_oracle"):
+        if isinstance(inv_res, BaseException):
+            if hasattr(payload, "meta_data"):
+                if payload.meta_data is None:
+                    payload.meta_data = MetaDataModel()
+                payload.meta_data.warnings.append(f"Invoice {inv.invoice_number} match failed due to unhandled exception: {str(inv_res)}")
+        elif inv_res and inv_res.get("matched_in_oracle"):
             inv.fusion_invoice_number = inv_res.get("fusion_invoice_number")
             inv.fusion_invoice_date = inv_res.get("fusion_invoice_date")
             inv.fusion_invoice_amount = inv_res.get("fusion_invoice_amount")
