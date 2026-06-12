@@ -24,5 +24,5 @@ def format_oracle_date(date_str: str) -> str:
         except ValueError:
             continue
 
-    # If all parsing fails, return the original string to let Oracle handle it (or fail).
-    return date_str
+    # If all parsing fails, return None to let Oracle/fallback logic safely bypass it.
+    return None

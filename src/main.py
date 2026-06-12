@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.models import ReconciliationRequest
+from src.models import MetaDataModel, ReconciliationRequest
 from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading
 
 load_dotenv()
@@ -42,7 +42,7 @@ app = FastAPI(
 # Setup CORS - Fix 7
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -101,15 +101,13 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
         logger.warning(f"Receipt match error or not found: {clean_error}")
         if hasattr(payload, "meta_data"):
             if payload.meta_data is None:
-                payload.meta_data = {}
-            if isinstance(payload.meta_data, dict):
-                if "warnings" not in payload.meta_data:
-                    payload.meta_data["warnings"] = []
-                payload.meta_data["warnings"].append(f"Receipt match failed: {clean_error}")
+                payload.meta_data = MetaDataModel()
+            payload.meta_data.warnings.append(f"Receipt match failed: {clean_error}")
 
     # Fix 9: Reduce concurrency to 50 based on Oracle load benchmarking.
     # At 150, Oracle throttles to 26 TPS. At 50, it peaks at 52 TPS.
-    sem = asyncio.Semaphore(50)
+    sem_limit = int(os.getenv("MAX_CONCURRENCY", "50"))
+    sem = asyncio.Semaphore(sem_limit)
 
     # Shared state for lazy fetching Customer Name fallback
     shared_customer_cache = {}
@@ -149,11 +147,8 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
         elif inv_res and inv_res.get("error"):
             if hasattr(payload, "meta_data"):
                 if payload.meta_data is None:
-                    payload.meta_data = {}
-                if isinstance(payload.meta_data, dict):
-                    if "warnings" not in payload.meta_data:
-                        payload.meta_data["warnings"] = []
-                    payload.meta_data["warnings"].append(f"Invoice {inv.invoice_number} match failed: {inv_res.get('error')}")
+                    payload.meta_data = MetaDataModel()
+                payload.meta_data.warnings.append(f"Invoice {inv.invoice_number} match failed: {inv_res.get('error')}")
 
     execution_time = round(time.time() - start_time, 2)
     logger.info(f"Reconciliation completed in {execution_time}s. Invoices checked: {len(invoice_results)}")
