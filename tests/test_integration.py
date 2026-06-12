@@ -1,11 +1,11 @@
+import base64
+
+import httpx
 import pytest
 import respx
-import httpx
-import base64
-import httpx
 from fastapi.testclient import TestClient
+
 from src.main import app
-from src.models import ReconciliationRequest, InvoiceItem
 
 client = TestClient(app)
 
@@ -23,8 +23,8 @@ async def test_reconcile_integration_hybrid(override_env):
     - BIP misses 1 invoice -> Falls back to REST
     - REST successfully matches the fallback invoice
     """
-    
-    # We must mock the httpx client used inside main.py 
+
+    # We must mock the httpx client used inside main.py
     # Since main.py uses a global http_client initialized in lifespan, we mock it using respx.
     with respx.mock:
         csv_text = "TRANSACTION_NUMBER,TRANSACTION_DATE,TOTAL_AMOUNTS\nINV-100,2026-05-10,150.0\n"
@@ -88,7 +88,7 @@ async def test_reconcile_integration_hybrid(override_env):
 
         assert response.status_code == 200
         data = response.json()
-        
+
         # Verify BIP mapped invoice
         assert data["invoices"][0]["fusion_invoice_number"] == "INV-100"
         assert data["invoices"][0]["fusion_invoice_amount"] == 150.0

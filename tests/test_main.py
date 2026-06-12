@@ -1,7 +1,10 @@
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
+
 from src.main import app
+
 
 @pytest.fixture
 def mock_oracle_env(monkeypatch):
@@ -29,8 +32,8 @@ def test_reconcile_endpoint_happy_path(mock_oracle_env):
         ]
     }
 
-    with patch("src.main._fetch_receipt_data") as mock_receipt, \
-         patch("src.main._build_bip_invoice_map", return_value={"INV-001": {"TRANSACTIONNUMBER": "INV-001", "TRANSACTIONDATE": "2023-10-01", "ENTEREDAMOUNT": "50.0"}}) as mock_bip, \
+    with patch("src.main._fetch_receipt_data"), \
+         patch("src.main._build_bip_invoice_map", return_value={"INV-001": {"TRANSACTIONNUMBER": "INV-001", "TRANSACTIONDATE": "2023-10-01", "ENTEREDAMOUNT": "50.0"}}), \
          patch("src.main._fetch_invoices_concurrently", return_value=[{
              "fusion_invoice_number": "INV-001",
              "fusion_invoice_amount": 50.0,
@@ -38,11 +41,11 @@ def test_reconcile_endpoint_happy_path(mock_oracle_env):
              "amount_matches": True,
              "is_closed_in_oracle": False,
              "status": "Ready for CashApp"
-         }]) as mock_fetch:
-        
+         }]):
+
         with TestClient(app) as test_client:
             response = test_client.post("/v1/reconcile", json=payload, headers={"X-API-Key": "test_key"})
-            
+
             assert response.status_code == 200
             data = response.json()
             assert data["invoices"][0]["fusion_invoice_number"] == "INV-001"
