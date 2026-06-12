@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import urllib.parse
 
@@ -179,7 +178,7 @@ async def fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fie
     This cuts total HTTP requests in half since TransactionNumber is unique, massively improving Oracle throughput.
     """
     candidates = []
-    
+
     try:
         inv_res = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", query, fields=inv_fields)
         if isinstance(inv_res, list):
@@ -220,10 +219,10 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
     try:
         if inv_num:
             candidates = await fetch_both_inv_and_cm(client, user, pwd, "TransactionNumber", inv_num, inv_fields, cm_fields)
-            
+
         if not candidates and doc_num:
             candidates = await fetch_both_inv_and_cm(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
-            
+
         if not candidates and customer_name:
             if cache_customer is not None and customer_lock is not None:
                 # Lazy fetching with lock to prevent N+1 duplicate calls

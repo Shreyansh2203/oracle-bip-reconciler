@@ -85,11 +85,11 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
     # 1. Pre-fetch network data concurrently
     logger.info("Fetching Receipt data...")
     receipt_result = await check_receipt_cascading(http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name)
-    
+
     # 2. Extract Valid Candidates & Map Fallback Keys
     # 3. Match Invoices concurrently
     # Note: Oracle REST silently ignores IN/OR queries for TransactionNumber, so we MUST do concurrent individual queries.
-    
+
     # 2. Process Receipt Result
     if receipt_result.get("matched_in_oracle"):
         payload.fusion_receipt_number = receipt_result.get("fusion_receipt_number")
