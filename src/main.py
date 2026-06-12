@@ -229,11 +229,6 @@ async def reconcile_data_v1(payload: ReconciliationRequest, api_key: str = Depen
         logger.error(f"[{request_id}] Top-level processing exception: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected system error occurred during reconciliation.")
 
-@app.post("/reconcile", response_model=ReconciliationRequest, deprecated=True)
-async def reconcile_data_legacy(payload: ReconciliationRequest, api_key: str = Depends(get_api_key)):
-    """Legacy alias for /v1/reconcile."""
-    return await reconcile_data_v1(payload, api_key)
-
 async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str) -> dict[str, Any]:
     invoice_numbers = set()
     for inv in payload.invoices:
