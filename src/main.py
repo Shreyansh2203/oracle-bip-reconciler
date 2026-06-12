@@ -267,20 +267,20 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
             match = invoice_map[num]
             fusion_amount = 0.0
             try:
-                fusion_amount = float(match.get("EnteredAmount") or match.get("Amount") or 0.0)
+                fusion_amount = float(match.get("TOTAL_AMOUNTS") or match.get("ENTEREDAMOUNT") or match.get("AMOUNT") or 0.0)
             except ValueError:
                 pass
                 
             amount_matches = safe_float_match(inv.invoice_amount, fusion_amount)
             formatted_date = format_oracle_date(str(inv.invoice_date)) if inv.invoice_date else ""
-            oracle_date = match.get("TransactionDate") or match.get("InvoiceDate")
+            oracle_date = match.get("TRANSACTION_DATE") or match.get("INVOICEDATE") or match.get("TRANSACTIONDATE")
             
             date_matches = True
             if formatted_date and oracle_date and formatted_date != oracle_date:
                 date_matches = False
                 
             if amount_matches and date_matches:
-                inv.fusion_invoice_number = match.get("TransactionNumber") or match.get("InvoiceNumber")
+                inv.fusion_invoice_number = match.get("TRANSACTION_NUMBER") or match.get("INVOICENUMBER") or match.get("TRANSACTIONNUMBER")
                 inv.fusion_invoice_date = oracle_date
                 inv.fusion_invoice_amount = fusion_amount
             else:
