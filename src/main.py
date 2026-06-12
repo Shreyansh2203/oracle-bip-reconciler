@@ -164,14 +164,82 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
 @app.post("/reconcile", response_model=ReconciliationRequest)
 async def reconcile_data(payload: ReconciliationRequest):
     """
-    Synchronous endpoint for real-time Oracle matching.
-    Expects a JSON payload and returns the same payload enriched with 'fusion_' mapped fields.
+    Standard reconciliation logic executing sequential REST API fetcher.
     """
-    logger.info(f"Received sync reconcile request for payment_reference: {payload.payment_reference}")
     try:
         return await _process_reconciliation(payload)
     except Exception as e:
-        logger.exception(f"Reconciliation Failed: {str(e)}")
+        logger.error(f"Top-level processing exception: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
+@app.post("/reconcile/bip", response_model=ReconciliationRequest)
+async def reconcile_data_bip(payload: ReconciliationRequest):
+    """
+    Experimental reconciliation logic using BI Publisher for bulk SQL fetching.
+    """
+    try:
+        x_oracle_user = os.getenv("ORACLE_USER")
+        x_oracle_pass = os.getenv("ORACLE_PASS")
 
+        from src.services.oracle_bip import run_bip_bulk_match
+
+        # 1. Collect all unique invoice numbers
+        invoice_numbers = set()
+        for inv in payload.invoices:
+            num = str(inv.invoice_number).strip() if inv.invoice_number else ""
+            if num and num != "None":
+                invoice_numbers.add(num)
+
+        # 2. Bulk Fetch from BI Publisher
+        invoice_map = {}
+        if invoice_numbers:
+            invoice_map = await run_bip_bulk_match(
+                http_client, x_oracle_user, x_oracle_pass, list(invoice_numbers)
+            )
+
+        # 3. Local In-Memory Matching
+        for inv in payload.invoices:
+            num = str(inv.invoice_number).strip() if inv.invoice_number else ""
+            if num and num != "None":
+                if num in invoice_map:
+                    match = invoice_map[num]
+                    # Map the fields from the CSV output. Adjust these keys based on the actual CSV headers!
+                    inv.fusion_invoice_number = match.get("TransactionNumber") or match.get("InvoiceNumber")
+                    inv.fusion_invoice_date = match.get("TransactionDate") or match.get("InvoiceDate")
+                    try:
+                        inv.fusion_invoice_amount = float(match.get("EnteredAmount") or match.get("Amount") or 0.0)
+                    except ValueError:
+                        inv.fusion_invoice_amount = 0.0
+                else:
+                    from src.models import MetaDataModel
+                    if hasattr(payload, "meta_data"):
+                        if payload.meta_data is None:
+                            payload.meta_data = MetaDataModel()
+                        payload.meta_data.warnings.append(f"Invoice {num} match failed: Not found in BIP extract.")
+
+        # 4. We also need to run check_receipt_cascading just like the normal flow,
+        # but for now, we'll run it individually since receipt is 1 per payload.
+        receipt_num = str(payload.payment_reference).strip() if payload.payment_reference is not None else ""
+        if receipt_num == "None":
+            receipt_num = ""
+        receipt_amount = payload.total_amount
+        receipt_date = str(payload.payment_date).strip() if payload.payment_date is not None else ""
+        if receipt_date == "None":
+            receipt_date = ""
+        customer_name = str(payload.customer_name).strip() if payload.customer_name is not None else ""
+        if customer_name == "None":
+            customer_name = ""
+
+        from src.services.oracle_matcher import check_receipt_cascading
+        receipt_result = await check_receipt_cascading(
+            http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name
+        )
+        if receipt_result and receipt_result.get("matched_in_oracle"):
+            payload.fusion_receipt_number = receipt_result.get("fusion_receipt_number")
+            payload.fusion_receipt_date = receipt_result.get("fusion_receipt_date")
+            payload.fusion_customer_name = receipt_result.get("fusion_customer_name")
+
+        return payload
+    except Exception as e:
+        logger.error(f"Top-level processing exception in BIP: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
