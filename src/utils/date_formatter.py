@@ -1,5 +1,5 @@
 from datetime import datetime
-
+import re
 
 def format_oracle_date(date_str: str) -> str:
     """
@@ -12,7 +12,6 @@ def format_oracle_date(date_str: str) -> str:
     date_str = str(date_str).strip()
     date_str = date_str.replace('/', '-')
 
-    import re
     date_str = re.sub(r'\+00:00$', 'Z', date_str)
 
     formats = [

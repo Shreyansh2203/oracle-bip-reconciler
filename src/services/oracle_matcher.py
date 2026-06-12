@@ -1,6 +1,7 @@
 import logging
 import os
 import urllib.parse
+from dataclasses import dataclass
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -8,30 +9,42 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from src.utils.date_formatter import format_oracle_date
 
 logger = logging.getLogger(__name__)
+
 ORACLE_URL = os.getenv("ORACLE_URL", "https://fa-epxp-test-saasfaprod1.fa.ocs.oraclecloud.com")
+MAX_RETRIES = 3
+MIN_WAIT_SECONDS = 1
+MAX_WAIT_SECONDS = 10
+DEFAULT_ORACLE_LIMIT = 499
+CENTS_MULTIPLIER = 100
+
+@dataclass
+class OracleClientContext:
+    client: httpx.AsyncClient
+    user: str
+    password: str
 
 class OracleTransientError(Exception):
     pass
 
 def escape_oracle(val):
-    """Fix 3: Escape single quotes for Oracle REST API query injection prevention."""
+    """Escape single quotes for Oracle REST API query injection prevention."""
     if val is None:
         return ""
     return str(val).replace("'", "''").replace("%", "\\%").replace("_", "\\_")
 
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
+    stop=stop_after_attempt(MAX_RETRIES),
+    wait=wait_exponential(multiplier=1, min=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS),
     retry=retry_if_exception_type((OracleTransientError, httpx.RequestError)),
     reraise=True
 )
-async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=None, fields=""):
+async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, query: str, limit=None, fields=""):
     """
-    Fetch candidates from Oracle using indexable fields, with pagination to fix truncation (Fix 4).
+    Fetch candidates from Oracle using indexable fields, with pagination to fix truncation.
     """
     try:
         if limit is None:
-            limit = int(os.getenv("ORACLE_LIMIT", "499"))
+            limit = int(os.getenv("ORACLE_LIMIT", str(DEFAULT_ORACLE_LIMIT)))
         q = urllib.parse.quote(query)
         all_items = []
         offset = 0
@@ -42,7 +55,7 @@ async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=None
             if fields:
                 url += f"&fields={fields}"
 
-            response = await client.get(url, auth=(user, pwd))
+            response = await context.client.get(url, auth=(context.user, context.password))
             if response.status_code == 200:
                 data = response.json()
                 items = data.get("items", [])
@@ -64,11 +77,11 @@ async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=None
         logger.error(f"Permanent Oracle fetch exception: {e}")
         raise e
 
-def safe_float_match(val1, val2) -> bool:
+def safe_float_match(expected_amount, actual_amount) -> bool:
     try:
-        if val1 is None or val2 is None:
+        if expected_amount is None or actual_amount is None:
             return False
-        return round(float(val1) * 100) == round(float(val2) * 100)
+        return round(float(expected_amount) * CENTS_MULTIPLIER) == round(float(actual_amount) * CENTS_MULTIPLIER)
     except (ValueError, TypeError):
         return False
 
@@ -77,17 +90,17 @@ def safe_str_match(val1, val2):
         return False
     return str(val1).strip().lower() == str(val2).strip().lower()
 
-def is_receipt_unapplied(c):
-    state = str(c.get("State", "")).strip().lower()
+def is_receipt_unapplied(candidate):
+    state = str(candidate.get("State", "")).strip().lower()
     return state in ["unapplied", "unapp", "unid"]
 
-def is_invoice_open(c):
-    status = str(c.get("InvoiceStatus", "")).strip().lower()
+def is_invoice_open(candidate):
+    status = str(candidate.get("InvoiceStatus", "")).strip().lower()
     if status == "closed":
         return False
 
     # Try to parse InvoiceBalanceAmount if available
-    bal = c.get("InvoiceBalanceAmount")
+    bal = candidate.get("InvoiceBalanceAmount")
     if bal is not None:
         try:
             return abs(float(bal)) > 0
@@ -99,17 +112,18 @@ def is_invoice_open(c):
 
 def apply_rules_to_candidates(candidates, rules):
     for rule_name, condition in rules:
-        matches = [c for c in candidates if condition(c)]
+        matches = [candidate for candidate in candidates if condition(candidate)]
         if len(matches) == 1:
             return matches[0], rule_name
         elif len(matches) > 1:
             logger.debug(f"Rule {rule_name}: {len(matches)} candidates, continuing to next rule.")
     return None, None
 
-async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receipt_date, customer_name):
+async def check_receipt_cascading(client, user, password, receipt_num, amount, receipt_date, customer_name):
     """
     Receipt Cascading matching: Two-Phase Search (Unapplied first, then Applied).
     """
+    context = OracleClientContext(client, user, password)
     formatted_date = format_oracle_date(receipt_date)
     candidates = []
 
@@ -117,15 +131,15 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
     try:
         if receipt_num:
             query = f"ReceiptNumber='{escape_oracle(receipt_num)}'"
-            candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
+            candidates = await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields)
 
         if not candidates and customer_name:
             query = f"CustomerName='{escape_oracle(customer_name)}'"
-            candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
+            candidates = await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields)
 
         if not candidates and amount is not None and formatted_date:
             query = f"Amount={float(amount):.2f} and ReceiptDate='{formatted_date}'"
-            candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
+            candidates = await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields)
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 
@@ -135,28 +149,28 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
     # 2. Local Filtering Rules
     if receipt_num:
         rules = [
-            ("A1", lambda c: safe_str_match(c.get("ReceiptNumber"), receipt_num) and safe_float_match(c.get("Amount"), amount) and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
-            ("A2", lambda c: safe_str_match(c.get("ReceiptNumber"), receipt_num) and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
-            ("A3", lambda c: safe_str_match(c.get("ReceiptNumber"), receipt_num) and safe_float_match(c.get("Amount"), amount) and c.get("ReceiptDate") == formatted_date and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
-            ("A4", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and safe_float_match(c.get("Amount"), amount)),
-            ("A5", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and bool(formatted_date) and c.get("ReceiptDate") == formatted_date),
+            ("A1", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
+            ("A2", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
+            ("A3", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount) and candidate.get("ReceiptDate") == formatted_date and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
+            ("A4", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount)),
+            ("A5", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and bool(formatted_date) and candidate.get("ReceiptDate") == formatted_date),
         ]
     else:
         rules = [
-            ("B1", lambda c: safe_float_match(c.get("Amount"), amount) and bool(formatted_date) and c.get("ReceiptDate") == formatted_date and (safe_str_match(c.get("CustomerName"), customer_name) if customer_name else True)),
-            ("B2", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and safe_float_match(c.get("Amount"), amount)),
-            ("B3", lambda c: bool(customer_name) and safe_str_match(c.get("CustomerName"), customer_name) and bool(formatted_date) and c.get("ReceiptDate") == formatted_date),
+            ("B1", lambda candidate: safe_float_match(candidate.get("Amount"), amount) and bool(formatted_date) and candidate.get("ReceiptDate") == formatted_date and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
+            ("B2", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount)),
+            ("B3", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and bool(formatted_date) and candidate.get("ReceiptDate") == formatted_date),
         ]
 
     # Phase 1: Search Unapplied Receipts
-    unapplied_candidates = [c for c in candidates if is_receipt_unapplied(c)]
+    unapplied_candidates = [candidate for candidate in candidates if is_receipt_unapplied(candidate)]
     match, rule_name = apply_rules_to_candidates(unapplied_candidates, rules)
 
     if match:
         logger.info(f"Receipt Rule {rule_name} Matched in UNAPPLIED phase!")
     else:
         # Phase 2: Search Applied Receipts
-        applied_candidates = [c for c in candidates if not is_receipt_unapplied(c)]
+        applied_candidates = [candidate for candidate in candidates if not is_receipt_unapplied(candidate)]
         match, rule_name = apply_rules_to_candidates(applied_candidates, rules)
         if match:
             logger.info(f"Receipt Rule {rule_name} Matched in APPLIED fallback phase!")
@@ -173,7 +187,7 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
 
     return {"matched_in_oracle": False, "error": "No single match found after two-phase cascading rules."}
 
-async def fetch_by_query(client, user, pwd, query, inv_fields, cm_fields):
+async def fetch_by_query(context: OracleClientContext, query, inv_fields, cm_fields):
     """
     Sequentially fetches invoices, then credit memos (if no invoices found).
     This cuts total HTTP requests in half since TransactionNumber is unique, massively improving Oracle throughput.
@@ -181,7 +195,7 @@ async def fetch_by_query(client, user, pwd, query, inv_fields, cm_fields):
     candidates = []
 
     try:
-        inv_res = await fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", query, fields=inv_fields)
+        inv_res = await fetch_oracle_candidates(context, "receivablesInvoices", query, fields=inv_fields)
         if isinstance(inv_res, list):
             candidates.extend(inv_res)
     except Exception as e:
@@ -189,28 +203,29 @@ async def fetch_by_query(client, user, pwd, query, inv_fields, cm_fields):
 
     if not candidates:
         try:
-            cm_res = await fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", query, fields=cm_fields)
+            cm_res = await fetch_oracle_candidates(context, "receivablesCreditMemos", query, fields=cm_fields)
             if isinstance(cm_res, list):
-                for c in cm_res:
-                    c["InvoiceStatus"] = c.get("CreditMemoStatus")
-                    c["InvoiceBalanceAmount"] = c.get("TransactionBalanceDue")
+                for candidate in cm_res:
+                    candidate["InvoiceStatus"] = candidate.get("CreditMemoStatus")
+                    candidate["InvoiceBalanceAmount"] = candidate.get("TransactionBalanceDue")
                 candidates.extend(cm_res)
         except Exception as e:
             logger.warning(f"Raw CM fetch exception: {e}")
 
     return candidates
 
-async def fetch_by_field(client, user, pwd, query_key, raw_value, inv_fields, cm_fields):
-    """Fix 5: Concurrent fetch for Invoices and Credit Memos to prevent N+1 fallback."""
+async def fetch_by_field(context: OracleClientContext, query_key, raw_value, inv_fields, cm_fields):
+    """Concurrent fetch for Invoices and Credit Memos to prevent N+1 fallback."""
     query = f"{query_key}='{escape_oracle(raw_value)}'"
-    return await fetch_by_query(client, user, pwd, query, inv_fields, cm_fields)
+    return await fetch_by_query(context, query, inv_fields, cm_fields)
 
-async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name, cache_customer=None, customer_lock=None):
+async def check_invoice_cascading(client, user, password, invoice_number, inv_date, amount, document_number, customer_name, cache_customer=None, customer_lock=None):
     """
     Invoice Cascading matching: Two-Phase Search (Open first, then Closed).
     Uses pre-fetched dictionaries (cache_inv_num, cache_doc_num) if available to avoid HTTP calls.
     Lazily fetches and caches customer_name fallbacks using customer_lock to prevent N+1 duplicate calls.
     """
+    context = OracleClientContext(client, user, password)
     formatted_date = format_oracle_date(inv_date)
     candidates = []
 
@@ -218,11 +233,11 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
     cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
 
     try:
-        if inv_num:
-            candidates = await fetch_by_field(client, user, pwd, "TransactionNumber", inv_num, inv_fields, cm_fields)
+        if invoice_number:
+            candidates = await fetch_by_field(context, "TransactionNumber", invoice_number, inv_fields, cm_fields)
 
-        if not candidates and doc_num:
-            candidates = await fetch_by_field(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
+        if not candidates and document_number:
+            candidates = await fetch_by_field(context, "DocumentNumber", document_number, inv_fields, cm_fields)
 
         if not candidates and customer_name:
             if cache_customer is not None and customer_lock is not None:
@@ -232,7 +247,7 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
                     async with customer_lock:
                         if c_name_lower not in cache_customer:
                             try:
-                                result = await fetch_by_field(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                                result = await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields)
                                 cache_customer[c_name_lower] = result
                             except Exception as e:
                                 # If BillToCustomerName is not queriable (400) or fails, cache the empty failure
@@ -242,7 +257,7 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
                 candidates = cache_customer[c_name_lower]
             else:
                 try:
-                    candidates = await fetch_by_field(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                    candidates = await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields)
                 except Exception as e:
                     logger.error(f"Customer fallback query failed: {str(e)}")
                     candidates = []
@@ -251,26 +266,26 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 
     if not candidates:
-        return {"matched_in_oracle": False, "error": f"No candidates found for invoice {inv_num}."}
+        return {"matched_in_oracle": False, "error": f"No candidates found for invoice {invoice_number}."}
 
     # 2. Local Filtering Rules
     rules = [
-        ("1a", lambda c: safe_str_match(c.get("TransactionNumber"), inv_num)),
-        ("1b", lambda c: safe_str_match(c.get("TransactionNumber"), inv_num) and c.get("TransactionDate") == formatted_date),
-        ("2",  lambda c: bool(doc_num) and safe_str_match(c.get("DocumentNumber"), doc_num) and c.get("TransactionDate") == formatted_date),
-        ("3",  lambda c: bool(inv_num) and str(inv_num).lower() in str(c.get("TransactionNumber", "")).lower() and c.get("TransactionDate") == formatted_date),
-        ("4",  lambda c: bool(customer_name) and safe_str_match(c.get("BillToCustomerName"), customer_name) and c.get("TransactionDate") == formatted_date and safe_float_match(c.get("EnteredAmount"), amount)),
+        ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number)),
+        ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and candidate.get("TransactionDate") == formatted_date),
+        ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and candidate.get("TransactionDate") == formatted_date),
+        ("3",  lambda candidate: bool(invoice_number) and str(invoice_number).lower() in str(candidate.get("TransactionNumber", "")).lower() and candidate.get("TransactionDate") == formatted_date),
+        ("4",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and candidate.get("TransactionDate") == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
     ]
 
     # Phase 1: Search Open Invoices
-    open_candidates = [c for c in candidates if is_invoice_open(c)]
+    open_candidates = [candidate for candidate in candidates if is_invoice_open(candidate)]
     match, rule_name = apply_rules_to_candidates(open_candidates, rules)
 
     if match:
         logger.info(f"Invoice Rule {rule_name} Matched in OPEN phase!")
     else:
         # Phase 2: Search Closed Invoices
-        closed_candidates = [c for c in candidates if not is_invoice_open(c)]
+        closed_candidates = [candidate for candidate in candidates if not is_invoice_open(candidate)]
         match, rule_name = apply_rules_to_candidates(closed_candidates, rules)
         if match:
             logger.info(f"Invoice Rule {rule_name} Matched in CLOSED fallback phase!")
@@ -285,4 +300,4 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
             "match_rule": rule_name
         }
 
-    return {"matched_in_oracle": False, "error": f"No single match found for invoice {inv_num}."}
+    return {"matched_in_oracle": False, "error": f"No single match found for invoice {invoice_number}."}
