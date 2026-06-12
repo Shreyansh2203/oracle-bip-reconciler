@@ -23,18 +23,16 @@ This document outlines the standard cascading rules used to reconcile incoming e
 ### Scenario A: We have a Payment Reference (`RECEIPT_NUMBER`)
 Try these steps in order. Stop as soon as you find exactly 1 match.
 
-* **Rule A1:** Match strictly by `RECEIPT_NUMBER` and `RECEIPT_AMOUNT` `[+ Optional Customer]`
-* **Rule A2:** Match by `RECEIPT_NUMBER` only `[+ Optional Customer]`
-* **Rule A3:** Match by `RECEIPT_NUMBER`, `RECEIPT_AMOUNT`, and `RECEIPT_DATE` `[+ Optional Customer]`
-* **Rule A4:** Abandon the receipt number. Match by Customer and `RECEIPT_AMOUNT`
-* **Rule A5:** Last resort. Match by Customer and `RECEIPT_DATE`
+* **Rule A1:** Match strictly by `RECEIPT_NUMBER`, `RECEIPT_AMOUNT`, and `RECEIPT_DATE` `[+ Optional Customer]`
+* **Rule A2:** Match by `RECEIPT_NUMBER` and `RECEIPT_AMOUNT` `[+ Optional Customer]`
+* **Rule A3:** Match by `RECEIPT_NUMBER` only `[+ Optional Customer]`
+* **Rule A4:** Abandon the receipt number. Match by Customer, `RECEIPT_AMOUNT`, and `RECEIPT_DATE`
 
 ### Scenario B: We DO NOT have a Payment Reference
 Try these steps in order. Stop as soon as you find exactly 1 match.
 
 * **Rule B1:** Match by `RECEIPT_AMOUNT` and `RECEIPT_DATE` `[+ Optional Customer]`
-* **Rule B2:** Match by Customer and `RECEIPT_AMOUNT`
-* **Rule B3:** Last resort. Match by Customer and `RECEIPT_DATE`
+* **Rule B2:** Match by Customer, `RECEIPT_AMOUNT`, and `RECEIPT_DATE`
 
 ---
 
@@ -43,22 +41,23 @@ Try these steps in order. Stop as soon as you find exactly 1 match.
 **Data Mappings:**
 | Payload JSON Field | CSV Report Column | Oracle API Field |
 | :--- | :--- | :--- |
-| `invoice_number` | `TRANSACTION_NUMBER` | `TrxNumber` |
-| `invoice_date` | `TRANSACTION_DATE` | `TrxDate` |
-| `invoice_amount` | `TOTAL_AMOUNTS` | `InvoiceAmount` |
-| `customer_invoice_number`| `DOCUMENT_NUMBER` | `CustomerReference` |
+| `invoice_number` | `TRANSACTION_NUMBER` | `TransactionNumber` |
+| `invoice_date` | `TRANSACTION_DATE` | `TransactionDate` |
+| `invoice_amount` | `TOTAL_AMOUNTS` | `EnteredAmount` |
+| `customer_invoice_number`| `DOCUMENT_NUMBER` | `DocumentNumber` |
 | `customer_name` | `BILL_CUSTOMER_NAME` | `BillToCustomerName` |
 
 For **each** invoice in the payload, try these steps in order. Stop as soon as you find exactly 1 match.
+*Note: All rules implicitly require the Oracle `TOTAL_AMOUNTS` to perfectly match the Payload `invoice_amount` to prevent financial misapplication.*
 
 * **Rule 1a (Exact Number):** 
-  Match strictly by `TRANSACTION_NUMBER`.
+  Match strictly by `TRANSACTION_NUMBER` `[+ Exact Amount Check]`.
 * **Rule 1b (Number + Date):** 
-  Match strictly by `TRANSACTION_NUMBER` and `TRANSACTION_DATE`.
+  Match strictly by `TRANSACTION_NUMBER` and `TRANSACTION_DATE` `[+ Exact Amount Check]`.
 * **Rule 2 (Document Match):** 
-  Match by the customer's `DOCUMENT_NUMBER` and `TRANSACTION_DATE`.
+  Match by the customer's `DOCUMENT_NUMBER` and `TRANSACTION_DATE` `[+ Exact Amount Check]`.
 * **Rule 3 (Partial Number):** 
-  Do a partial/substring search for the `TRANSACTION_NUMBER` alongside the `TRANSACTION_DATE`.
+  Do a prefix search for the `TRANSACTION_NUMBER` alongside the `TRANSACTION_DATE` `[+ Exact Amount Check]`.
 * **Rule 4 (Amount & Date Fallback):** 
   Match by Customer, `TRANSACTION_DATE`, and `TOTAL_AMOUNTS`.
 
