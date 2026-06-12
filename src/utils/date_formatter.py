@@ -26,5 +26,5 @@ def format_oracle_date(date_str: str) -> str:
         except ValueError:
             continue
 
-    # If all parsing fails, return None to let Oracle/fallback logic safely bypass it.
-    return None
+    # If all parsing fails, return "" to let Oracle/fallback logic safely bypass it without false-positives.
+    return ""

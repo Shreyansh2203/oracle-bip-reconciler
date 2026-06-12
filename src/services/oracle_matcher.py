@@ -32,7 +32,7 @@ def escape_oracle(val: Any) -> str:
     """Escape single quotes for Oracle REST API query injection prevention."""
     if val is None:
         return ""
-    return str(val).replace("'", "''").replace("%", "\\%").replace("_", "\\_")
+    return str(val).replace("'", "''")
 
 @retry(
     stop=stop_after_attempt(MAX_RETRIES),
@@ -88,7 +88,7 @@ def safe_float_match(expected_amount: float | str | None, actual_amount: float |
         return False
 
 def safe_str_match(val1: Any, val2: Any) -> bool:
-    if not val1 or not val2:
+    if val1 is None or val2 is None or str(val1).strip() == "" or str(val2).strip() == "":
         return False
     return str(val1).strip().lower() == str(val2).strip().lower()
 
@@ -196,23 +196,17 @@ async def fetch_by_query(context: OracleClientContext, query: str, inv_fields: s
     """
     candidates = []
 
-    try:
-        inv_res = await fetch_oracle_candidates(context, "receivablesInvoices", query, fields=inv_fields)
-        if isinstance(inv_res, list):
-            candidates.extend(inv_res)
-    except Exception as e:
-        logger.warning(f"Raw Invoice fetch exception: {e}")
+    inv_res = await fetch_oracle_candidates(context, "receivablesInvoices", query, fields=inv_fields)
+    if isinstance(inv_res, list):
+        candidates.extend(inv_res)
 
     if not candidates:
-        try:
-            cm_res = await fetch_oracle_candidates(context, "receivablesCreditMemos", query, fields=cm_fields)
-            if isinstance(cm_res, list):
-                for candidate in cm_res:
-                    candidate["InvoiceStatus"] = candidate.get("CreditMemoStatus")
-                    candidate["InvoiceBalanceAmount"] = candidate.get("TransactionBalanceDue")
-                candidates.extend(cm_res)
-        except Exception as e:
-            logger.warning(f"Raw CM fetch exception: {e}")
+        cm_res = await fetch_oracle_candidates(context, "receivablesCreditMemos", query, fields=cm_fields)
+        if isinstance(cm_res, list):
+            for candidate in cm_res:
+                candidate["InvoiceStatus"] = candidate.get("CreditMemoStatus")
+                candidate["InvoiceBalanceAmount"] = candidate.get("TransactionBalanceDue")
+            candidates.extend(cm_res)
 
     return candidates
 

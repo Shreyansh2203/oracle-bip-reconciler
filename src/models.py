@@ -1,3 +1,4 @@
+from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -22,6 +23,13 @@ class InvoiceItem(BaseModel):
         if stripped.lower() == "none":
             return ""
         return stripped
+
+    @field_validator("invoice_amount", "fusion_invoice_amount", mode="before")
+    @classmethod
+    def sanitize_floats(cls, v: Any) -> Any:
+        if isinstance(v, str) and v.strip().lower() == "none":
+            return None
+        return v
 
 class MetaDataModel(BaseModel):
     warnings: list[str] = []
@@ -50,4 +58,11 @@ class ReconciliationRequest(BaseModel):
         if stripped.lower() == "none":
             return ""
         return stripped
+
+    @field_validator("total_amount", "confidence_score", mode="before")
+    @classmethod
+    def sanitize_floats(cls, v: Any) -> Any:
+        if isinstance(v, str) and v.strip().lower() == "none":
+            return None
+        return v
 
