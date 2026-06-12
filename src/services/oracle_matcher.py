@@ -1,4 +1,5 @@
 import logging
+import os
 import urllib.parse
 
 import httpx
@@ -7,7 +8,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from src.utils.date_formatter import format_oracle_date
 
 logger = logging.getLogger(__name__)
-ORACLE_URL = "https://fa-epxp-test-saasfaprod1.fa.ocs.oraclecloud.com"
+ORACLE_URL = os.getenv("ORACLE_URL", "https://fa-epxp-test-saasfaprod1.fa.ocs.oraclecloud.com")
 
 class OracleTransientError(Exception):
     pass
