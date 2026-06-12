@@ -281,7 +281,8 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
         ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number)),
         ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and candidate.get("TransactionDate") == formatted_date),
         ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and candidate.get("TransactionDate") == formatted_date),
-        ("3",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and candidate.get("TransactionDate") == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
+        ("3",  lambda candidate: bool(invoice_number) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(invoice_number).lower()) and candidate.get("TransactionDate") == formatted_date),
+        ("4",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and candidate.get("TransactionDate") == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
     ]
 
     # Phase 1: Search Open Invoices
