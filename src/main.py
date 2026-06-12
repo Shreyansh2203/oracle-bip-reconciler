@@ -2,13 +2,11 @@ import asyncio
 import logging
 import os
 import time
-import uuid
-import json
 from contextlib import asynccontextmanager
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.models import ReconciliationRequest
@@ -87,10 +85,10 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
     # 1. Pre-fetch network data concurrently
     inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
     cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
-    
+
     inv_nums_to_fetch = [str(inv.invoice_number) for inv in payload.invoices]
     doc_nums_to_fetch = [str(inv.customer_invoice_number) for inv in payload.invoices]
-    
+
     logger.info("Concurrently fetching Receipt data and Bulk Invoice/CM candidates...")
     receipt_result, cache_inv_num, cache_doc_num = await asyncio.gather(
         check_receipt_cascading(
@@ -123,7 +121,7 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
 
     # Fix 9: Reduce concurrency to 150 to prevent Oracle connection exhaustion
     sem = asyncio.Semaphore(150)
-    
+
     # Shared state for lazy fetching Customer Name fallback
     shared_customer_cache = {}
     customer_lock = asyncio.Lock()
@@ -185,6 +183,6 @@ async def reconcile_data(payload: ReconciliationRequest):
         return await _process_reconciliation(payload)
     except Exception as e:
         logger.exception(f"Reconciliation Failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 

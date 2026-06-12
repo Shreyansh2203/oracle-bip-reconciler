@@ -1,5 +1,8 @@
-import os, httpx, asyncio
+import asyncio
 import base64
+import os
+
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,14 +16,14 @@ async def run_bip_report():
         # The endpoint is usually /xmlpserver/services/rest/v1/reports/<path to report>/run
         report_path = "Custom/Finacials/Receivable Transactions/Invoice Details Report.xdo"
         url = f"{ORACLE_URL}/xmlpserver/services/rest/v1/reports/{report_path.replace('/', '%2F')}/run"
-        
+
         payload = {
             "byPassCache": True,
             "flattenXML": False,
             "attributeFormat": "csv",
             "sizeOfDataChunkDownload": -1
         }
-        
+
         print(f"Requesting: {url}")
         res = await client.post(url, json=payload, auth=(user, pwd))
         print("Status:", res.status_code)
