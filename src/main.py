@@ -172,9 +172,27 @@ async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: 
         if num:
             invoice_numbers.add(num)
 
-    if invoice_numbers:
-        return await run_bip_bulk_match(http_client, x_oracle_user, x_oracle_pass, list(invoice_numbers))
-    return {}
+    invoice_list = list(invoice_numbers)
+    if not invoice_list:
+        return {}
+
+    chunk_size = 500
+    chunks = [invoice_list[i:i + chunk_size] for i in range(0, len(invoice_list), chunk_size)]
+    
+    tasks = []
+    for chunk in chunks:
+        tasks.append(run_bip_bulk_match(http_client, x_oracle_user, x_oracle_pass, chunk))
+    
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    final_map = {}
+    for res in results:
+        if isinstance(res, dict):
+            final_map.update(res)
+        else:
+            logger.error(f"BIP chunk fetch failed: {res}")
+            
+    return final_map
 
 def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict) -> list:
     """Maps BIP exact matches and returns a list of unmatched invoices for REST fallback."""
