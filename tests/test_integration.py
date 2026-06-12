@@ -27,32 +27,35 @@ async def test_reconcile_integration_hybrid(override_env):
     # We must mock the httpx client used inside main.py 
     # Since main.py uses a global http_client initialized in lifespan, we mock it using respx.
     with respx.mock:
-        # 1. Mock Receipt fetch (which happens first)
-        respx.get(url__regex=r".*standardReceipts.*").mock(return_value=httpx.Response(200, json={
-            "items": [],
-            "hasMore": False
-        }))
-
-        # 2. Mock BIP Chunk POST request
         csv_text = "TRANSACTION_NUMBER,TRANSACTION_DATE,TOTAL_AMOUNTS\nINV-100,2026-05-10,150.0\n"
         bip_mock_json = {
             "reportBytes": base64.b64encode(csv_text.encode("utf-8")).decode("utf-8")
         }
-        respx.post(url__regex=r".*xmlpserver.*").mock(return_value=httpx.Response(200, json=bip_mock_json))
 
-        # 3. Mock REST Fallback for the unmatched invoice
-        respx.get(url__regex=r".*receivablesInvoices.*").mock(return_value=httpx.Response(200, json={
-            "items": [
-                {
-                    "TransactionNumber": "INV-200",
-                    "TransactionDate": "2026-05-11",
-                    "EnteredAmount": 250.0,
-                    "InvoiceStatus": "Open",
-                    "InvoiceBalanceAmount": 250.0
-                }
-            ],
-            "hasMore": False
-        }))
+        def side_effect(request):
+            url_str = str(request.url)
+            if "standardReceipts" in url_str:
+                return httpx.Response(200, json={"items": [], "hasMore": False})
+            if "xmlpserver" in url_str:
+                return httpx.Response(200, json=bip_mock_json)
+            if "receivablesInvoices" in url_str:
+                return httpx.Response(200, json={
+                    "items": [
+                        {
+                            "TransactionNumber": "INV-200",
+                            "TransactionDate": "2026-05-11",
+                            "EnteredAmount": 250.0,
+                            "InvoiceStatus": "Open",
+                            "InvoiceBalanceAmount": 250.0
+                        }
+                    ],
+                    "hasMore": False
+                })
+            if "receivablesCreditMemos" in url_str:
+                return httpx.Response(200, json={"items": [], "hasMore": False})
+            return httpx.Response(404)
+
+        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
 
         # Create payload
         payload = {

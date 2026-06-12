@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from src.config import ORACLE_URL
+from src.config import get_oracle_url
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
     Returns a dictionary mapping TransactionNumber -> Invoice details.
     """
     report_path = "Custom/Financials/Receivable Transactions/Invoice Details Report.xdo"
-    url = f"{ORACLE_URL}/xmlpserver/services/rest/v1/reports/{report_path.replace('/', '%2F')}/run"
+    url = f"{get_oracle_url()}/xmlpserver/services/rest/v1/reports/{report_path.replace('/', '%2F')}/run"
 
     invoices_str = ",".join(invoice_numbers)
 

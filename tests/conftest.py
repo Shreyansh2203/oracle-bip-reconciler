@@ -1,3 +1,9 @@
+import os
+os.environ["ORACLE_URL"] = "https://test.oracle.com"
+os.environ["API_KEY"] = "test_key"
+os.environ["ORACLE_USER"] = "test_user"
+os.environ["ORACLE_PASS"] = "test_pass"
+
 import pytest
 import httpx
 from src.models import ReconciliationRequest, InvoiceItem
