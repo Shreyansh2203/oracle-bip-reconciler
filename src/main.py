@@ -81,7 +81,7 @@ async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str
             payload.meta_data = MetaDataModel()
         payload.meta_data.warnings.append(f"Receipt match failed: {clean_error}")
 
-async def _fetch_invoices_concurrently(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str, customer_name: str):
+async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched_invoices: list, x_oracle_user: str, x_oracle_pass: str, customer_name: str):
     sem = app.state.oracle_sem
     shared_customer_cache = {}
     customer_lock = asyncio.Lock()
@@ -91,7 +91,7 @@ async def _fetch_invoices_concurrently(payload: ReconciliationRequest, x_oracle_
             return await check_invoice_cascading(*args, **kwargs)
 
     tasks = []
-    for inv in payload.invoices:
+    for inv in unmatched_invoices:
         inv_num = str(inv.invoice_number) if inv.invoice_number else ""
         inv_date = str(inv.invoice_date) if inv.invoice_date else ""
         inv_amount = inv.invoice_amount
@@ -104,8 +104,8 @@ async def _fetch_invoices_concurrently(payload: ReconciliationRequest, x_oracle_
 
     return await asyncio.gather(*tasks, return_exceptions=True)
 
-def _map_invoice_results(payload: ReconciliationRequest, invoice_results: list):
-    for idx, inv in enumerate(payload.invoices):
+def _map_invoice_results(payload: ReconciliationRequest, unmatched_invoices: list, invoice_results: list):
+    for idx, inv in enumerate(unmatched_invoices):
         inv_res = invoice_results[idx]
         if isinstance(inv_res, BaseException):
             if payload.meta_data is None:
@@ -139,14 +139,18 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
 
     await _fetch_receipt_data(payload, x_oracle_user, x_oracle_pass)
 
-    customer_name = str(payload.customer_name) if payload.customer_name else ""
-    invoice_results = await _fetch_invoices_concurrently(payload, x_oracle_user, x_oracle_pass, customer_name)
-    
-    _map_invoice_results(payload, invoice_results)
+    invoice_map = await _build_bip_invoice_map(payload, x_oracle_user, x_oracle_pass)
+    unmatched_invoices = _map_bip_invoices(payload, invoice_map)
+
+    if unmatched_invoices:
+        logger.info(f"BIP matched {len(payload.invoices) - len(unmatched_invoices)} invoices. Falling back to REST for {len(unmatched_invoices)} unmatched invoices.")
+        customer_name = str(payload.customer_name) if payload.customer_name else ""
+        invoice_results = await _fetch_invoices_concurrently(payload, unmatched_invoices, x_oracle_user, x_oracle_pass, customer_name)
+        _map_invoice_results(payload, unmatched_invoices, invoice_results)
 
     execution_time = round(time.time() - start_time, 2)
     # At 150, Oracle throttles to 26 TPS. At 50, it peaks at 52 TPS.
-    logger.info(f"Reconciliation completed in {execution_time}s. Invoices checked: {len(invoice_results)}")
+    logger.info(f"Reconciliation completed in {execution_time}s. Total invoices: {len(payload.invoices)}")
 
     return payload
 
@@ -172,38 +176,19 @@ async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: 
         return await run_bip_bulk_match(http_client, x_oracle_user, x_oracle_pass, list(invoice_numbers))
     return {}
 
-def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict):
+def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict) -> list:
+    """Maps BIP exact matches and returns a list of unmatched invoices for REST fallback."""
+    unmatched_invoices = []
     for inv in payload.invoices:
         num = str(inv.invoice_number) if inv.invoice_number else ""
-        if num:
-            if num in invoice_map:
-                match = invoice_map[num]
-                inv.fusion_invoice_number = match.get("TransactionNumber") or match.get("InvoiceNumber")
-                inv.fusion_invoice_date = match.get("TransactionDate") or match.get("InvoiceDate")
-                try:
-                    inv.fusion_invoice_amount = float(match.get("EnteredAmount") or match.get("Amount") or 0.0)
-                except ValueError:
-                    inv.fusion_invoice_amount = 0.0
-            else:
-                if payload.meta_data is None:
-                    payload.meta_data = MetaDataModel()
-                payload.meta_data.warnings.append(f"Invoice {num} match failed: Not found in BIP extract.")
-
-@app.post("/reconcile/bip", response_model=ReconciliationRequest)
-async def reconcile_data_bip(payload: ReconciliationRequest):
-    """
-    Experimental reconciliation logic using BI Publisher for bulk SQL fetching.
-    """
-    try:
-        x_oracle_user = os.getenv("ORACLE_USER")
-        x_oracle_pass = os.getenv("ORACLE_PASS")
-
-        invoice_map = await _build_bip_invoice_map(payload, x_oracle_user, x_oracle_pass)
-        _map_bip_invoices(payload, invoice_map)
-
-        await _fetch_receipt_data(payload, x_oracle_user, x_oracle_pass)
-
-        return payload
-    except Exception as e:
-        logger.error(f"Top-level processing exception in BIP: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)) from e
+        if num and num in invoice_map:
+            match = invoice_map[num]
+            inv.fusion_invoice_number = match.get("TransactionNumber") or match.get("InvoiceNumber")
+            inv.fusion_invoice_date = match.get("TransactionDate") or match.get("InvoiceDate")
+            try:
+                inv.fusion_invoice_amount = float(match.get("EnteredAmount") or match.get("Amount") or 0.0)
+            except ValueError:
+                inv.fusion_invoice_amount = 0.0
+        else:
+            unmatched_invoices.append(inv)
+    return unmatched_invoices
