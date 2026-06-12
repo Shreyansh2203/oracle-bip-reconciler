@@ -2,7 +2,7 @@ import pytest
 import respx
 import httpx
 import asyncio
-from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading, safe_float_match, is_invoice_open
+from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading, safe_float_match, is_invoice_open, safe_str_match, fetch_by_query, OracleClientContext
 
 def test_safe_float_match():
     assert safe_float_match(100.0, "100.00") is True
@@ -15,8 +15,6 @@ def test_is_invoice_open():
     assert is_invoice_open({"InvoiceStatus": "Closed"}) is False
     assert is_invoice_open({"InvoiceBalanceAmount": 10.0}) is True
     assert is_invoice_open({"InvoiceBalanceAmount": 0.0}) is False
-
-from src.services.oracle_matcher import safe_str_match
 
 def test_safe_str_match():
     assert safe_str_match("INV-123", "inv-123") is True
@@ -82,3 +80,17 @@ async def test_check_invoice_cascading_fallback(mock_httpx_client):
         assert route1.called
         assert route2.called
         assert route3.called
+
+@pytest.mark.asyncio
+async def test_fetch_by_query_error_propagation(mock_httpx_client):
+    context = OracleClientContext(mock_httpx_client, "user", "pass")
+    
+    with respx.mock:
+        # Mock both endpoints to return 500 error
+        respx.get(url__regex=r".*receivablesInvoices.*").mock(return_value=httpx.Response(500, text="Internal Server Error"))
+        respx.get(url__regex=r".*receivablesCreditMemos.*").mock(return_value=httpx.Response(500, text="Internal Server Error"))
+        
+        with pytest.raises(Exception) as excinfo:
+            await fetch_by_query(context, "TransactionNumber='123'", "", "")
+            
+        assert "Both Invoice and CM fetch failed" in str(excinfo.value)
