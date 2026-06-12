@@ -17,7 +17,7 @@ def escape_oracle(val):
     """Fix 3: Escape single quotes for Oracle REST API query injection prevention."""
     if val is None:
         return ""
-    return str(val).replace("'", "''")
+    return str(val).replace("'", "''").replace("%", "\\%").replace("_", "\\_")
 
 @retry(
     stop=stop_after_attempt(3),
@@ -25,11 +25,13 @@ def escape_oracle(val):
     retry=retry_if_exception_type((OracleTransientError, httpx.RequestError)),
     reraise=True
 )
-async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=499, fields=""):
+async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=None, fields=""):
     """
     Fetch candidates from Oracle using indexable fields, with pagination to fix truncation (Fix 4).
     """
     try:
+        if limit is None:
+            limit = int(os.getenv("ORACLE_LIMIT", "499"))
         q = urllib.parse.quote(query)
         all_items = []
         offset = 0

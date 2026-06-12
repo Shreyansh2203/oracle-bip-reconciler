@@ -13,6 +13,9 @@ class InvoiceItem(BaseModel):
     customer_invoice_number: str | int | None = None
     storeNo: str | int | None = None
 
+class MetaDataModel(BaseModel):
+    warnings: list[str] = []
+
 class ReconciliationRequest(BaseModel):
     customer_name: str | None = None
     fusion_customer_name: str | None = None
@@ -26,4 +29,4 @@ class ReconciliationRequest(BaseModel):
     confidence_score: float | None = None
     confidence_label: str | None = None
     invoice_count: int | None = None
-    meta_data: dict | None = None
+    meta_data: MetaDataModel | None = None
