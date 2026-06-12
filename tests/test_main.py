@@ -7,6 +7,7 @@ from src.main import app
 def mock_oracle_env(monkeypatch):
     monkeypatch.setenv("ORACLE_USER", "user")
     monkeypatch.setenv("ORACLE_PASS", "pass")
+    monkeypatch.setenv("API_KEY", "test_key")
 
 def test_root_endpoint():
     with TestClient(app) as test_client:
@@ -32,7 +33,7 @@ def test_reconcile_endpoint_happy_path(mock_oracle_env):
          patch("src.main._build_bip_invoice_map", return_value={"INV-001": {"TransactionNumber": "INV-001", "TransactionDate": "2023-10-01", "EnteredAmount": 50.0}}) as mock_bip:
         
         with TestClient(app) as test_client:
-            response = test_client.post("/reconcile", json=payload)
+            response = test_client.post("/v1/reconcile", json=payload, headers={"X-API-Key": "test_key"})
             
             assert response.status_code == 200
             data = response.json()

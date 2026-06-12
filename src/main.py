@@ -16,6 +16,7 @@ from src.models import MetaDataModel, ReconciliationRequest
 from src.services.oracle_bip import run_bip_bulk_match
 from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading, safe_float_match
 from src.utils.date_formatter import format_oracle_date
+from src.config import ORACLE_URL
 
 # Constants
 DEFAULT_TIMEOUT = 15.0
@@ -34,10 +35,12 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 async def get_api_key(api_key: str = Security(api_key_header)):
     expected_api_key = os.getenv("API_KEY")
-    
-    # If API_KEY is completely blank in Vercel, we bypass security for easy testing
     if not expected_api_key:
-        return api_key
+        logger.error("API_KEY environment variable is not set. Failing closed.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server configuration error: API Key not configured.",
+        )
         
     if api_key != expected_api_key:
         raise HTTPException(
@@ -86,8 +89,8 @@ async def health_check() -> dict[str, str]:
 async def readiness_check() -> dict[str, str]:
     if not http_client:
         raise HTTPException(status_code=503, detail="HTTP client not initialized")
-    if not os.getenv("ORACLE_USER") or not os.getenv("ORACLE_PASS") or not os.getenv("ORACLE_URL"):
-        raise HTTPException(status_code=503, detail="Oracle credentials not configured")
+    if not os.getenv("ORACLE_USER") or not os.getenv("ORACLE_PASS") or not ORACLE_URL:
+        raise HTTPException(status_code=503, detail="Oracle credentials or URL not configured")
     return {"status": "ready"}
 
 async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str) -> None:
@@ -192,6 +195,7 @@ async def _process_reconciliation(payload: ReconciliationRequest, request_id: st
     invoice_map = await _build_bip_invoice_map(payload, x_oracle_user, x_oracle_pass)
     unmatched_invoices = _map_bip_invoices(payload, invoice_map)
 
+    invoice_results: list = []
     if unmatched_invoices:
         logger.info(f"BIP matched {len(payload.invoices) - len(unmatched_invoices)} invoices. Falling back to REST for {len(unmatched_invoices)} unmatched invoices.")
         customer_name = str(payload.customer_name) if payload.customer_name else ""
@@ -269,6 +273,8 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
             try:
                 fusion_amount = float(match.get("TOTAL_AMOUNTS") or match.get("ENTEREDAMOUNT") or match.get("AMOUNT") or 0.0)
             except ValueError:
+                raw_amt = match.get("TOTAL_AMOUNTS") or match.get("ENTEREDAMOUNT") or match.get("AMOUNT")
+                logger.warning(f"Unparseable BIP amount for invoice {num}: '{raw_amt}'")
                 pass
                 
             amount_matches = safe_float_match(inv.invoice_amount, fusion_amount)

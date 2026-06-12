@@ -1,6 +1,8 @@
 import pytest
 import respx
 import httpx
+import base64
+import httpx
 from fastapi.testclient import TestClient
 from src.main import app
 from src.models import ReconciliationRequest, InvoiceItem
@@ -32,15 +34,11 @@ async def test_reconcile_integration_hybrid(override_env):
         }))
 
         # 2. Mock BIP Chunk POST request
-        respx.post(url__regex=r".*xmlpserver.*").mock(return_value=httpx.Response(200, text="""
-            <DATA_DS>
-                <G_1>
-                    <TransactionNumber>INV-100</TransactionNumber>
-                    <TransactionDate>2026-05-10</TransactionDate>
-                    <EnteredAmount>150.0</EnteredAmount>
-                </G_1>
-            </DATA_DS>
-        """))
+        csv_text = "TRANSACTION_NUMBER,TRANSACTION_DATE,TOTAL_AMOUNTS\nINV-100,2026-05-10,150.0\n"
+        bip_mock_json = {
+            "reportBytes": base64.b64encode(csv_text.encode("utf-8")).decode("utf-8")
+        }
+        respx.post(url__regex=r".*xmlpserver.*").mock(return_value=httpx.Response(200, json=bip_mock_json))
 
         # 3. Mock REST Fallback for the unmatched invoice
         respx.get(url__regex=r".*receivablesInvoices.*").mock(return_value=httpx.Response(200, json={

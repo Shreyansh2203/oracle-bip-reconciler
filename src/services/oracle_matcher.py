@@ -9,10 +9,10 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.utils.date_formatter import format_oracle_date
+from src.config import ORACLE_URL
 
 logger = logging.getLogger(__name__)
 
-ORACLE_URL = os.getenv("ORACLE_URL", "https://fa-epxp-test-saasfaprod1.fa.ocs.oraclecloud.com")
 MAX_RETRIES = 3
 MIN_WAIT_SECONDS = 1
 MAX_WAIT_SECONDS = 10
@@ -43,6 +43,7 @@ def escape_oracle(val: Any) -> str:
 async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, query: str, limit: int | None = None, fields: str = "") -> list[dict[str, Any]]:
     """
     Fetch candidates from Oracle using indexable fields, with pagination to fix truncation.
+    TODO: Move the @retry decorator inside the pagination loop to retry per-page rather than resetting the entire fetch on transient errors.
     """
     try:
         if limit is None:
