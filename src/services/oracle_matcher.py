@@ -64,12 +64,12 @@ async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=None
         logger.error(f"Permanent Oracle fetch exception: {e}")
         raise e
 
-def safe_float_match(val1, val2, tolerance=0.01):
+def safe_float_match(val1, val2) -> bool:
     try:
         if val1 is None or val2 is None:
             return False
-        return abs(float(val1) - float(val2)) < tolerance
-    except ValueError:
+        return round(float(val1) * 100) == round(float(val2) * 100)
+    except (ValueError, TypeError):
         return False
 
 def safe_str_match(val1, val2):
@@ -103,9 +103,7 @@ def apply_rules_to_candidates(candidates, rules):
         if len(matches) == 1:
             return matches[0], rule_name
         elif len(matches) > 1:
-            # Fix 6: Handle Duplicate Matches safely
-            logger.warning(f"Duplicate matches ({len(matches)}) found for rule {rule_name}. Using the first one.")
-            return matches[0], rule_name
+            logger.debug(f"Rule {rule_name}: {len(matches)} candidates, continuing to next rule.")
     return None, None
 
 async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receipt_date, customer_name):
@@ -125,8 +123,8 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
             query = f"CustomerName='{escape_oracle(customer_name)}'"
             candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
 
-        if not candidates and amount and formatted_date:
-            query = f"Amount={amount} and ReceiptDate='{formatted_date}'"
+        if not candidates and amount is not None and formatted_date:
+            query = f"Amount={float(amount):.2f} and ReceiptDate='{formatted_date}'"
             candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
@@ -175,7 +173,7 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
 
     return {"matched_in_oracle": False, "error": "No single match found after two-phase cascading rules."}
 
-async def fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields):
+async def fetch_by_query(client, user, pwd, query, inv_fields, cm_fields):
     """
     Sequentially fetches invoices, then credit memos (if no invoices found).
     This cuts total HTTP requests in half since TransactionNumber is unique, massively improving Oracle throughput.
@@ -202,10 +200,10 @@ async def fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fie
 
     return candidates
 
-async def fetch_both_inv_and_cm(client, user, pwd, query_key, raw_value, inv_fields, cm_fields):
+async def fetch_by_field(client, user, pwd, query_key, raw_value, inv_fields, cm_fields):
     """Fix 5: Concurrent fetch for Invoices and Credit Memos to prevent N+1 fallback."""
     query = f"{query_key}='{escape_oracle(raw_value)}'"
-    return await fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields)
+    return await fetch_by_query(client, user, pwd, query, inv_fields, cm_fields)
 
 async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name, cache_customer=None, customer_lock=None):
     """
@@ -221,28 +219,30 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
 
     try:
         if inv_num:
-            candidates = await fetch_both_inv_and_cm(client, user, pwd, "TransactionNumber", inv_num, inv_fields, cm_fields)
+            candidates = await fetch_by_field(client, user, pwd, "TransactionNumber", inv_num, inv_fields, cm_fields)
 
         if not candidates and doc_num:
-            candidates = await fetch_both_inv_and_cm(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
+            candidates = await fetch_by_field(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
 
         if not candidates and customer_name:
             if cache_customer is not None and customer_lock is not None:
                 # Lazy fetching with lock to prevent N+1 duplicate calls
                 c_name_lower = customer_name.lower()
-                async with customer_lock:
-                    if c_name_lower not in cache_customer:
-                        try:
-                            cache_customer[c_name_lower] = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
-                        except Exception as e:
-                            # If BillToCustomerName is not queriable (400) or fails, cache the empty failure
-                            # so 500 subsequent invoices don't sequentially retry and cause a 120s timeout!
-                            logger.error(f"Customer fallback query failed: {str(e)}")
-                            cache_customer[c_name_lower] = []
+                if c_name_lower not in cache_customer:
+                    async with customer_lock:
+                        if c_name_lower not in cache_customer:
+                            try:
+                                result = await fetch_by_field(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                                cache_customer[c_name_lower] = result
+                            except Exception as e:
+                                # If BillToCustomerName is not queriable (400) or fails, cache the empty failure
+                                # so 500 subsequent invoices don't sequentially retry and cause a 120s timeout!
+                                logger.error(f"Customer fallback query failed: {str(e)}")
+                                cache_customer[c_name_lower] = []
                 candidates = cache_customer[c_name_lower]
             else:
                 try:
-                    candidates = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                    candidates = await fetch_by_field(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
                 except Exception as e:
                     logger.error(f"Customer fallback query failed: {str(e)}")
                     candidates = []

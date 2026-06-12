@@ -1,8 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class InvoiceItem(BaseModel):
-    Line_ID: int | str | None = None
+    line_id: int | str | None = Field(None, alias="Line_ID")
     invoice_number: str | int | None = None
     fusion_invoice_number: str | None = None
     invoice_date: str | None = None
@@ -11,7 +11,7 @@ class InvoiceItem(BaseModel):
     fusion_invoice_amount: float | None = None
     description: str | None = None
     customer_invoice_number: str | int | None = None
-    storeNo: str | int | None = None
+    store_no: str | int | None = Field(None, alias="storeNo")
 
 class MetaDataModel(BaseModel):
     warnings: list[str] = []
@@ -24,7 +24,7 @@ class ReconciliationRequest(BaseModel):
     payment_date: str | None = None
     fusion_receipt_date: str | None = None
     header_id: int | str | None = None
-    invoices: list[InvoiceItem] = []
+    invoices: list[InvoiceItem] = Field(default=[], max_length=2500)
     total_amount: float | None = None
     confidence_score: float | None = None
     confidence_label: str | None = None
