@@ -15,8 +15,8 @@ def test_format_oracle_date_valid():
     assert format_oracle_date("10-05-2026") == "2026-05-10"
 
 def test_format_oracle_date_invalid():
-    # Should fall back to the original string if parsing fails
-    assert format_oracle_date("Not a date") == "Not a date"
+    # Should fall back to the empty string if parsing fails
+    assert format_oracle_date("Not a date") == ""
     assert format_oracle_date("") == ""
     assert format_oracle_date(None) == ""
 

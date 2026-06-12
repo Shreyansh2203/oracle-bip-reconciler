@@ -7,12 +7,14 @@ from typing import Any
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Security, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 
 from src.models import MetaDataModel, ReconciliationRequest
 from src.services.oracle_bip import run_bip_bulk_match
-from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading
+from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading, safe_float_match
+from src.utils.date_formatter import format_oracle_date
 
 load_dotenv()
 
@@ -27,6 +29,21 @@ logger = logging.getLogger("reconciliation_api")
 
 # Global HTTP client
 http_client = None
+
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def get_api_key(api_key: str = Security(api_key_header)):
+    expected_api_key = os.getenv("API_KEY")
+    if not expected_api_key:
+        return api_key
+        
+    if api_key != expected_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API Key",
+        )
+    return api_key
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -100,7 +117,8 @@ async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched
         inv_amount = inv.invoice_amount
         doc_num = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
 
-        search_key = (inv_num, inv_date, inv_amount, doc_num)
+        inv_amount_cents = round(float(inv.invoice_amount) * 100) if inv.invoice_amount is not None else None
+        search_key = (inv_num, inv_date, inv_amount_cents, doc_num)
         if search_key not in unique_searches:
             unique_searches[search_key] = len(tasks)
             tasks.append(check_invoice_with_semaphore(
@@ -117,7 +135,8 @@ async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched
         inv_amount = inv.invoice_amount
         doc_num = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
         
-        search_key = (inv_num, inv_date, inv_amount, doc_num)
+        inv_amount_cents = round(float(inv.invoice_amount) * 100) if inv.invoice_amount is not None else None
+        search_key = (inv_num, inv_date, inv_amount_cents, doc_num)
         final_results.append(unique_results[unique_searches[search_key]])
 
     return final_results
@@ -173,15 +192,17 @@ async def _process_reconciliation(payload: ReconciliationRequest) -> Reconciliat
     return payload
 
 @app.post("/reconcile", response_model=ReconciliationRequest)
-async def reconcile_data(payload: ReconciliationRequest):
+async def reconcile_data(payload: ReconciliationRequest, api_key: str = Depends(get_api_key)):
     """
-    Standard reconciliation logic executing sequential REST API fetcher.
+    Core hybrid endpoint executing BI Publisher bulk match with concurrent REST API fallback.
     """
     try:
         return await _process_reconciliation(payload)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Top-level processing exception: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)) from e
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected system error occurred during reconciliation.")
 
 async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str) -> dict[str, Any]:
     invoice_numbers = set()
@@ -219,12 +240,26 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
         num = str(inv.invoice_number) if inv.invoice_number else ""
         if num and num in invoice_map:
             match = invoice_map[num]
-            inv.fusion_invoice_number = match.get("TransactionNumber") or match.get("InvoiceNumber")
-            inv.fusion_invoice_date = match.get("TransactionDate") or match.get("InvoiceDate")
+            fusion_amount = 0.0
             try:
-                inv.fusion_invoice_amount = float(match.get("EnteredAmount") or match.get("Amount") or 0.0)
+                fusion_amount = float(match.get("EnteredAmount") or match.get("Amount") or 0.0)
             except ValueError:
-                inv.fusion_invoice_amount = 0.0
+                pass
+                
+            amount_matches = safe_float_match(inv.invoice_amount, fusion_amount)
+            formatted_date = format_oracle_date(str(inv.invoice_date)) if inv.invoice_date else ""
+            oracle_date = match.get("TransactionDate") or match.get("InvoiceDate")
+            
+            date_matches = True
+            if formatted_date and oracle_date and formatted_date != oracle_date:
+                date_matches = False
+                
+            if amount_matches and date_matches:
+                inv.fusion_invoice_number = match.get("TransactionNumber") or match.get("InvoiceNumber")
+                inv.fusion_invoice_date = oracle_date
+                inv.fusion_invoice_amount = fusion_amount
+            else:
+                unmatched_invoices.append(inv)
         else:
             unmatched_invoices.append(inv)
     return unmatched_invoices

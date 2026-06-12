@@ -195,18 +195,30 @@ async def fetch_by_query(context: OracleClientContext, query: str, inv_fields: s
     This cuts total HTTP requests in half since TransactionNumber is unique, massively improving Oracle throughput.
     """
     candidates = []
+    last_exception = None
 
-    inv_res = await fetch_oracle_candidates(context, "receivablesInvoices", query, fields=inv_fields)
-    if isinstance(inv_res, list):
-        candidates.extend(inv_res)
+    try:
+        inv_res = await fetch_oracle_candidates(context, "receivablesInvoices", query, fields=inv_fields)
+        if isinstance(inv_res, list):
+            candidates.extend(inv_res)
+    except Exception as e:
+        logger.warning(f"Raw Invoice fetch exception: {e}")
+        last_exception = e
 
     if not candidates:
-        cm_res = await fetch_oracle_candidates(context, "receivablesCreditMemos", query, fields=cm_fields)
-        if isinstance(cm_res, list):
-            for candidate in cm_res:
-                candidate["InvoiceStatus"] = candidate.get("CreditMemoStatus")
-                candidate["InvoiceBalanceAmount"] = candidate.get("TransactionBalanceDue")
-            candidates.extend(cm_res)
+        try:
+            cm_res = await fetch_oracle_candidates(context, "receivablesCreditMemos", query, fields=cm_fields)
+            if isinstance(cm_res, list):
+                for candidate in cm_res:
+                    candidate["InvoiceStatus"] = candidate.get("CreditMemoStatus")
+                    candidate["InvoiceBalanceAmount"] = candidate.get("TransactionBalanceDue")
+                candidates.extend(cm_res)
+        except Exception as e:
+            logger.warning(f"Raw CM fetch exception: {e}")
+            # If both failed, we raise the CM exception or the Inv exception
+            if last_exception:
+                raise Exception(f"Both Invoice and CM fetch failed. Invoice err: {last_exception}, CM err: {e}") from e
+            raise e
 
     return candidates
 
@@ -269,8 +281,7 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
         ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number)),
         ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and candidate.get("TransactionDate") == formatted_date),
         ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and candidate.get("TransactionDate") == formatted_date),
-        ("3",  lambda candidate: bool(invoice_number) and str(invoice_number).lower() in str(candidate.get("TransactionNumber", "")).lower() and candidate.get("TransactionDate") == formatted_date),
-        ("4",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and candidate.get("TransactionDate") == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
+        ("3",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and candidate.get("TransactionDate") == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
     ]
 
     # Phase 1: Search Open Invoices

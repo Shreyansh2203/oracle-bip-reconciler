@@ -32,7 +32,7 @@ class InvoiceItem(BaseModel):
         return v
 
 class MetaDataModel(BaseModel):
-    warnings: list[str] = []
+    warnings: list[str] = Field(default_factory=list)
 
 class ReconciliationRequest(BaseModel):
     customer_name: str | None = None
