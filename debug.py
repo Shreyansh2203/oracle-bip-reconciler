@@ -1,4 +1,8 @@
-import os, httpx, asyncio, urllib.parse
+import asyncio
+import os
+import urllib.parse
+
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()

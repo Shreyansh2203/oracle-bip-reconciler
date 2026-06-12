@@ -1,8 +1,9 @@
+import asyncio
 import logging
 import urllib.parse
-import asyncio
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
 import httpx
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.utils.date_formatter import format_oracle_date
 
@@ -33,12 +34,12 @@ async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=499,
         all_items = []
         offset = 0
         has_more = True
-        
+
         while has_more:
             url = f"{ORACLE_URL}/fscmRestApi/resources/11.13.18.05/{endpoint}?q={q}&limit={limit}&offset={offset}"
             if fields:
                 url += f"&fields={fields}"
-            
+
             response = await client.get(url, auth=(user, pwd))
             if response.status_code == 200:
                 data = response.json()
@@ -52,7 +53,7 @@ async def fetch_oracle_candidates(client, user, pwd, endpoint, query, limit=499,
             else:
                 logger.error(f"Oracle fetch error ({response.status_code}): {response.text}")
                 raise Exception(f"Oracle API Error {response.status_code}: {response.text}")
-                
+
         return all_items
     except (OracleTransientError, httpx.RequestError) as e:
         logger.warning(f"Transient Oracle fetch exception: {e}")
@@ -117,11 +118,11 @@ async def check_receipt_cascading(client, user, pwd, receipt_num, amount, receip
         if receipt_num:
             query = f"ReceiptNumber='{escape_oracle(receipt_num)}'"
             candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
-        
+
         if not candidates and customer_name:
             query = f"CustomerName='{escape_oracle(customer_name)}'"
             candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
-            
+
         if not candidates and amount and formatted_date:
             query = f"Amount={amount} and ReceiptDate='{formatted_date}'"
             candidates = await fetch_oracle_candidates(client, user, pwd, "standardReceipts", query, fields=fields)
@@ -176,9 +177,9 @@ async def fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fie
     """Raw version of fetch_both_inv_and_cm that accepts a full custom query string."""
     inv_task = fetch_oracle_candidates(client, user, pwd, "receivablesInvoices", query, fields=inv_fields)
     cm_task = fetch_oracle_candidates(client, user, pwd, "receivablesCreditMemos", query, fields=cm_fields)
-    
+
     inv_res, cm_res = await asyncio.gather(inv_task, cm_task, return_exceptions=True)
-    
+
     # If both failed, the syntax might be bad, raise so caller knows it failed
     if isinstance(inv_res, Exception) and isinstance(cm_res, Exception):
         logger.error(f"Raw fetch failed completely for query {query}. Errors: {inv_res}, {cm_res}")
@@ -197,7 +198,7 @@ async def fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fie
         candidates.extend(cm_res)
     else:
         logger.warning(f"Raw CM fetch exception: {cm_res}")
-        
+
     return candidates
 
 async def fetch_both_inv_and_cm(client, user, pwd, query_key, raw_value, inv_fields, cm_fields):
@@ -212,11 +213,11 @@ async def prefetch_candidates_in_bulk(client, user, pwd, query_key, values, inv_
     If the bulk fetch fails, returns None to trigger individual fetching fallbacks.
     """
     candidates_dict = {}
-    
-    unique_vals = list(set([str(v).strip() for v in values if v and str(v).strip() != "None"]))
+
+    unique_vals = list({str(v).strip() for v in values if v and str(v).strip() != "None"})
     if not unique_vals:
         return candidates_dict
-        
+
     tasks = []
     for i in range(0, len(unique_vals), chunk_size):
         chunk = unique_vals[i:i+chunk_size]
@@ -224,9 +225,9 @@ async def prefetch_candidates_in_bulk(client, user, pwd, query_key, values, inv_
         val_list = ",".join([f"'{escape_oracle(v)}'" for v in chunk])
         query = f"{query_key} IN ({val_list})"
         tasks.append(fetch_both_inv_and_cm_raw(client, user, pwd, query, inv_fields, cm_fields))
-        
+
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     for res_list in results:
         if isinstance(res_list, Exception):
             logger.error(f"Bulk fetch chunk failed with: {res_list}. Falling back to individual fetching.")
@@ -237,7 +238,7 @@ async def prefetch_candidates_in_bulk(client, user, pwd, query_key, values, inv_
                 if key_val not in candidates_dict:
                     candidates_dict[key_val] = []
                 candidates_dict[key_val].append(c)
-            
+
     return candidates_dict
 
 async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name, cache_inv_num=None, cache_doc_num=None, cache_customer=None, customer_lock=None):
@@ -251,20 +252,20 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
 
     inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
     cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
-    
+
     try:
         if inv_num:
             if cache_inv_num is not None:
                 candidates = cache_inv_num.get(inv_num.lower(), [])
             else:
                 candidates = await fetch_both_inv_and_cm(client, user, pwd, "TransactionNumber", inv_num, inv_fields, cm_fields)
-            
+
         if not candidates and doc_num:
             if cache_doc_num is not None:
                 candidates = cache_doc_num.get(doc_num.lower(), [])
             else:
                 candidates = await fetch_both_inv_and_cm(client, user, pwd, "DocumentNumber", doc_num, inv_fields, cm_fields)
-            
+
         if not candidates and customer_name:
             if cache_customer is not None and customer_lock is not None:
                 # Lazy fetching with lock to prevent N+1 duplicate calls
@@ -274,7 +275,7 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
                         try:
                             cache_customer[c_name_lower] = await fetch_both_inv_and_cm(client, user, pwd, "BillToCustomerName", customer_name, inv_fields, cm_fields)
                         except Exception as e:
-                            # If BillToCustomerName is not queriable (400) or fails, cache the empty failure 
+                            # If BillToCustomerName is not queriable (400) or fails, cache the empty failure
                             # so 500 subsequent invoices don't sequentially retry and cause a 120s timeout!
                             logger.error(f"Customer fallback query failed: {str(e)}")
                             cache_customer[c_name_lower] = []
@@ -285,7 +286,7 @@ async def check_invoice_cascading(client, user, pwd, inv_num, inv_date, amount, 
                 except Exception as e:
                     logger.error(f"Customer fallback query failed: {str(e)}")
                     candidates = []
-            
+
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 
