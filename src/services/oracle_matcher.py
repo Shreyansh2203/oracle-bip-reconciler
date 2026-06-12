@@ -2,14 +2,15 @@ import asyncio
 import logging
 import os
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from src.utils.date_formatter import format_oracle_date
 from src.config import get_oracle_url
+from src.utils.date_formatter import format_oracle_date
 
 logger = logging.getLogger(__name__)
 
