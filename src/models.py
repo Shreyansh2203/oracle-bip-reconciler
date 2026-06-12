@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class InvoiceItem(BaseModel):
@@ -12,6 +12,16 @@ class InvoiceItem(BaseModel):
     description: str | None = None
     customer_invoice_number: str | int | None = None
     store_no: str | int | None = Field(None, alias="storeNo")
+
+    @field_validator("invoice_number", "invoice_date", "customer_invoice_number", mode="before")
+    @classmethod
+    def sanitize_strings(cls, v: str | int | None) -> str | int | None:
+        if v is None:
+            return ""
+        stripped = str(v).strip()
+        if stripped.lower() == "none":
+            return ""
+        return stripped
 
 class MetaDataModel(BaseModel):
     warnings: list[str] = []
@@ -30,3 +40,14 @@ class ReconciliationRequest(BaseModel):
     confidence_label: str | None = None
     invoice_count: int | None = None
     meta_data: MetaDataModel | None = None
+
+    @field_validator("customer_name", "payment_reference", "payment_date", mode="before")
+    @classmethod
+    def sanitize_strings(cls, v: str | int | None) -> str | int | None:
+        if v is None:
+            return ""
+        stripped = str(v).strip()
+        if stripped.lower() == "none":
+            return ""
+        return stripped
+

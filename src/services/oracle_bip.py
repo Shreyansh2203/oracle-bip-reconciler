@@ -10,6 +10,8 @@ import httpx
 logger = logging.getLogger(__name__)
 
 ORACLE_URL = os.getenv("ORACLE_URL", "https://fa-epxp-test-saasfaprod1.fa.ocs.oraclecloud.com")
+BIP_TIMEOUT = 60.0
+CHUNK_DOWNLOAD_SIZE = -1
 
 async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, invoice_numbers: list[str]) -> dict[str, Any]:
     """
@@ -19,15 +21,13 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
     report_path = "Custom/Finacials/Receivable Transactions/Invoice Details Report.xdo"
     url = f"{ORACLE_URL}/xmlpserver/services/rest/v1/reports/{report_path.replace('/', '%2F')}/run"
 
-    # We pass the invoice numbers as a comma-separated string if the report accepts a parameter.
-    # We'll use a generic parameter name "P_INVOICE_LIST". If the report ignores it, it returns all data.
     invoices_str = ",".join(invoice_numbers)
 
     payload = {
         "byPassCache": True,
         "flattenXML": False,
         "attributeFormat": "csv",
-        "sizeOfDataChunkDownload": -1,
+        "sizeOfDataChunkDownload": CHUNK_DOWNLOAD_SIZE,
         "ReportRequest": {
             "parameterNameValues": {
                 "listOfParamNameValues": [
@@ -43,7 +43,7 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
     logger.info(f"Triggering bulk BIP fetch for {len(invoice_numbers)} invoices...")
 
     try:
-        response = await client.post(url, json=payload, auth=(user, pwd), timeout=60.0)
+        response = await client.post(url, json=payload, auth=(user, pwd), timeout=BIP_TIMEOUT)
         response.raise_for_status()
         data = response.json()
 
@@ -54,15 +54,12 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
         report_bytes = base64.b64decode(data["reportBytes"])
         csv_text = report_bytes.decode("utf-8", errors="replace")
 
-        # Parse CSV into a dictionary keyed by Invoice Number
         invoice_map = {}
         reader = csv.DictReader(io.StringIO(csv_text))
 
         for row in reader:
-            # Normalize row keys by stripping spaces
             clean_row = {k.strip().replace(" ", ""): v.strip() for k, v in row.items() if k}
 
-            # Use TransactionNumber or InvoiceNumber as key
             trx_num = clean_row.get("TransactionNumber") or clean_row.get("InvoiceNumber")
             if trx_num:
                 invoice_map[trx_num] = clean_row
