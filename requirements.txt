@@ -3,6 +3,3 @@ httpx==0.28.1
 pydantic==2.13.4
 uvicorn==0.29.0
 tenacity==8.5.0
-pytest==8.2.2
-pytest-asyncio==0.23.7
-respx==0.21.1
