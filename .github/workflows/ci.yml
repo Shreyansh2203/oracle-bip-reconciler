@@ -19,17 +19,17 @@ jobs:
         python-version: "3.12"
         
     - name: Install uv
-      run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      uses: astral-sh/setup-uv@v5
       
     - name: Install dependencies
       run: |
-        $HOME/.cargo/bin/uv pip install --system -r requirements.txt
-        $HOME/.cargo/bin/uv pip install --system pytest pytest-asyncio httpx ruff
+        uv pip install --system -r requirements.txt
+        uv pip install --system pytest pytest-asyncio httpx ruff
         
     - name: Lint with Ruff
       run: |
-        $HOME/.cargo/bin/ruff check .
+        ruff check .
         
     - name: Run Tests
       run: |
-        $HOME/.cargo/bin/uv run pytest
+        pytest
