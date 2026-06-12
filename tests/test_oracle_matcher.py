@@ -16,6 +16,16 @@ def test_is_invoice_open():
     assert is_invoice_open({"InvoiceBalanceAmount": 10.0}) is True
     assert is_invoice_open({"InvoiceBalanceAmount": 0.0}) is False
 
+from src.services.oracle_matcher import safe_str_match
+
+def test_safe_str_match():
+    assert safe_str_match("INV-123", "inv-123") is True
+    assert safe_str_match("0", "0") is True
+    assert safe_str_match("0", 0) is True
+    assert safe_str_match("", "INV-123") is False
+    assert safe_str_match(None, "INV-123") is False
+
+
 @pytest.mark.asyncio
 async def test_check_invoice_cascading_success(mock_httpx_client):
     mock_response = {

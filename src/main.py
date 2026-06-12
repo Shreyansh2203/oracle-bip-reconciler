@@ -91,19 +91,36 @@ async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched
         async with sem:
             return await check_invoice_cascading(*args, **kwargs)
 
+    unique_searches = {}
     tasks = []
+
     for inv in unmatched_invoices:
         inv_num = str(inv.invoice_number) if inv.invoice_number else ""
         inv_date = str(inv.invoice_date) if inv.invoice_date else ""
         inv_amount = inv.invoice_amount
         doc_num = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
 
-        tasks.append(check_invoice_with_semaphore(
-            http_client, x_oracle_user, x_oracle_pass, inv_num, inv_date, inv_amount, doc_num, customer_name,
-            cache_customer=shared_customer_cache, customer_lock=customer_lock
-        ))
+        search_key = (inv_num, inv_date, inv_amount, doc_num)
+        if search_key not in unique_searches:
+            unique_searches[search_key] = len(tasks)
+            tasks.append(check_invoice_with_semaphore(
+                http_client, x_oracle_user, x_oracle_pass, inv_num, inv_date, inv_amount, doc_num, customer_name,
+                cache_customer=shared_customer_cache, customer_lock=customer_lock
+            ))
 
-    return await asyncio.gather(*tasks, return_exceptions=True)
+    unique_results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    final_results = []
+    for inv in unmatched_invoices:
+        inv_num = str(inv.invoice_number) if inv.invoice_number else ""
+        inv_date = str(inv.invoice_date) if inv.invoice_date else ""
+        inv_amount = inv.invoice_amount
+        doc_num = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
+        
+        search_key = (inv_num, inv_date, inv_amount, doc_num)
+        final_results.append(unique_results[unique_searches[search_key]])
+
+    return final_results
 
 def _map_invoice_results(payload: ReconciliationRequest, unmatched_invoices: list[Any], invoice_results: list[Any]) -> None:
     for idx, inv in enumerate(unmatched_invoices):
