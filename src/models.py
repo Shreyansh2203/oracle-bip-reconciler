@@ -1,3 +1,4 @@
+import math
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -28,8 +29,18 @@ class InvoiceItem(BaseModel):
     @field_validator("invoice_amount", "fusion_invoice_amount", mode="before")
     @classmethod
     def sanitize_floats(cls, v: Any) -> Any:
-        if isinstance(v, str) and v.strip().lower() == "none":
-            return None
+        if isinstance(v, str):
+            v_clean = v.strip().replace(",", "")
+            if v_clean.lower() == "none":
+                return None
+            v = v_clean
+        if v is not None:
+            try:
+                f_val = float(v)
+                if not math.isfinite(f_val):
+                    raise ValueError("Float value must be a finite number.")
+            except (ValueError, TypeError):
+                raise ValueError("Float value must be a finite number.")
         return v
 
 class MetaDataModel(BaseModel):
@@ -63,7 +74,17 @@ class ReconciliationRequest(BaseModel):
     @field_validator("total_amount", "confidence_score", mode="before")
     @classmethod
     def sanitize_floats(cls, v: Any) -> Any:
-        if isinstance(v, str) and v.strip().lower() == "none":
-            return None
+        if isinstance(v, str):
+            v_clean = v.strip().replace(",", "")
+            if v_clean.lower() == "none":
+                return None
+            v = v_clean
+        if v is not None:
+            try:
+                f_val = float(v)
+                if not math.isfinite(f_val):
+                    raise ValueError("Float value must be a finite number.")
+            except (ValueError, TypeError):
+                raise ValueError("Float value must be a finite number.")
         return v
 

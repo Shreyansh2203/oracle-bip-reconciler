@@ -20,7 +20,7 @@ MAX_WAIT_SECONDS = 10
 @retry(
     stop=stop_after_attempt(MAX_RETRIES),
     wait=wait_exponential(multiplier=1, min=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS),
-    retry=retry_if_exception_type(httpx.RequestError),
+    retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
     reraise=True
 )
 async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, invoice_numbers: list[str]) -> dict[str, Any]:
@@ -72,11 +72,20 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
 
             trx_num = clean_row.get("TRANSACTION_NUMBER") or clean_row.get("INVOICE_NUMBER") or clean_row.get("TRANSACTIONNUMBER")
             if trx_num:
-                invoice_map[trx_num] = clean_row
+                if trx_num not in invoice_map:
+                    invoice_map[trx_num] = []
+                invoice_map[trx_num].append(clean_row)
 
         logger.info(f"Successfully loaded {len(invoice_map)} invoices from BIP cache.")
         return invoice_map
 
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code in [429, 500, 502, 503, 504]:
+            logger.warning(f"Transient BIP HTTP error ({e.response.status_code}): {e}. Retrying...")
+            raise e
+        else:
+            logger.error(f"Permanent BIP HTTP error ({e.response.status_code}): {e}")
+            return {}
     except httpx.RequestError as e:
         logger.warning(f"Transient BIP fetch error: {e}")
         raise e
