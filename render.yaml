@@ -13,4 +13,5 @@ services:
         sync: false
       - key: API_KEY
         sync: false
-
+      - key: ORACLE_URL
+        sync: false

@@ -35,12 +35,6 @@ def escape_oracle(val: Any) -> str:
         return ""
     return str(val).replace("'", "''")
 
-@retry(
-    stop=stop_after_attempt(MAX_RETRIES),
-    wait=wait_exponential(multiplier=1, min=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS),
-    retry=retry_if_exception_type((OracleTransientError, httpx.RequestError)),
-    reraise=True
-)
 async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, query: str, limit: int | None = None, fields: str = "") -> list[dict[str, Any]]:
     """
     Fetch candidates from Oracle using indexable fields, with pagination to fix truncation.
@@ -54,24 +48,33 @@ async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, q
         offset = 0
         has_more = True
 
-        while has_more:
-            url = f"{get_oracle_url()}/fscmRestApi/resources/11.13.18.05/{endpoint}?q={q}&limit={limit}&offset={offset}"
+        @retry(
+            stop=stop_after_attempt(MAX_RETRIES),
+            wait=wait_exponential(multiplier=1, min=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS),
+            retry=retry_if_exception_type((OracleTransientError, httpx.RequestError)),
+            reraise=True
+        )
+        async def _fetch_page(current_offset: int) -> dict[str, Any]:
+            page_url = f"{get_oracle_url()}/fscmRestApi/resources/11.13.18.05/{endpoint}?q={q}&limit={limit}&offset={current_offset}"
             if fields:
-                url += f"&fields={fields}"
-
-            response = await context.client.get(url, auth=(context.user, context.password))
+                page_url += f"&fields={fields}"
+            
+            response = await context.client.get(page_url, auth=(context.user, context.password))
             if response.status_code == 200:
-                data = response.json()
-                items = data.get("items", [])
-                all_items.extend(items)
-                has_more = data.get("hasMore", False)
-                offset += limit
+                return response.json()
             elif response.status_code in [429, 500, 502, 503, 504]:
                 logger.warning(f"Transient Oracle fetch error ({response.status_code}): {response.text}. Retrying...")
                 raise OracleTransientError(f"Transient Oracle API Error {response.status_code}: {response.text}")
             else:
                 logger.error(f"Oracle fetch error ({response.status_code}): {response.text}")
                 raise Exception(f"Oracle API Error {response.status_code}: {response.text}")
+
+        while has_more:
+            data = await _fetch_page(offset)
+            items = data.get("items", [])
+            all_items.extend(items)
+            has_more = data.get("hasMore", False)
+            offset += limit
 
         return all_items
     except (OracleTransientError, httpx.RequestError) as e:
@@ -135,15 +138,26 @@ async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password
     try:
         if receipt_num:
             query = f"ReceiptNumber='{escape_oracle(receipt_num)}'"
-            candidates = await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields)
+            candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
 
-        if not candidates and customer_name:
+        if customer_name:
             query = f"CustomerName='{escape_oracle(customer_name)}'"
-            candidates = await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields)
+            candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
 
-        if not candidates and amount is not None and formatted_date:
+        if amount is not None and formatted_date:
             query = f"Amount={float(amount):.2f} and ReceiptDate='{formatted_date}'"
-            candidates = await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields)
+            candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
+            
+        # Deduplicate candidates by ReceiptNumber
+        seen = set()
+        unique_candidates = []
+        for c in candidates:
+            rn = c.get("ReceiptNumber")
+            if rn not in seen:
+                seen.add(rn)
+                unique_candidates.append(c)
+        candidates = unique_candidates
+        
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 
@@ -242,12 +256,12 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
 
     try:
         if invoice_number:
-            candidates = await fetch_by_field(context, "TransactionNumber", invoice_number, inv_fields, cm_fields)
+            candidates.extend(await fetch_by_field(context, "TransactionNumber", invoice_number, inv_fields, cm_fields))
 
-        if not candidates and document_number:
-            candidates = await fetch_by_field(context, "DocumentNumber", document_number, inv_fields, cm_fields)
+        if document_number:
+            candidates.extend(await fetch_by_field(context, "DocumentNumber", document_number, inv_fields, cm_fields))
 
-        if not candidates and customer_name:
+        if customer_name:
             if cache_customer is not None and customer_lock is not None:
                 # Lazy fetching with lock to prevent N+1 duplicate calls
                 c_name_lower = customer_name.lower()
@@ -258,17 +272,24 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
                                 result = await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields)
                                 cache_customer[c_name_lower] = result
                             except Exception as e:
-                                # If BillToCustomerName is not queriable (400) or fails, cache the empty failure
-                                # so 500 subsequent invoices don't sequentially retry and cause a 120s timeout!
                                 logger.error(f"Customer fallback query failed: {str(e)}")
                                 cache_customer[c_name_lower] = []
-                candidates = cache_customer[c_name_lower]
+                candidates.extend(cache_customer[c_name_lower])
             else:
                 try:
-                    candidates = await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                    candidates.extend(await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields))
                 except Exception as e:
                     logger.error(f"Customer fallback query failed: {str(e)}")
-                    candidates = []
+                    
+        # Deduplicate candidates by TransactionNumber
+        seen = set()
+        unique_candidates = []
+        for c in candidates:
+            tn = c.get("TransactionNumber")
+            if tn not in seen:
+                seen.add(tn)
+                unique_candidates.append(c)
+        candidates = unique_candidates
 
     except Exception as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
