@@ -22,3 +22,6 @@ def test_format_oracle_date_invalid():
 
 def test_format_oracle_date_whitespace():
     assert format_oracle_date("  2026-05-10  ") == "2026-05-10"
+
+def test_format_oracle_date_timezone():
+    assert format_oracle_date("2026-05-10T12:30:00+05:30") == "2026-05-10"

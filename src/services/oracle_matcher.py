@@ -69,12 +69,18 @@ async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, q
                 logger.error(f"Oracle fetch error ({response.status_code}): {response.text}")
                 raise Exception(f"Oracle API Error {response.status_code}: {response.text}")
 
-        while has_more:
+        pages = 0
+        MAX_PAGES = 10
+        while has_more and pages < MAX_PAGES:
             data = await _fetch_page(offset)
             items = data.get("items", [])
             all_items.extend(items)
             has_more = data.get("hasMore", False)
             offset += limit
+            pages += 1
+            
+        if has_more:
+            logger.warning(f"Pagination capped at {MAX_PAGES} pages. Some candidates may be truncated.")
 
         return all_items
     except (OracleTransientError, httpx.RequestError) as e:
