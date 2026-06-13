@@ -68,7 +68,7 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
         reader = csv.DictReader(io.StringIO(csv_text))
 
         for row in reader:
-            clean_row = {k.strip().upper().replace(" ", ""): v.strip() for k, v in row.items() if k}
+            clean_row = {k.strip().upper().replace(" ", ""): (v or "").strip() for k, v in row.items() if k}
 
             trx_num = clean_row.get("TRANSACTION_NUMBER") or clean_row.get("INVOICE_NUMBER") or clean_row.get("TRANSACTIONNUMBER")
             if trx_num:
@@ -77,6 +77,9 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
         logger.info(f"Successfully loaded {len(invoice_map)} invoices from BIP cache.")
         return invoice_map
 
+    except httpx.RequestError as e:
+        logger.warning(f"Transient BIP fetch error: {e}")
+        raise e
     except Exception as e:
         logger.error(f"Failed to execute BIP report: {e}")
         return {}
