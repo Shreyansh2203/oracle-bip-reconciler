@@ -25,8 +25,8 @@ async def test_run_bip_bulk_match_success(mock_httpx_client):
         result = await run_bip_bulk_match(mock_httpx_client, "user", "pass", invoice_numbers)
 
         assert len(result) == 2
-        assert result["INV-001"]["AMOUNT"] == "100.0"
-        assert result["INV-002"]["AMOUNT"] == "200.0"
+        assert result["INV-001"][0]["AMOUNT"] == "100.0"
+        assert result["INV-002"][0]["AMOUNT"] == "200.0"
 
 @pytest.mark.asyncio
 async def test_run_bip_bulk_match_missing_bytes(mock_httpx_client):

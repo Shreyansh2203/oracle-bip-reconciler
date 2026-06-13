@@ -1,5 +1,6 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
 
 
 def format_oracle_date(date_str: str) -> str:
@@ -14,7 +15,8 @@ def format_oracle_date(date_str: str) -> str:
     
     # Try ISO format first (handles Timezones natively in 3.11+)
     try:
-        return datetime.fromisoformat(date_str).strftime("%Y-%m-%d")
+        dt = datetime.fromisoformat(date_str)
+        return dt.strftime("%Y-%m-%d")
     except ValueError:
         pass
 
@@ -23,7 +25,7 @@ def format_oracle_date(date_str: str) -> str:
     date_str = re.sub(r'\+00:00$', 'Z', date_str)
 
     formats = [
-        "%Y-%m-%d", "%m-%d-%Y", "%d-%m-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
+        "%Y-%m-%d", "%m-%d-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
         "%Y-%m-%dT%H:%M:%SZ"
     ]
 
@@ -36,3 +38,13 @@ def format_oracle_date(date_str: str) -> str:
 
     # If all parsing fails, return "" to let Oracle/fallback logic safely bypass it without false-positives.
     return ""
+
+
+
+def safe_date_match(date1: Any, date2: Any) -> bool:
+    if not date1 or not date2:
+        return False
+    d1 = format_oracle_date(str(date1))
+    d2 = format_oracle_date(str(date2))
+    return bool(d1) and bool(d2) and d1 == d2
+

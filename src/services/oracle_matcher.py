@@ -9,8 +9,9 @@ from typing import Any
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from decimal import Decimal, InvalidOperation
 from src.config import get_oracle_url
-from src.utils.date_formatter import format_oracle_date
+from src.utils.date_formatter import format_oracle_date, safe_date_match
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class OracleClientContext:
     client: httpx.AsyncClient
     user: str
     password: str
+    sem: asyncio.Semaphore | None = None
 
 class OracleTransientError(Exception):
     pass
@@ -59,7 +61,11 @@ async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, q
             if fields:
                 page_url += f"&fields={fields}"
             
-            response = await context.client.get(page_url, auth=(context.user, context.password))
+            if context.sem:
+                async with context.sem:
+                    response = await context.client.get(page_url, auth=(context.user, context.password), timeout=15.0)
+            else:
+                response = await context.client.get(page_url, auth=(context.user, context.password), timeout=15.0)
             if response.status_code == 200:
                 return response.json()
             elif response.status_code in [429, 500, 502, 503, 504]:
@@ -70,7 +76,7 @@ async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, q
                 raise Exception(f"Oracle API Error {response.status_code}: {response.text}")
 
         pages = 0
-        MAX_PAGES = 10
+        MAX_PAGES = int(os.getenv("ORACLE_MAX_PAGES", "100"))
         while has_more and pages < MAX_PAGES:
             data = await _fetch_page(offset)
             items = data.get("items", [])
@@ -90,12 +96,21 @@ async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, q
         logger.error(f"Permanent Oracle fetch exception: {e}")
         raise e
 
-def safe_float_match(expected_amount: float | str | None, actual_amount: float | str | None) -> bool:
+def safe_float_match(expected_amount: Any, actual_amount: Any) -> bool:
+    if expected_amount is None or actual_amount is None:
+        return False
     try:
-        if expected_amount is None or actual_amount is None:
+        exp_str = str(expected_amount).strip().replace(",", "")
+        act_str = str(actual_amount).strip().replace(",", "")
+        if not exp_str or not act_str or exp_str.lower() == "none" or act_str.lower() == "none":
             return False
-        return round(float(expected_amount) * CENTS_MULTIPLIER) == round(float(actual_amount) * CENTS_MULTIPLIER)
-    except (ValueError, TypeError):
+        f_exp = float(exp_str)
+        f_act = float(act_str)
+        import math
+        if not math.isfinite(f_exp) or not math.isfinite(f_act):
+            return False
+        return Decimal(f"{f_exp:.6f}") == Decimal(f"{f_act:.6f}")
+    except (ValueError, TypeError, InvalidOperation):
         return False
 
 def safe_str_match(val1: Any, val2: Any) -> bool:
@@ -132,11 +147,11 @@ def apply_rules_to_candidates(candidates: list[dict[str, Any]], rules: list[tupl
             logger.debug(f"Rule {rule_name}: {len(matches)} candidates, continuing to next rule.")
     return None, None
 
-async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password: str, receipt_num: str, amount: float | None, receipt_date: str, customer_name: str) -> dict[str, Any]:
+async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password: str, receipt_num: str, amount: float | None, receipt_date: str, customer_name: str, sem: asyncio.Semaphore | None = None) -> dict[str, Any]:
     """
     Receipt Cascading matching: Two-Phase Search (Unapplied first, then Applied).
     """
-    context = OracleClientContext(client, user, password)
+    context = OracleClientContext(client, user, password, sem=sem)
     formatted_date = format_oracle_date(receipt_date)
     candidates = []
 
@@ -173,15 +188,15 @@ async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password
     # 2. Local Filtering Rules
     if receipt_num:
         rules = [
-            ("A1", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount) and format_oracle_date(str(candidate.get("ReceiptDate"))) == formatted_date and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
+            ("A1", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount) and safe_date_match(candidate.get("ReceiptDate"), receipt_date) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
             ("A2", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
             ("A3", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
-            ("A4", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount) and bool(formatted_date) and format_oracle_date(str(candidate.get("ReceiptDate"))) == formatted_date),
+            ("A4", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount) and safe_date_match(candidate.get("ReceiptDate"), receipt_date)),
         ]
     else:
         rules = [
-            ("B1", lambda candidate: safe_float_match(candidate.get("Amount"), amount) and bool(formatted_date) and format_oracle_date(str(candidate.get("ReceiptDate"))) == formatted_date and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
-            ("B2", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount) and bool(formatted_date) and format_oracle_date(str(candidate.get("ReceiptDate"))) == formatted_date),
+            ("B1", lambda candidate: safe_float_match(candidate.get("Amount"), amount) and safe_date_match(candidate.get("ReceiptDate"), receipt_date) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
+            ("B2", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount) and safe_date_match(candidate.get("ReceiptDate"), receipt_date)),
         ]
 
     # Phase 1: Search Unapplied Receipts
@@ -209,10 +224,9 @@ async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password
 
     return {"matched_in_oracle": False, "error": "No single match found after two-phase cascading rules."}
 
-async def fetch_by_query(context: OracleClientContext, query: str, inv_fields: str, cm_fields: str) -> list[dict[str, Any]]:
+async def fetch_by_query(context: OracleClientContext, query: str, inv_fields: str, cm_fields: str, force_both: bool = False) -> list[dict[str, Any]]:
     """
-    Sequentially fetches invoices, then credit memos (if no invoices found).
-    This cuts total HTTP requests in half since TransactionNumber is unique, massively improving Oracle throughput.
+    Sequentially fetches invoices, then credit memos (if force_both is True or no invoices found).
     """
     candidates = []
     last_exception = None
@@ -225,7 +239,7 @@ async def fetch_by_query(context: OracleClientContext, query: str, inv_fields: s
         logger.warning(f"Raw Invoice fetch exception: {e}")
         last_exception = e
 
-    if not candidates:
+    if force_both or not candidates:
         try:
             cm_res = await fetch_oracle_candidates(context, "receivablesCreditMemos", query, fields=cm_fields)
             if isinstance(cm_res, list):
@@ -235,25 +249,27 @@ async def fetch_by_query(context: OracleClientContext, query: str, inv_fields: s
                 candidates.extend(cm_res)
         except Exception as e:
             logger.warning(f"Raw CM fetch exception: {e}")
-            # If both failed, we raise the CM exception or the Inv exception
             if last_exception:
                 raise Exception(f"Both Invoice and CM fetch failed. Invoice err: {last_exception}, CM err: {e}") from e
             raise e
 
+    if last_exception is not None:
+        raise last_exception
+
     return candidates
 
-async def fetch_by_field(context: OracleClientContext, query_key: str, raw_value: str, inv_fields: str, cm_fields: str) -> list[dict[str, Any]]:
+async def fetch_by_field(context: OracleClientContext, query_key: str, raw_value: str, inv_fields: str, cm_fields: str, is_unique: bool = True) -> list[dict[str, Any]]:
     """Concurrent fetch for Invoices and Credit Memos to prevent N+1 fallback."""
     query = f"{query_key}='{escape_oracle(raw_value)}'"
-    return await fetch_by_query(context, query, inv_fields, cm_fields)
+    return await fetch_by_query(context, query, inv_fields, cm_fields, force_both=not is_unique)
 
-async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password: str, invoice_number: str, inv_date: str, amount: float | None, document_number: str, customer_name: str, cache_customer: dict[str, list[dict[str, Any]]] | None = None, customer_lock: asyncio.Lock | None = None) -> dict[str, Any]:
+async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password: str, invoice_number: str, inv_date: str, amount: float | None, document_number: str, customer_name: str, cache_customer: dict[str, list[dict[str, Any]]] | None = None, customer_lock: asyncio.Lock | None = None, sem: asyncio.Semaphore | None = None) -> dict[str, Any]:
     """
     Invoice Cascading matching: Two-Phase Search (Open first, then Closed).
     Uses pre-fetched dictionaries (cache_inv_num, cache_doc_num) if available to avoid HTTP calls.
     Lazily fetches and caches customer_name fallbacks using customer_lock to prevent N+1 duplicate calls.
     """
-    context = OracleClientContext(client, user, password)
+    context = OracleClientContext(client, user, password, sem=sem)
     formatted_date = format_oracle_date(inv_date)
     candidates = []
 
@@ -278,7 +294,7 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
                     async with customer_lock:
                         if c_name_lower not in cache_customer:
                             try:
-                                result = await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields)
+                                result = await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields, is_unique=False)
                                 cache_customer[c_name_lower] = result
                             except Exception as e:
                                 logger.error(f"Customer fallback query failed: {str(e)}")
@@ -286,7 +302,7 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
                 candidates.extend(cache_customer[c_name_lower])
             else:
                 try:
-                    candidates.extend(await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields))
+                    candidates.extend(await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields, is_unique=False))
                 except Exception as e:
                     logger.error(f"Customer fallback query failed: {str(e)}")
                     
@@ -308,11 +324,11 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
 
     # 2. Local Filtering Rules
     rules = [
+        ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
         ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_float_match(candidate.get("EnteredAmount"), amount)),
-        ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and format_oracle_date(str(candidate.get("TransactionDate"))) == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
-        ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and format_oracle_date(str(candidate.get("TransactionDate"))) == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
-        ("3",  lambda candidate: bool(invoice_number) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(invoice_number).lower()) and format_oracle_date(str(candidate.get("TransactionDate"))) == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
-        ("4",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and format_oracle_date(str(candidate.get("TransactionDate"))) == formatted_date and safe_float_match(candidate.get("EnteredAmount"), amount)),
+        ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+        ("3",  lambda candidate: bool(invoice_number) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(invoice_number).lower()) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+        ("4",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
     ]
 
     # Phase 1: Search Open Invoices

@@ -2,21 +2,29 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi import Depends, FastAPI, HTTPException, Security, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 
 from src.config import get_oracle_url
 from src.models import MetaDataModel, ReconciliationRequest
 from src.services.oracle_bip import run_bip_bulk_match
-from src.services.oracle_matcher import check_invoice_cascading, check_receipt_cascading, safe_float_match
-from src.utils.date_formatter import format_oracle_date
+from src.services.oracle_matcher import (
+    check_invoice_cascading,
+    check_receipt_cascading,
+    safe_float_match,
+    safe_str_match,
+    is_invoice_open,
+    apply_rules_to_candidates,
+)
+from src.utils.date_formatter import format_oracle_date, safe_date_match
 
 # Constants
 DEFAULT_TIMEOUT = 15.0
@@ -42,7 +50,7 @@ async def get_api_key(api_key: str = Security(api_key_header)):
             detail="Server configuration error: API Key not configured.",
         )
 
-    if api_key != expected_api_key:
+    if not api_key or not secrets.compare_digest(api_key, expected_api_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API Key",
@@ -94,7 +102,7 @@ async def readiness_check() -> dict[str, str]:
         raise HTTPException(status_code=503, detail="Oracle credentials or URL not configured")
     return {"status": "ready"}
 
-async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str) -> None:
+async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str, sem: asyncio.Semaphore | None = None) -> None:
     receipt_num = str(payload.payment_reference) if payload.payment_reference else ""
     receipt_amount = payload.total_amount
     receipt_date = str(payload.payment_date) if payload.payment_date else ""
@@ -102,7 +110,7 @@ async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str
 
     logger.info("Fetching Receipt data...")
     receipt_result = await check_receipt_cascading(
-        http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name
+        http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name, sem=sem
     )
 
     if receipt_result.get("matched_in_oracle"):
@@ -116,14 +124,14 @@ async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str
             payload.meta_data = MetaDataModel()
         payload.meta_data.warnings.append(f"Receipt match failed: {clean_error}")
 
-async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched_invoices: list[Any], x_oracle_user: str, x_oracle_pass: str, customer_name: str) -> list[Any]:
-    sem = app.state.oracle_sem
+async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched_invoices: list[Any], x_oracle_user: str, x_oracle_pass: str, customer_name: str, sem: asyncio.Semaphore | None = None) -> list[Any]:
+    if sem is None:
+        sem = app.state.oracle_sem
     shared_customer_cache = {}
     customer_lock = asyncio.Lock()
 
     async def check_invoice_with_semaphore(*args, **kwargs):
-        async with sem:
-            return await check_invoice_cascading(*args, **kwargs)
+        return await check_invoice_cascading(*args, **kwargs, sem=sem)
 
     unique_searches = {}
     tasks = []
@@ -174,7 +182,9 @@ def _map_invoice_results(payload: ReconciliationRequest, unmatched_invoices: lis
                 payload.meta_data = MetaDataModel()
             payload.meta_data.warnings.append(f"Invoice {inv.invoice_number} match failed: {inv_res.get('error')}")
 
-async def _process_reconciliation(payload: ReconciliationRequest, request_id: str) -> ReconciliationRequest:
+async def _process_reconciliation(payload: ReconciliationRequest, request_id: str, sem: asyncio.Semaphore | None = None) -> ReconciliationRequest:
+    if sem is None:
+        sem = app.state.oracle_sem
     """
     Core logic for executing the reconciliation matching.
     """
@@ -191,7 +201,7 @@ async def _process_reconciliation(payload: ReconciliationRequest, request_id: st
 
     start_time = time.time()
 
-    await _fetch_receipt_data(payload, x_oracle_user, x_oracle_pass)
+    await _fetch_receipt_data(payload, x_oracle_user, x_oracle_pass, sem)
 
     invoice_map = await _build_bip_invoice_map(payload, x_oracle_user, x_oracle_pass)
     unmatched_invoices = _map_bip_invoices(payload, invoice_map)
@@ -200,7 +210,7 @@ async def _process_reconciliation(payload: ReconciliationRequest, request_id: st
     if unmatched_invoices:
         logger.info(f"BIP matched {len(payload.invoices) - len(unmatched_invoices)} invoices. Falling back to REST for {len(unmatched_invoices)} unmatched invoices.")
         customer_name = str(payload.customer_name) if payload.customer_name else ""
-        invoice_results = await _fetch_invoices_concurrently(payload, unmatched_invoices, x_oracle_user, x_oracle_pass, customer_name)
+        invoice_results = await _fetch_invoices_concurrently(payload, unmatched_invoices, x_oracle_user, x_oracle_pass, customer_name, sem)
         _map_invoice_results(payload, unmatched_invoices, invoice_results)
 
     execution_time = round(time.time() - start_time, 2)
@@ -221,13 +231,14 @@ async def _process_reconciliation(payload: ReconciliationRequest, request_id: st
     return payload
 
 @app.post("/v1/reconcile", response_model=ReconciliationRequest)
-async def reconcile_data_v1(payload: ReconciliationRequest, api_key: str = Depends(get_api_key)):
+async def reconcile_data_v1(request: Request, payload: ReconciliationRequest, api_key: str = Depends(get_api_key)):
     """
     Core hybrid endpoint executing BI Publisher bulk match with concurrent REST API fallback.
     """
     request_id = str(uuid.uuid4())
+    sem = request.app.state.oracle_sem
     try:
-        return await _process_reconciliation(payload, request_id)
+        return await _process_reconciliation(payload, request_id, sem)
     except HTTPException:
         raise
     except Exception as e:
@@ -257,41 +268,89 @@ async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: 
     final_map = {}
     for res in results:
         if isinstance(res, dict):
-            final_map.update(res)
+            for k, v_list in res.items():
+                if k not in final_map:
+                    final_map[k] = []
+                if isinstance(v_list, list):
+                    final_map[k].extend(v_list)
+                else:
+                    final_map[k].append(v_list)
         else:
             logger.error(f"BIP chunk fetch failed: {res}")
 
     return final_map
 
+def normalize_invoice_candidate(raw: dict[str, Any]) -> dict[str, Any]:
+    normalized = {}
+    def get_any(keys: list[str]) -> Any:
+        for k in keys:
+            if k in raw:
+                return raw[k]
+            if k.upper() in raw:
+                return raw[k.upper()]
+            if k.lower() in raw:
+                return raw[k.lower()]
+            k_clean = k.upper().replace("_", "").replace(" ", "")
+            if k_clean in raw:
+                return raw[k_clean]
+        return None
+    normalized["TransactionNumber"] = get_any(["TransactionNumber", "TRANSACTION_NUMBER", "InvoiceNumber", "INVOICE_NUMBER"])
+    normalized["TransactionDate"] = get_any(["TransactionDate", "TRANSACTION_DATE", "InvoiceDate", "INVOICE_DATE"])
+    normalized["EnteredAmount"] = get_any(["EnteredAmount", "ENTERED_AMOUNT", "TotalAmounts", "TOTAL_AMOUNTS", "Amount", "AMOUNT"])
+    normalized["InvoiceStatus"] = get_any(["InvoiceStatus", "INVOICE_STATUS", "CreditMemoStatus", "CREDIT_MEMO_STATUS", "Status", "STATUS"])
+    normalized["InvoiceBalanceAmount"] = get_any(["InvoiceBalanceAmount", "INVOICE_BALANCE_AMOUNT", "TransactionBalanceDue", "TRANSACTION_BALANCE_DUE", "Balance", "BALANCE"])
+    normalized["DocumentNumber"] = get_any(["DocumentNumber", "DOCUMENT_NUMBER"])
+    normalized["BillToCustomerName"] = get_any(["BillToCustomerName", "BILL_TO_CUSTOMER_NAME", "BillCustomerName", "BILL_CUSTOMER_NAME", "CustomerName", "CUSTOMER_NAME"])
+    for k, v in raw.items():
+        if k not in normalized:
+            normalized[k] = v
+    return normalized
+
+
 def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any]) -> list[Any]:
-    """Maps BIP exact matches and returns a list of unmatched invoices for REST fallback."""
+    """Maps BIP matches using cascading rules and Two-Phase status check, returns unmatched invoices."""
     unmatched_invoices = []
+    customer_name = str(payload.customer_name) if payload.customer_name else ""
     for inv in payload.invoices:
         num = str(inv.invoice_number) if inv.invoice_number else ""
         if num and num in invoice_map:
-            match = invoice_map[num]
-            fusion_amount = None
-            try:
-                raw_amt = match.get("TOTAL_AMOUNTS") or match.get("ENTEREDAMOUNT") or match.get("AMOUNT")
-                if raw_amt is not None:
-                    fusion_amount = float(raw_amt)
-            except ValueError:
-                logger.warning(f"Unparseable BIP amount for invoice {num}: '{raw_amt}'")
-                pass
-
-            amount_matches = safe_float_match(inv.invoice_amount, fusion_amount)
-            formatted_date = format_oracle_date(str(inv.invoice_date)) if inv.invoice_date else ""
-            oracle_date = match.get("TRANSACTION_DATE") or match.get("INVOICEDATE") or match.get("TRANSACTIONDATE")
+            raw_candidates = invoice_map[num]
+            if not isinstance(raw_candidates, list):
+                raw_candidates = [raw_candidates]
             
-            date_matches = True
-            if formatted_date and oracle_date:
-                oracle_date_fmt = format_oracle_date(str(oracle_date))
-                if formatted_date != oracle_date_fmt and oracle_date_fmt != "":
-                    date_matches = False
-
-            if amount_matches and date_matches:
-                inv.fusion_invoice_number = match.get("TRANSACTION_NUMBER") or match.get("INVOICENUMBER") or match.get("TRANSACTIONNUMBER")
-                inv.fusion_invoice_date = oracle_date
+            normalized_candidates = [normalize_invoice_candidate(cand) for cand in raw_candidates]
+            
+            invoice_number = num
+            inv_date = str(inv.invoice_date) if inv.invoice_date else ""
+            amount = inv.invoice_amount
+            document_number = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
+            
+            rules = [
+                ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+                ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+                ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+                ("3",  lambda candidate: bool(invoice_number) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(invoice_number).lower()) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+                ("4",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+            ]
+            
+            # Two-Phase Status Priority check (Open first, then Closed)
+            open_candidates = [c for c in normalized_candidates if is_invoice_open(c)]
+            match, rule_name = apply_rules_to_candidates(open_candidates, rules)
+            
+            if not match:
+                closed_candidates = [c for c in normalized_candidates if not is_invoice_open(c)]
+                match, rule_name = apply_rules_to_candidates(closed_candidates, rules)
+                
+            if match:
+                raw_amt = match.get("EnteredAmount")
+                fusion_amount = None
+                if raw_amt is not None:
+                    try:
+                        fusion_amount = float(str(raw_amt).replace(",", "").strip())
+                    except ValueError:
+                        pass
+                inv.fusion_invoice_number = match.get("TransactionNumber")
+                inv.fusion_invoice_date = match.get("TransactionDate")
                 inv.fusion_invoice_amount = fusion_amount
             else:
                 unmatched_invoices.append(inv)
