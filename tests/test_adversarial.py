@@ -1,15 +1,9 @@
-import asyncio
 import httpx
 import pytest
 import respx
-from decimal import Decimal
+
+from src.services.oracle_matcher import check_receipt_cascading, safe_float_match
 from src.utils.date_formatter import format_oracle_date, safe_date_match
-from src.services.oracle_matcher import (
-    safe_float_match,
-    check_receipt_cascading,
-    check_invoice_cascading,
-    fetch_oracle_candidates
-)
 
 # --- 1. Date Formatting Adversarial Checks ---
 
@@ -41,15 +35,15 @@ def test_date_formatter_ambiguity():
     # Because "%m-%d-%Y" is tried before "%d-%m-%Y":
     # 05-06-2026 is parsed as Month 05, Day 06 -> 2026-05-06
     assert format_oracle_date("05-06-2026") == "2026-05-06"
-    
+
     # 15-06-2026 cannot be parsed as MM-DD-YYYY since month 15 is invalid.
-    # It fails to parse and returns "" since %d-%m-%Y was removed.
-    assert format_oracle_date("15-06-2026") == ""
+    # It falls back to %d-%m-%Y and parses correctly to 2026-06-15.
+    assert format_oracle_date("15-06-2026") == "2026-06-15"
 
 def test_date_formatter_timezone_shifting():
     # 2026-06-13T02:30:00+05:30 keeps the local date as-is.
     assert format_oracle_date("2026-06-13T02:30:00+05:30") == "2026-06-13"
-    
+
     # They should match local calendar date "2026-06-13".
     assert safe_date_match("2026-06-13T02:30:00+05:30", "2026-06-13") is True
 
@@ -62,7 +56,7 @@ def test_safe_float_match_precision():
     # E.g. 0.1 + 0.2 = 0.30000000000000004
     # Rounding to 6 decimal places allows them to match!
     assert safe_float_match(0.1 + 0.2, "0.3") is True
-    
+
     # Let's check very close but distinct numbers
     assert safe_float_match(100.00000000000000000001, 100) is True
     # Under the new logic, both are converted to float first, so they parse to 100.0 and match
@@ -75,7 +69,7 @@ def test_safe_float_match_weird_strings():
     assert safe_float_match("Infinity", "Infinity") is False
     # "-Infinity" vs "-Infinity"
     assert safe_float_match("-Infinity", "-Infinity") is False
-    
+
     # Scientific notation
     assert safe_float_match("1e2", 100.0) is True
     assert safe_float_match("1.23e3", 1230) is True
@@ -94,33 +88,25 @@ def test_safe_float_match_weird_strings():
 async def test_check_receipt_cascading_nan_inf_amounts(mock_httpx_client):
     # What happens when we pass float('nan') or float('inf') to check_receipt_cascading?
     with respx.mock:
-        # We expect a request to standardReceipts with Amount=nan or Amount=inf
         respx.route(host="test.oracle.com").mock(httpx.Response(200, json={"items": [], "hasMore": False}))
-        
+
         # NaN amount
-        # float('nan') is not None, so it builds the query:
-        # query = f"Amount={float(amount):.2f} and ReceiptDate='{formatted_date}'"
-        # Since float('nan') formatted with :.2f is "nan":
-        # query = "Amount=nan and ReceiptDate='...'"
+        # float('nan') is caught by the guard, returning early without making an API request.
         result = await check_receipt_cascading(
             mock_httpx_client, "user", "pass", "REC-123", float('nan'), "2023-10-01", "Customer"
         )
         assert result["matched_in_oracle"] is False
-        
-        # Verify if the query sent to Oracle has "Amount=nan"
-        last_request = respx.calls.last.request
-        query_param = last_request.url.query.decode("utf-8")
-        assert "Amount%3Dnan" in query_param or "Amount=nan" in query_param
+        assert "Invalid amount" in result["error"]
+        assert len(respx.calls) == 0
 
         # Infinity amount
+        # float('inf') is also caught by the guard.
         result_inf = await check_receipt_cascading(
             mock_httpx_client, "user", "pass", "REC-123", float('inf'), "2023-10-01", "Customer"
         )
         assert result_inf["matched_in_oracle"] is False
-        
-        last_request_inf = respx.calls.last.request
-        query_param_inf = last_request_inf.url.query.decode("utf-8")
-        assert "Amount%3Dinf" in query_param_inf or "Amount=inf" in query_param_inf
+        assert "Invalid amount" in result_inf["error"]
+        assert len(respx.calls) == 0
 
 
 # --- 4. Overflow / NaN errors in model validation ---
@@ -128,7 +114,8 @@ async def test_check_receipt_cascading_nan_inf_amounts(mock_httpx_client):
 @pytest.mark.asyncio
 async def test_reconcile_nan_inf_overflow(mock_httpx_client):
     from pydantic import ValidationError
-    from src.models import InvoiceItem, ReconciliationRequest
+
+    from src.models import InvoiceItem
 
     # NaN amount
     with pytest.raises(ValidationError) as exc:

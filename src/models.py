@@ -1,7 +1,7 @@
 import math
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class InvoiceItem(BaseModel):
@@ -40,7 +40,7 @@ class InvoiceItem(BaseModel):
                 if not math.isfinite(f_val):
                     raise ValueError("Float value must be a finite number.")
             except (ValueError, TypeError):
-                raise ValueError("Float value must be a finite number.")
+                raise ValueError("Float value must be a finite number.") from None
         return v
 
 class MetaDataModel(BaseModel):
@@ -85,6 +85,11 @@ class ReconciliationRequest(BaseModel):
                 if not math.isfinite(f_val):
                     raise ValueError("Float value must be a finite number.")
             except (ValueError, TypeError):
-                raise ValueError("Float value must be a finite number.")
+                raise ValueError("Float value must be a finite number.") from None
         return v
 
+    @model_validator(mode="after")
+    def _set_invoice_count(self) -> "ReconciliationRequest":
+        """Auto-populate invoice_count from actual invoices list length."""
+        self.invoice_count = len(self.invoices)
+        return self
