@@ -5,7 +5,7 @@ from pathlib import Path
 import httpx
 import traceback
 
-API_URL = "https://urban-octo-tribble-rouge.vercel.app/v1/reconcile"
+API_URL = os.getenv("API_URL", "http://localhost:8000/v1/reconcile")
 API_KEY = os.getenv("API_KEY", "test_key")
 
 async def test_failed_json():

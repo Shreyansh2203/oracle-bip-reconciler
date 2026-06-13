@@ -5,7 +5,7 @@ services:
     region: ohio
     plan: free
     buildCommand: "uv sync"
-    startCommand: "uvicorn src.main:app --host 0.0.0.0 --port $PORT"
+    startCommand: "uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 2"
     envVars:
       - key: ORACLE_USER
         sync: false
@@ -16,4 +16,12 @@ services:
       - key: ORACLE_URL
         sync: false
       - key: CORS_ORIGINS
+        sync: false
+      - key: ENV
+        sync: false
+      - key: MAX_CONCURRENCY
+        sync: false
+      - key: ORACLE_LIMIT
+        sync: false
+      - key: ORACLE_MAX_PAGES
         sync: false

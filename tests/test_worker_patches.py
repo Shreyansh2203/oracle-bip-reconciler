@@ -1,16 +1,15 @@
 import base64
-import os
+
 import httpx
 import pytest
 import respx
 from fastapi import HTTPException
-from tenacity import RetryError
 
 from src.config import get_oracle_url
-from src.main import get_api_key, _map_bip_invoices
-from src.models import ReconciliationRequest, InvoiceItem
+from src.main import _map_bip_invoices, get_api_key
+from src.models import InvoiceItem, ReconciliationRequest
 from src.services.oracle_bip import run_bip_bulk_match
-from src.services.oracle_matcher import safe_float_match, safe_date_match
+from src.services.oracle_matcher import safe_date_match, safe_float_match
 from src.utils.date_formatter import format_oracle_date
 
 
@@ -41,15 +40,15 @@ def test_safe_float_match_commas():
 @pytest.mark.asyncio
 async def test_get_api_key_secure(monkeypatch):
     monkeypatch.setenv("API_KEY", "secure_secret_token")
-    
+
     # Valid key
     assert await get_api_key("secure_secret_token") == "secure_secret_token"
-    
+
     # Invalid key
     with pytest.raises(HTTPException) as exc:
         await get_api_key("wrong_token")
     assert exc.value.status_code == 401
-    
+
     # Missing/None key
     with pytest.raises(HTTPException) as exc:
         await get_api_key(None)
@@ -192,6 +191,7 @@ async def test_bip_no_retry_on_permanent_errors(mock_httpx_client):
 
 def test_nan_inf_validation():
     from pydantic import ValidationError
+
     from src.models import InvoiceItem, ReconciliationRequest
 
     with pytest.raises(ValidationError):

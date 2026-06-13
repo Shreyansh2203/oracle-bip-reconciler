@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Security, status, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 
@@ -17,14 +17,14 @@ from src.config import get_oracle_url
 from src.models import MetaDataModel, ReconciliationRequest
 from src.services.oracle_bip import run_bip_bulk_match
 from src.services.oracle_matcher import (
+    apply_rules_to_candidates,
     check_invoice_cascading,
     check_receipt_cascading,
+    is_invoice_open,
     safe_float_match,
     safe_str_match,
-    is_invoice_open,
-    apply_rules_to_candidates,
 )
-from src.utils.date_formatter import format_oracle_date, safe_date_match
+from src.utils.date_formatter import safe_date_match
 
 # Constants
 DEFAULT_TIMEOUT = 15.0
@@ -82,8 +82,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins if origins else ["http://localhost:disabled"], # Fail closed if no origins provided
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 @app.get("/")
@@ -97,9 +97,9 @@ async def health_check() -> dict[str, str]:
 @app.get("/ready")
 async def readiness_check() -> dict[str, str]:
     if not http_client:
-        raise HTTPException(status_code=503, detail="HTTP client not initialized")
+        raise HTTPException(status_code=503, detail="Service not ready")
     if not os.getenv("ORACLE_USER") or not os.getenv("ORACLE_PASS") or not get_oracle_url():
-        raise HTTPException(status_code=503, detail="Oracle credentials or URL not configured")
+        raise HTTPException(status_code=503, detail="Service not ready: missing required configuration")
     return {"status": "ready"}
 
 async def _fetch_receipt_data(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str, sem: asyncio.Semaphore | None = None) -> None:
@@ -302,7 +302,10 @@ def normalize_invoice_candidate(raw: dict[str, Any]) -> dict[str, Any]:
     normalized["DocumentNumber"] = get_any(["DocumentNumber", "DOCUMENT_NUMBER"])
     normalized["BillToCustomerName"] = get_any(["BillToCustomerName", "BILL_TO_CUSTOMER_NAME", "BillCustomerName", "BILL_CUSTOMER_NAME", "CustomerName", "CUSTOMER_NAME"])
     for k, v in raw.items():
-        if k not in normalized:
+        # Only pass through keys whose normalized equivalent was NOT already mapped
+        k_upper = k.upper().replace("_", "").replace(" ", "")
+        mapped_upper_keys = {mk.upper().replace("_", "").replace(" ", "") for mk in normalized}
+        if k not in normalized and k_upper not in mapped_upper_keys:
             normalized[k] = v
     return normalized
 
@@ -317,30 +320,32 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
             raw_candidates = invoice_map[num]
             if not isinstance(raw_candidates, list):
                 raw_candidates = [raw_candidates]
-            
+
             normalized_candidates = [normalize_invoice_candidate(cand) for cand in raw_candidates]
-            
+
             invoice_number = num
             inv_date = str(inv.invoice_date) if inv.invoice_date else ""
             amount = inv.invoice_amount
             document_number = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
-            
+
+            # Rules ordered per report_processing_rules.md: 1a, 1b, 2, 3, 4
+            # Variables bound via default args to avoid late-binding closure issues (B023)
             rules = [
-                ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
-                ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_float_match(candidate.get("EnteredAmount"), amount)),
-                ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
-                ("3",  lambda candidate: bool(invoice_number) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(invoice_number).lower()) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
-                ("4",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+                ("1a", lambda candidate, _inv_num=invoice_number, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
+                ("1b", lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
+                ("2",  lambda candidate, _doc=document_number, _d=inv_date, _amt=amount: bool(_doc) and safe_str_match(candidate.get("DocumentNumber"), _doc) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
+                ("3",  lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: bool(_inv_num) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(_inv_num).lower()) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
+                ("4",  lambda candidate, _cust=customer_name, _d=inv_date, _amt=amount: bool(_cust) and safe_str_match(candidate.get("BillToCustomerName"), _cust) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
             ]
-            
+
             # Two-Phase Status Priority check (Open first, then Closed)
             open_candidates = [c for c in normalized_candidates if is_invoice_open(c)]
             match, rule_name = apply_rules_to_candidates(open_candidates, rules)
-            
+
             if not match:
                 closed_candidates = [c for c in normalized_candidates if not is_invoice_open(c)]
                 match, rule_name = apply_rules_to_candidates(closed_candidates, rules)
-                
+
             if match:
                 raw_amt = match.get("EnteredAmount")
                 fusion_amount = None
@@ -348,7 +353,7 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
                     try:
                         fusion_amount = float(str(raw_amt).replace(",", "").strip())
                     except ValueError:
-                        pass
+                        logger.warning(f"Could not parse fusion_invoice_amount from BIP EnteredAmount: {raw_amt!r}")
                 inv.fusion_invoice_number = match.get("TransactionNumber")
                 inv.fusion_invoice_date = match.get("TransactionDate")
                 inv.fusion_invoice_amount = fusion_amount

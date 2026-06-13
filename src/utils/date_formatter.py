@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 
@@ -12,7 +12,7 @@ def format_oracle_date(date_str: str) -> str:
         return ""
 
     date_str = str(date_str).strip()
-    
+
     # Try ISO format first (handles Timezones natively in 3.11+)
     try:
         dt = datetime.fromisoformat(date_str)
@@ -25,7 +25,7 @@ def format_oracle_date(date_str: str) -> str:
     date_str = re.sub(r'\+00:00$', 'Z', date_str)
 
     formats = [
-        "%Y-%m-%d", "%m-%d-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
+        "%Y-%m-%d", "%m-%d-%Y", "%d-%m-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
         "%Y-%m-%dT%H:%M:%SZ"
     ]
 
