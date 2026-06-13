@@ -15,3 +15,5 @@ services:
         sync: false
       - key: ORACLE_URL
         sync: false
+      - key: CORS_ORIGINS
+        sync: false
