@@ -11,6 +11,13 @@ def format_oracle_date(date_str: str) -> str:
         return ""
 
     date_str = str(date_str).strip()
+    
+    # Try ISO format first (handles Timezones natively in 3.11+)
+    try:
+        return datetime.fromisoformat(date_str).strftime("%Y-%m-%d")
+    except ValueError:
+        pass
+
     date_str = date_str.replace('/', '-')
 
     date_str = re.sub(r'\+00:00$', 'Z', date_str)
