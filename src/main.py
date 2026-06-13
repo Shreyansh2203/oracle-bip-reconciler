@@ -270,11 +270,12 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
         num = str(inv.invoice_number) if inv.invoice_number else ""
         if num and num in invoice_map:
             match = invoice_map[num]
-            fusion_amount = 0.0
+            fusion_amount = None
             try:
-                fusion_amount = float(match.get("TOTAL_AMOUNTS") or match.get("ENTEREDAMOUNT") or match.get("AMOUNT") or 0.0)
-            except ValueError:
                 raw_amt = match.get("TOTAL_AMOUNTS") or match.get("ENTEREDAMOUNT") or match.get("AMOUNT")
+                if raw_amt is not None:
+                    fusion_amount = float(raw_amt)
+            except ValueError:
                 logger.warning(f"Unparseable BIP amount for invoice {num}: '{raw_amt}'")
                 pass
 
