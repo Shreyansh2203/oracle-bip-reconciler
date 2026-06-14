@@ -292,7 +292,7 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
         if invoice_number:
             candidates.extend(await fetch_by_field(context, "TransactionNumber", invoice_number, inv_fields, cm_fields))
             # Also fetch by prefix for Rule 3
-            prefix_query = f"UPPER(TransactionNumber) LIKE '{escape_oracle(invoice_number).upper()}%'"
+            prefix_query = f"TransactionNumber LIKE '{escape_oracle(invoice_number).upper()}%'"
             candidates.extend(await fetch_by_query(context, prefix_query, inv_fields, cm_fields))
 
         if document_number:
