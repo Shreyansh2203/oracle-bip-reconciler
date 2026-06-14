@@ -109,7 +109,7 @@ def safe_float_match(expected_amount: Any, actual_amount: Any) -> bool:
         f_act = float(act_str)
         if not math.isfinite(f_exp) or not math.isfinite(f_act):
             return False
-        return Decimal(f"{f_exp:.6f}") == Decimal(f"{f_act:.6f}")
+        return Decimal(exp_str) == Decimal(act_str)
     except (ValueError, TypeError, InvalidOperation):
         return False
 
