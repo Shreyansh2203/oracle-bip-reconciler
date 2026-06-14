@@ -33,8 +33,6 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
     report_path = "Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
     url = f"{get_oracle_url()}/xmlpserver/services/rest/v1/reports/{report_path.replace('/', '%2F')}/run"
 
-    invoices_str = ",".join(invoice_numbers)
-
     payload = {
         "byPassCache": True,
         "flattenXML": False,
@@ -45,7 +43,7 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
                 "listOfParamNameValues": [
                     {
                         "name": "P_INVOICE_LIST",
-                        "values": [invoices_str]
+                        "values": invoice_numbers
                     }
                 ]
             }
