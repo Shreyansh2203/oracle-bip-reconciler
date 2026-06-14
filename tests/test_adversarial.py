@@ -54,13 +54,13 @@ def test_date_formatter_timezone_shifting():
 def test_safe_float_match_precision():
     # Math operations on floats can result in precision issues
     # E.g. 0.1 + 0.2 = 0.30000000000000004
-    # Rounding to 6 decimal places allows them to match!
-    assert safe_float_match(0.1 + 0.2, "0.3") is True
+    # Because we enforce exact matching without rounding, this evaluates to False.
+    assert safe_float_match(0.1 + 0.2, "0.3") is False
 
     # Let's check very close but distinct numbers
     assert safe_float_match(100.00000000000000000001, 100) is True
-    # Under the new logic, both are converted to float first, so they parse to 100.0 and match
-    assert safe_float_match("100.00000000000000000001", 100) is True
+    # Under the exact logic, string inputs retain full precision and do NOT match
+    assert safe_float_match("100.00000000000000000001", 100) is False
 
 def test_safe_float_match_weird_strings():
     # "NaN" vs "NaN"

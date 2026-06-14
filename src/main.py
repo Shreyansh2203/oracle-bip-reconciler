@@ -142,8 +142,8 @@ async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched
         inv_amount = inv.invoice_amount
         doc_num = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
 
-        inv_amount_cents = round(float(inv.invoice_amount) * 100) if inv.invoice_amount is not None else None
-        search_key = (inv_num, inv_date, inv_amount_cents, doc_num)
+        inv_amount_str = str(inv.invoice_amount).strip() if inv.invoice_amount is not None else None
+        search_key = (inv_num, inv_date, inv_amount_str, doc_num)
         if search_key not in unique_searches:
             unique_searches[search_key] = len(tasks)
             tasks.append(check_invoice_with_semaphore(
@@ -160,8 +160,8 @@ async def _fetch_invoices_concurrently(payload: ReconciliationRequest, unmatched
         inv_amount = inv.invoice_amount
         doc_num = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
 
-        inv_amount_cents = round(float(inv.invoice_amount) * 100) if inv.invoice_amount is not None else None
-        search_key = (inv_num, inv_date, inv_amount_cents, doc_num)
+        inv_amount_str = str(inv.invoice_amount).strip() if inv.invoice_amount is not None else None
+        search_key = (inv_num, inv_date, inv_amount_str, doc_num)
         final_results.append(unique_results[unique_searches[search_key]])
 
     return final_results
