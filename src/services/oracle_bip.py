@@ -11,6 +11,7 @@ from src.config import get_oracle_url
 
 logger = logging.getLogger(__name__)
 
+RECEIPT_REPORT_PATH = "Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
 BIP_TIMEOUT = 60.0
 CHUNK_DOWNLOAD_SIZE = -1
 MAX_RETRIES = 3
@@ -28,7 +29,8 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
     Fetches all invoice details in a single bulk request via Oracle BI Publisher.
     Returns a dictionary mapping TransactionNumber -> Invoice details.
     """
-    report_path = "Custom/Financials/Receivable Transactions/Invoice Details Report.xdo"
+    # Updated paths from Oracle Cloud configuration
+    report_path = "Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
     url = f"{get_oracle_url()}/xmlpserver/services/rest/v1/reports/{report_path.replace('/', '%2F')}/run"
 
     invoices_str = ",".join(invoice_numbers)
