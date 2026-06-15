@@ -1,63 +1,23 @@
 import asyncio
-
+import base64
 import httpx
 import pytest
 import respx
 
 from src.services.oracle_matcher import (
-    OracleClientContext,
     check_invoice_cascading,
-    fetch_by_query,
-    is_invoice_open,
-    safe_float_match,
-    safe_str_match,
+    check_receipt_cascading,
 )
-
-
-def test_safe_float_match():
-    assert safe_float_match(100.0, "100.00") is True
-    assert safe_float_match(100.01, 100.01) is True
-    assert safe_float_match(None, 100.0) is False
-    assert safe_float_match(100.0, 200.0) is False
-    assert safe_float_match(100, 99.99) is False
-    assert safe_float_match(100, "100.0102") is False
-    assert safe_float_match(100, 100.034) is False
-
-def test_is_invoice_open():
-    assert is_invoice_open({"InvoiceStatus": "Open"}) is True
-    assert is_invoice_open({"InvoiceStatus": "Closed"}) is False
-    assert is_invoice_open({"InvoiceBalanceAmount": 10.0}) is True
-    assert is_invoice_open({"InvoiceBalanceAmount": 0.0}) is False
-
-def test_safe_str_match():
-    assert safe_str_match("INV-123", "inv-123") is True
-    assert safe_str_match("0", "0") is True
-    assert safe_str_match("0", 0) is True
-    assert safe_str_match("", "INV-123") is False
-    assert safe_str_match(None, "INV-123") is False
-
 
 @pytest.mark.asyncio
 async def test_check_invoice_cascading_success(mock_httpx_client):
-    mock_response = {
-        "items": [
-            {
-                "TransactionNumber": "INV-123",
-                "TransactionDate": "2023-10-01",
-                "EnteredAmount": 100.0,
-                "InvoiceStatus": "Open"
-            }
-        ],
-        "hasMore": False
-    }
+    csv_data = "TRANSACTION_NUMBER,TRANSACTION_DATE,TRANSACTION_TOTAL,INVOICE_STATUS\nINV-123,2023-10-01,100.00,OPEN\n"
+    encoded_csv = base64.b64encode(csv_data.encode("utf-8")).decode("utf-8")
+    mock_response = {"reportBytes": encoded_csv}
 
     with respx.mock:
         def side_effect(request):
-            url_str = str(request.url)
-            if "receivablesCreditMemos" in url_str:
-                return httpx.Response(200, json={"items": [], "hasMore": False})
             return httpx.Response(200, json=mock_response)
-
         respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         result = await check_invoice_cascading(
@@ -66,60 +26,24 @@ async def test_check_invoice_cascading_success(mock_httpx_client):
 
         assert result["matched_in_oracle"] is True
         assert result["fusion_invoice_number"] == "INV-123"
+        assert result["match_phase"] == "OPEN"
+        assert result["fusion_invoice_amount"] == 100.0
 
 @pytest.mark.asyncio
-async def test_check_invoice_cascading_fallback(mock_httpx_client):
-    empty_response = {"items": [], "hasMore": False}
-    success_response = {
-        "items": [
-            {
-                "TransactionNumber": "INV-123",
-                "TransactionDate": "2023-10-01",
-                "EnteredAmount": 100.0,
-                "InvoiceStatus": "Open"
-            }
-        ],
-        "hasMore": False
-    }
+async def test_check_receipt_cascading_success(mock_httpx_client):
+    csv_data = "RECEIPT_NUMBER,RECEIPT_DATE,BILL_CUSTOMER_NAME,RECEIPT_STATUS_CODE\nREC-123,2023-10-01,Customer A,UNAPP\n"
+    encoded_csv = base64.b64encode(csv_data.encode("utf-8")).decode("utf-8")
+    mock_response = {"reportBytes": encoded_csv}
 
     with respx.mock:
-        calls = []
         def side_effect(request):
-            url_str = str(request.url)
-            calls.append(url_str)
-            if "receivablesCreditMemos" in url_str:
-                return httpx.Response(200, json=empty_response)
-            if "q=TransactionNumber" in url_str:
-                return httpx.Response(200, json=empty_response)
-            if "q=DocumentNumber" in url_str:
-                return httpx.Response(200, json=empty_response)
-            if "q=BillToCustomerName" in url_str:
-                return httpx.Response(200, json=success_response)
-            return httpx.Response(200, json=empty_response)
-
+            return httpx.Response(200, json=mock_response)
         respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
-        cache = {}
-        lock = asyncio.Lock()
-        result = await check_invoice_cascading(
-            mock_httpx_client, "user", "pass", "INV-123", "2023-10-01", 100.0, "DOC-123", "Test Customer", cache, lock
+        result = await check_receipt_cascading(
+            mock_httpx_client, "user", "pass", "REC-123", 100.0, "2023-10-01", "Customer A"
         )
 
         assert result["matched_in_oracle"] is True
-        assert any("q=TransactionNumber" in c for c in calls)
-        assert any("q=DocumentNumber" in c for c in calls)
-        assert any("q=BillToCustomerName" in c for c in calls)
-
-@pytest.mark.asyncio
-async def test_fetch_by_query_error_propagation(mock_httpx_client):
-    context = OracleClientContext(mock_httpx_client, "user", "pass")
-
-    with respx.mock:
-        def side_effect(request):
-            return httpx.Response(500, text="Internal Server Error")
-        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
-
-        with pytest.raises(Exception) as excinfo:
-            await fetch_by_query(context, "TransactionNumber='123'", "", "")
-
-        assert "Transient Oracle API Error 500" in str(excinfo.value)
+        assert result["fusion_receipt_number"] == "REC-123"
+        assert result["match_phase"] == "UNAPPLIED"
