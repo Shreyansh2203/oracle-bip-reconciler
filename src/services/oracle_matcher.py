@@ -97,7 +97,7 @@ async def fetch_oracle_candidates(context: OracleClientContext, endpoint: str, q
         logger.error(f"Permanent Oracle fetch exception: {e}")
         raise e
 
-def safe_float_match(expected_amount: Any, actual_amount: Any, allow_missing_expected: bool = False) -> bool:
+def safe_float_match(expected_amount: Any, actual_amount: Any, allow_missing_expected: bool = False, tolerance: float = 0.01) -> bool:
     if expected_amount is None:
         return allow_missing_expected
     if actual_amount is None:
@@ -111,7 +111,7 @@ def safe_float_match(expected_amount: Any, actual_amount: Any, allow_missing_exp
         f_act = float(act_str)
         if not math.isfinite(f_exp) or not math.isfinite(f_act):
             return False
-        return Decimal(exp_str) == Decimal(act_str)
+        return math.isclose(f_exp, f_act, abs_tol=tolerance)
     except (ValueError, TypeError, InvalidOperation):
         return False
 
@@ -140,18 +140,35 @@ def is_invoice_open(candidate: dict[str, Any]) -> bool:
     # Default to Open if not explicitly closed
     return True
 
-def apply_rules_to_candidates(candidates: list[dict[str, Any]], rules: list[tuple[str, Callable[[dict[str, Any]], bool]]]) -> tuple[dict[str, Any] | None, str | None]:
-    for rule_name, condition in rules:
-        matches = [candidate for candidate in candidates if condition(candidate)]
-        if len(matches) == 1:
-            return matches[0], rule_name
-        elif len(matches) > 1:
-            logger.debug(f"Rule {rule_name}: {len(matches)} candidates, continuing to next rule.")
-    return None, None
+
+
+def score_receipt_candidate(candidate: dict[str, Any], receipt_num: str, amount: float | None, receipt_date: str, customer_name: str) -> int:
+    score = 0
+    if receipt_num and safe_str_match(candidate.get("ReceiptNumber"), receipt_num):
+        score += 100
+    if amount is not None and safe_float_match(candidate.get("Amount"), amount, allow_missing_expected=True):
+        score += 40
+    if receipt_date and safe_date_match(candidate.get("ReceiptDate"), receipt_date):
+        score += 40
+    if customer_name and safe_str_match(candidate.get("CustomerName"), customer_name):
+        score += 20
+    return score
+
+def select_best_receipt(candidates: list[dict[str, Any]], receipt_num: str, amount: float | None, receipt_date: str, customer_name: str) -> tuple[dict[str, Any] | None, str | None]:
+    if not candidates:
+        return None, None
+    scored = [(score_receipt_candidate(c, receipt_num, amount, receipt_date, customer_name), c) for c in candidates]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    best_score = scored[0][0]
+    if best_score < 100:
+        return None, "score_too_low"
+    if len(scored) > 1 and scored[1][0] == best_score:
+        return None, "ambiguous"
+    return scored[0][1], f"score_{best_score}"
 
 async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password: str, receipt_num: str, amount: float | None, receipt_date: str, customer_name: str, sem: asyncio.Semaphore | None = None) -> dict[str, Any]:
     """
-    Receipt Cascading matching: Two-Phase Search (Unapplied first, then Applied).
+    Receipt Scoring matching: Two-Phase Search (Unapplied first, then Applied).
     """
     if amount is not None and not math.isfinite(amount):
         return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
@@ -189,40 +206,31 @@ async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password
                 unique_candidates.append(c)
         candidates = unique_candidates
 
+    except httpx.RequestError as e:
+        return {"matched_in_oracle": False, "error": f"Oracle Fetch Request Error: {str(e)}"}
     except Exception as e:
+        logger.exception("Unexpected error in check_receipt_cascading fetch")
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 
     if not candidates:
         return {"matched_in_oracle": False, "error": "No candidates found in Oracle for ReceiptNumber or CustomerName."}
 
-    # 2. Local Filtering Rules
-    if receipt_num:
-        rules = [
-            ("A1", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount, allow_missing_expected=True) and safe_date_match(candidate.get("ReceiptDate"), receipt_date) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
-            ("A2", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and safe_float_match(candidate.get("Amount"), amount, allow_missing_expected=True) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
-            ("A3", lambda candidate: safe_str_match(candidate.get("ReceiptNumber"), receipt_num) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
-            ("A4", lambda candidate: bool(customer_name) and safe_str_match(candidate.get("CustomerName"), customer_name) and safe_float_match(candidate.get("Amount"), amount, allow_missing_expected=True) and safe_date_match(candidate.get("ReceiptDate"), receipt_date)),
-        ]
-    else:
-        # B1 matches Amount+Date with optional Customer narrowing.
-        # B2 (Customer+Amount+Date) was removed as it is functionally identical
-        # to B1 when customer is present, and unreachable when customer is absent.
-        rules = [
-            ("B1", lambda candidate: safe_float_match(candidate.get("Amount"), amount, allow_missing_expected=True) and safe_date_match(candidate.get("ReceiptDate"), receipt_date) and (safe_str_match(candidate.get("CustomerName"), customer_name) if customer_name else True)),
-        ]
-
     # Phase 1: Search Unapplied Receipts
     unapplied_candidates = [candidate for candidate in candidates if is_receipt_unapplied(candidate)]
-    match, rule_name = apply_rules_to_candidates(unapplied_candidates, rules)
+    match, reason = select_best_receipt(unapplied_candidates, receipt_num, amount, receipt_date, customer_name)
 
     if match:
-        logger.info(f"Receipt Rule {rule_name} Matched in UNAPPLIED phase!")
+        logger.info(f"Receipt Matched ({reason}) in UNAPPLIED phase!")
     else:
+        if reason == "ambiguous":
+            return {"matched_in_oracle": False, "error": "Ambiguous match: multiple identical scoring unapplied candidates found."}
         # Phase 2: Search Applied Receipts
         applied_candidates = [candidate for candidate in candidates if not is_receipt_unapplied(candidate)]
-        match, rule_name = apply_rules_to_candidates(applied_candidates, rules)
+        match, reason = select_best_receipt(applied_candidates, receipt_num, amount, receipt_date, customer_name)
         if match:
-            logger.info(f"Receipt Rule {rule_name} Matched in APPLIED fallback phase!")
+            logger.info(f"Receipt Matched ({reason}) in APPLIED fallback phase!")
+        elif reason == "ambiguous":
+            return {"matched_in_oracle": False, "error": "Ambiguous match: multiple identical scoring applied candidates found."}
 
     if match:
         return {
@@ -231,10 +239,10 @@ async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password
             "fusion_receipt_date": match.get("ReceiptDate"),
             "fusion_customer_name": match.get("CustomerName"),
             "match_phase": "UNAPPLIED" if is_receipt_unapplied(match) else "APPLIED",
-            "match_rule": rule_name
+            "match_rule": reason
         }
 
-    return {"matched_in_oracle": False, "error": "No single match found after two-phase cascading rules."}
+    return {"matched_in_oracle": False, "error": "No single match found after scoring evaluation."}
 
 async def fetch_by_query(context: OracleClientContext, query: str, inv_fields: str, cm_fields: str, force_both: bool = False) -> list[dict[str, Any]]:
     """
@@ -272,9 +280,35 @@ async def fetch_by_field(context: OracleClientContext, query_key: str, raw_value
     query = f"{query_key}='{escape_oracle(raw_value)}'"
     return await fetch_by_query(context, query, inv_fields, cm_fields, force_both=not is_unique)
 
+def score_invoice_candidate(candidate: dict[str, Any], invoice_number: str, doc_number: str, inv_date: str, amount: float | None, customer_name: str) -> int:
+    score = 0
+    if invoice_number and safe_str_match(candidate.get("TransactionNumber"), invoice_number):
+        score += 100
+    if doc_number and safe_str_match(candidate.get("DocumentNumber"), doc_number):
+        score += 80
+    if inv_date and safe_date_match(candidate.get("TransactionDate"), inv_date):
+        score += 40
+    if amount is not None and safe_float_match(candidate.get("EnteredAmount"), amount, allow_missing_expected=True):
+        score += 40
+    if customer_name and safe_str_match(candidate.get("BillToCustomerName"), customer_name):
+        score += 20
+    return score
+
+def select_best_invoice(candidates: list[dict[str, Any]], invoice_number: str, doc_number: str, inv_date: str, amount: float | None, customer_name: str) -> tuple[dict[str, Any] | None, str | None]:
+    if not candidates:
+        return None, None
+    scored = [(score_invoice_candidate(c, invoice_number, doc_number, inv_date, amount, customer_name), c) for c in candidates]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    best_score = scored[0][0]
+    if best_score < 100:
+        return None, "score_too_low"
+    if len(scored) > 1 and scored[1][0] == best_score:
+        return None, "ambiguous"
+    return scored[0][1], f"score_{best_score}"
+
 async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password: str, invoice_number: str, inv_date: str, amount: float | None, document_number: str, customer_name: str, cache_customer: dict[str, list[dict[str, Any]]] | None = None, customer_lock: asyncio.Lock | None = None, sem: asyncio.Semaphore | None = None) -> dict[str, Any]:
     """
-    Invoice Cascading matching: Two-Phase Search (Open first, then Closed).
+    Invoice Scoring matching: Two-Phase Search (Open first, then Closed).
     Uses pre-fetched dictionaries (cache_inv_num, cache_doc_num) if available to avoid HTTP calls.
     Lazily fetches and caches customer_name fallbacks using customer_lock to prevent N+1 duplicate calls.
     """
@@ -290,17 +324,12 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
     try:
         if invoice_number:
             candidates.extend(await fetch_by_field(context, "TransactionNumber", invoice_number, inv_fields, cm_fields))
-            # Also fetch by prefix for Rule 3
-            escaped_prefix = escape_oracle(invoice_number).upper().replace("%", "\\%").replace("_", "\\_")
-            prefix_query = f"TransactionNumber LIKE '{escaped_prefix}%'"
-            candidates.extend(await fetch_by_query(context, prefix_query, inv_fields, cm_fields))
 
         if document_number:
             candidates.extend(await fetch_by_field(context, "DocumentNumber", document_number, inv_fields, cm_fields))
 
         if customer_name:
             if cache_customer is not None and customer_lock is not None:
-                # Lazy fetching with lock to prevent N+1 duplicate calls
                 c_name_lower = customer_name.lower()
                 if c_name_lower not in cache_customer:
                     async with customer_lock:
@@ -308,15 +337,21 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
                             try:
                                 result = await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields, is_unique=False)
                                 cache_customer[c_name_lower] = result
+                            except httpx.RequestError as e:
+                                logger.error(f"Customer fallback request failed: {str(e)}")
+                                raise e
                             except Exception as e:
-                                logger.error(f"Customer fallback query failed: {str(e)}")
+                                logger.exception(f"Customer fallback query failed unexpectedly")
                                 raise e
                 candidates.extend(cache_customer[c_name_lower])
             else:
                 try:
                     candidates.extend(await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields, is_unique=False))
+                except httpx.RequestError as e:
+                    logger.error(f"Customer fallback request failed: {str(e)}")
+                    raise e
                 except Exception as e:
-                    logger.error(f"Customer fallback query failed: {str(e)}")
+                    logger.exception(f"Customer fallback query failed unexpectedly")
                     raise e
 
         # Deduplicate candidates by composite key to preserve distinct records
@@ -334,34 +369,31 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
                 unique_candidates.append(c)
         candidates = unique_candidates
 
+    except httpx.RequestError as e:
+        return {"matched_in_oracle": False, "error": f"Oracle Fetch Request Error: {str(e)}"}
     except Exception as e:
+        logger.exception("Unexpected error in check_invoice_cascading fetch")
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
 
     if not candidates:
         return {"matched_in_oracle": False, "error": f"No candidates found for invoice {invoice_number}."}
 
-    # 2. Local Filtering Rules
-    # Rules ordered per report_processing_rules.md: 1a, 1b, 2, 3, 4
-    rules = [
-        ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount, allow_missing_expected=True)),
-        ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_float_match(candidate.get("EnteredAmount"), amount, allow_missing_expected=True)),
-        ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount, allow_missing_expected=True)),
-        ("3",  lambda candidate: bool(invoice_number) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(invoice_number).lower()) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount, allow_missing_expected=True)),
-        ("4",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount, allow_missing_expected=True)),
-    ]
-
     # Phase 1: Search Open Invoices
     open_candidates = [candidate for candidate in candidates if is_invoice_open(candidate)]
-    match, rule_name = apply_rules_to_candidates(open_candidates, rules)
+    match, reason = select_best_invoice(open_candidates, invoice_number, document_number, inv_date, amount, customer_name)
 
     if match:
-        logger.info(f"Invoice Rule {rule_name} Matched in OPEN phase!")
+        logger.info(f"Invoice Matched ({reason}) in OPEN phase!")
     else:
+        if reason == "ambiguous":
+            return {"matched_in_oracle": False, "error": f"Ambiguous match for invoice {invoice_number} in OPEN phase."}
         # Phase 2: Search Closed Invoices
         closed_candidates = [candidate for candidate in candidates if not is_invoice_open(candidate)]
-        match, rule_name = apply_rules_to_candidates(closed_candidates, rules)
+        match, reason = select_best_invoice(closed_candidates, invoice_number, document_number, inv_date, amount, customer_name)
         if match:
-            logger.info(f"Invoice Rule {rule_name} Matched in CLOSED fallback phase!")
+            logger.info(f"Invoice Matched ({reason}) in CLOSED fallback phase!")
+        elif reason == "ambiguous":
+            return {"matched_in_oracle": False, "error": f"Ambiguous match for invoice {invoice_number} in CLOSED phase."}
 
     if match:
         return {
@@ -370,7 +402,7 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
             "fusion_invoice_date": match.get("TransactionDate"),
             "fusion_invoice_amount": float(str(match.get("EnteredAmount")).replace(",", "")) if match.get("EnteredAmount") is not None else None,
             "match_phase": "OPEN" if is_invoice_open(match) else "CLOSED",
-            "match_rule": rule_name
+            "match_rule": reason
         }
 
     return {"matched_in_oracle": False, "error": f"No single match found for invoice {invoice_number}."}

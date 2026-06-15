@@ -1,0 +1,25 @@
+import math
+from typing import Any
+
+def sanitize_string_val(v: str | int | None) -> str | int | None:
+    if v is None:
+        return ""
+    stripped = str(v).strip()
+    if stripped.lower() == "none":
+        return ""
+    return stripped
+
+def sanitize_float_val(v: Any) -> Any:
+    if isinstance(v, str):
+        v_clean = v.strip().replace(",", "")
+        if v_clean.lower() == "none":
+            return None
+        v = v_clean
+    if v is not None:
+        try:
+            f_val = float(v)
+            if not math.isfinite(f_val):
+                raise ValueError("Float value must be a finite number.")
+        except (ValueError, TypeError):
+            raise ValueError("Float value must be a finite number.") from None
+    return v
