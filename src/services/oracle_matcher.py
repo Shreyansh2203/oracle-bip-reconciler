@@ -168,80 +168,70 @@ def select_best_receipt(candidates: list[dict[str, Any]], receipt_num: str, amou
     return scored[0][1], f"score_{best_score}"
 
 async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password: str, receipt_num: str, amount: float | None, receipt_date: str, customer_name: str, sem: asyncio.Semaphore | None = None) -> dict[str, Any]:
-    """
-    Receipt Scoring matching: Two-Phase Search (Unapplied first, then Applied).
-    """
     if amount is not None and not math.isfinite(amount):
         return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
 
     context = OracleClientContext(client, user, password, sem=sem)
     formatted_date = format_oracle_date(receipt_date)
-    candidates = []
-
     fields = "ReceiptNumber,Amount,State,CustomerName,ReceiptDate"
-    try:
-        if receipt_num:
-            query = f"ReceiptNumber='{escape_oracle(receipt_num)}'"
-            candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
 
-        if customer_name:
-            query = f"CustomerName='{escape_oracle(customer_name)}'"
-            candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
-
-        if amount is not None and formatted_date:
-            query = f"Amount={amount} and ReceiptDate='{formatted_date}'"
-            candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
-
-        # Deduplicate candidates by composite key to preserve distinct records
+    async def _evaluate_candidates(candidates_list: list[dict[str, Any]]) -> dict[str, Any] | None:
+        if not candidates_list:
+            return None
         seen = set()
         unique_candidates = []
-        for c in candidates:
-            key = (
-                str(c.get("ReceiptNumber", "")).strip(),
-                str(c.get("Amount", "")).strip(),
-                str(c.get("ReceiptDate", "")).strip(),
-                str(c.get("State", "")).strip(),
-            )
+        for c in candidates_list:
+            key = (str(c.get("ReceiptNumber", "")).strip(), str(c.get("Amount", "")).strip(), str(c.get("ReceiptDate", "")).strip(), str(c.get("State", "")).strip())
             if key not in seen:
                 seen.add(key)
                 unique_candidates.append(c)
-        candidates = unique_candidates
+        
+        # Phase 1: Unapplied
+        unapplied_candidates = [c for c in unique_candidates if is_receipt_unapplied(c)]
+        match, reason = select_best_receipt(unapplied_candidates, receipt_num, amount, receipt_date, customer_name)
+        if match:
+            logger.info(f"Receipt Matched ({reason}) in UNAPPLIED phase!")
+            return {"matched_in_oracle": True, "fusion_receipt_number": match.get("ReceiptNumber"), "fusion_receipt_date": match.get("ReceiptDate"), "fusion_customer_name": match.get("CustomerName"), "match_phase": "UNAPPLIED", "match_rule": reason}
+        elif reason == "ambiguous":
+            return {"matched_in_oracle": False, "error": "Ambiguous match: multiple identical scoring unapplied candidates found."}
+
+        # Phase 2: Applied
+        applied_candidates = [c for c in unique_candidates if not is_receipt_unapplied(c)]
+        match, reason = select_best_receipt(applied_candidates, receipt_num, amount, receipt_date, customer_name)
+        if match:
+            logger.info(f"Receipt Matched ({reason}) in APPLIED phase!")
+            return {"matched_in_oracle": True, "fusion_receipt_number": match.get("ReceiptNumber"), "fusion_receipt_date": match.get("ReceiptDate"), "fusion_customer_name": match.get("CustomerName"), "match_phase": "APPLIED", "match_rule": reason}
+        elif reason == "ambiguous":
+            return {"matched_in_oracle": False, "error": "Ambiguous match: multiple identical scoring applied candidates found."}
+        return None
+
+    try:
+        primary_candidates = []
+        if receipt_num:
+            query = f"ReceiptNumber='{escape_oracle(receipt_num)}'"
+            primary_candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
+        if amount is not None and formatted_date:
+            query = f"Amount={amount} and ReceiptDate='{formatted_date}'"
+            primary_candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
+        
+        result = await _evaluate_candidates(primary_candidates)
+        if result:
+            return result
+
+        if customer_name:
+            customer_candidates = []
+            query = f"CustomerName='{escape_oracle(customer_name)}'"
+            customer_candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
+            
+            result = await _evaluate_candidates(customer_candidates)
+            if result:
+                return result
 
     except httpx.RequestError as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Request Error: {str(e)}"}
     except Exception as e:
         logger.exception("Unexpected error in check_receipt_cascading fetch")
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
-
-    if not candidates:
-        return {"matched_in_oracle": False, "error": "No candidates found in Oracle for ReceiptNumber or CustomerName."}
-
-    # Phase 1: Search Unapplied Receipts
-    unapplied_candidates = [candidate for candidate in candidates if is_receipt_unapplied(candidate)]
-    match, reason = select_best_receipt(unapplied_candidates, receipt_num, amount, receipt_date, customer_name)
-
-    if match:
-        logger.info(f"Receipt Matched ({reason}) in UNAPPLIED phase!")
-    else:
-        if reason == "ambiguous":
-            return {"matched_in_oracle": False, "error": "Ambiguous match: multiple identical scoring unapplied candidates found."}
-        # Phase 2: Search Applied Receipts
-        applied_candidates = [candidate for candidate in candidates if not is_receipt_unapplied(candidate)]
-        match, reason = select_best_receipt(applied_candidates, receipt_num, amount, receipt_date, customer_name)
-        if match:
-            logger.info(f"Receipt Matched ({reason}) in APPLIED fallback phase!")
-        elif reason == "ambiguous":
-            return {"matched_in_oracle": False, "error": "Ambiguous match: multiple identical scoring applied candidates found."}
-
-    if match:
-        return {
-            "matched_in_oracle": True,
-            "fusion_receipt_number": match.get("ReceiptNumber"),
-            "fusion_receipt_date": match.get("ReceiptDate"),
-            "fusion_customer_name": match.get("CustomerName"),
-            "match_phase": "UNAPPLIED" if is_receipt_unapplied(match) else "APPLIED",
-            "match_rule": reason
-        }
 
     return {"matched_in_oracle": False, "error": "No single match found after scoring evaluation."}
 
@@ -308,102 +298,75 @@ def select_best_invoice(candidates: list[dict[str, Any]], invoice_number: str, d
     return scored[0][1], f"score_{best_score}"
 
 async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password: str, invoice_number: str, inv_date: str, amount: float | None, document_number: str, customer_name: str, cache_customer: dict[str, list[dict[str, Any]]] | None = None, customer_lock: asyncio.Lock | None = None, sem: asyncio.Semaphore | None = None) -> dict[str, Any]:
-    """
-    Invoice Scoring matching: Two-Phase Search (Open first, then Closed).
-    Uses pre-fetched dictionaries (cache_inv_num, cache_doc_num) if available to avoid HTTP calls.
-    Lazily fetches and caches customer_name fallbacks using customer_lock to prevent N+1 duplicate calls.
-    """
     if amount is not None and not math.isfinite(amount):
         return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
 
     context = OracleClientContext(client, user, password, sem=sem)
-    candidates = []
-
     inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
     cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
 
-    try:
-        if invoice_number:
-            candidates.extend(await fetch_by_field(context, "TransactionNumber", invoice_number, inv_fields, cm_fields))
+    async def _evaluate_candidates(candidates_list: list[dict[str, Any]]) -> dict[str, Any] | None:
+        if not candidates_list:
+            return None
+        seen = set()
+        unique_candidates = []
+        for c in candidates_list:
+            key = (str(c.get("TransactionNumber", "")).strip(), str(c.get("EnteredAmount", "")).strip(), str(c.get("TransactionDate", "")).strip(), str(c.get("DocumentNumber", "")).strip())
+            if key not in seen:
+                seen.add(key)
+                unique_candidates.append(c)
+        
+        # Phase 1: Open
+        open_candidates = [c for c in unique_candidates if is_invoice_open(c)]
+        match, reason = select_best_invoice(open_candidates, invoice_number, document_number, inv_date, amount, customer_name)
+        if match:
+            logger.info(f"Invoice Matched ({reason}) in OPEN phase!")
+            return {"matched_in_oracle": True, "fusion_invoice_number": match.get("TransactionNumber"), "fusion_invoice_date": match.get("TransactionDate"), "fusion_invoice_amount": float(str(match.get("EnteredAmount")).replace(",", "")) if match.get("EnteredAmount") is not None else None, "match_phase": "OPEN", "match_rule": reason}
+        elif reason == "ambiguous":
+            return {"matched_in_oracle": False, "error": f"Ambiguous match for invoice {invoice_number} in OPEN phase."}
 
+        # Phase 2: Closed
+        closed_candidates = [c for c in unique_candidates if not is_invoice_open(c)]
+        match, reason = select_best_invoice(closed_candidates, invoice_number, document_number, inv_date, amount, customer_name)
+        if match:
+            logger.info(f"Invoice Matched ({reason}) in CLOSED phase!")
+            return {"matched_in_oracle": True, "fusion_invoice_number": match.get("TransactionNumber"), "fusion_invoice_date": match.get("TransactionDate"), "fusion_invoice_amount": float(str(match.get("EnteredAmount")).replace(",", "")) if match.get("EnteredAmount") is not None else None, "match_phase": "CLOSED", "match_rule": reason}
+        elif reason == "ambiguous":
+            return {"matched_in_oracle": False, "error": f"Ambiguous match for invoice {invoice_number} in CLOSED phase."}
+        
+        return None
+
+    try:
+        primary_candidates = []
+        if invoice_number:
+            primary_candidates.extend(await fetch_by_field(context, "TransactionNumber", invoice_number, inv_fields, cm_fields))
         if document_number:
-            candidates.extend(await fetch_by_field(context, "DocumentNumber", document_number, inv_fields, cm_fields))
+            primary_candidates.extend(await fetch_by_field(context, "DocumentNumber", document_number, inv_fields, cm_fields))
+        
+        result = await _evaluate_candidates(primary_candidates)
+        if result:
+            return result
 
         if customer_name:
+            customer_candidates = []
             if cache_customer is not None and customer_lock is not None:
                 c_name_lower = customer_name.lower()
                 if c_name_lower not in cache_customer:
                     async with customer_lock:
                         if c_name_lower not in cache_customer:
-                            try:
-                                result = await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields, is_unique=False)
-                                cache_customer[c_name_lower] = result
-                            except httpx.RequestError as e:
-                                logger.error(f"Customer fallback request failed: {str(e)}")
-                                raise e
-                            except Exception as e:
-                                logger.exception(f"Customer fallback query failed unexpectedly")
-                                raise e
-                candidates.extend(cache_customer[c_name_lower])
+                            cache_customer[c_name_lower] = await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields, is_unique=False)
+                customer_candidates.extend(cache_customer[c_name_lower])
             else:
-                try:
-                    candidates.extend(await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields, is_unique=False))
-                except httpx.RequestError as e:
-                    logger.error(f"Customer fallback request failed: {str(e)}")
-                    raise e
-                except Exception as e:
-                    logger.exception(f"Customer fallback query failed unexpectedly")
-                    raise e
-
-        # Deduplicate candidates by composite key to preserve distinct records
-        seen = set()
-        unique_candidates = []
-        for c in candidates:
-            key = (
-                str(c.get("TransactionNumber", "")).strip(),
-                str(c.get("EnteredAmount", "")).strip(),
-                str(c.get("TransactionDate", "")).strip(),
-                str(c.get("DocumentNumber", "")).strip(),
-            )
-            if key not in seen:
-                seen.add(key)
-                unique_candidates.append(c)
-        candidates = unique_candidates
+                customer_candidates.extend(await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields, is_unique=False))
+            
+            result = await _evaluate_candidates(customer_candidates)
+            if result:
+                return result
 
     except httpx.RequestError as e:
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Request Error: {str(e)}"}
     except Exception as e:
         logger.exception("Unexpected error in check_invoice_cascading fetch")
         return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
-
-    if not candidates:
-        return {"matched_in_oracle": False, "error": f"No candidates found for invoice {invoice_number}."}
-
-    # Phase 1: Search Open Invoices
-    open_candidates = [candidate for candidate in candidates if is_invoice_open(candidate)]
-    match, reason = select_best_invoice(open_candidates, invoice_number, document_number, inv_date, amount, customer_name)
-
-    if match:
-        logger.info(f"Invoice Matched ({reason}) in OPEN phase!")
-    else:
-        if reason == "ambiguous":
-            return {"matched_in_oracle": False, "error": f"Ambiguous match for invoice {invoice_number} in OPEN phase."}
-        # Phase 2: Search Closed Invoices
-        closed_candidates = [candidate for candidate in candidates if not is_invoice_open(candidate)]
-        match, reason = select_best_invoice(closed_candidates, invoice_number, document_number, inv_date, amount, customer_name)
-        if match:
-            logger.info(f"Invoice Matched ({reason}) in CLOSED fallback phase!")
-        elif reason == "ambiguous":
-            return {"matched_in_oracle": False, "error": f"Ambiguous match for invoice {invoice_number} in CLOSED phase."}
-
-    if match:
-        return {
-            "matched_in_oracle": True,
-            "fusion_invoice_number": match.get("TransactionNumber"),
-            "fusion_invoice_date": match.get("TransactionDate"),
-            "fusion_invoice_amount": float(str(match.get("EnteredAmount")).replace(",", "")) if match.get("EnteredAmount") is not None else None,
-            "match_phase": "OPEN" if is_invoice_open(match) else "CLOSED",
-            "match_rule": reason
-        }
 
     return {"matched_in_oracle": False, "error": f"No single match found for invoice {invoice_number}."}
