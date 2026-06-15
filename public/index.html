@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oracle Reconciliation AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #020617;
+            --bg-glass: rgba(15, 23, 42, 0.6);
+            --bg-glass-hover: rgba(30, 41, 59, 0.8);
+            --border-glass: rgba(255, 255, 255, 0.1);
+            --border-glow: rgba(56, 189, 248, 0.4);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-glow: #38bdf8;
+            --accent-solid: #0ea5e9;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 50%);
+            background-attachment: fixed;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-base); }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            height: 100vh;
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+        }
+
+        .header-panel {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-glass);
+            margin-bottom: 1rem;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            background: linear-gradient(to right, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .glass-panel {
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+            height: 100%;
+        }
+
+        .glass-panel:hover, .glass-panel:focus-within {
+            border-color: var(--border-glow);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.1);
+        }
+
+        .panel-header {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .input-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        input[type="password"] {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        input[type="password"]:focus {
+            border-color: var(--accent-solid);
+        }
+
+        textarea {
+            width: 100%;
+            flex-grow: 1;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            padding: 1rem;
+            color: #e2e8f0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        textarea:focus {
+            border-color: var(--accent-solid);
+        }
+
+        button {
+            background: linear-gradient(135deg, var(--accent-solid), #2563eb);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 1rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            width: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(14, 165, 233, 0.4);
+        }
+
+        button:disabled {
+            background: #334155;
+            color: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .results-area {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            padding: 1rem;
+            flex-grow: 1;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+        }
+
+        /* Syntax Highlighting for Results */
+        .string { color: #86efac; }
+        .number { color: #fca5a5; }
+        .boolean { color: #93c5fd; }
+        .null { color: #cbd5e1; }
+        .key { color: #38bdf8; font-weight: 500; }
+
+        /* Loader Animation */
+        .loader-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            gap: 1rem;
+        }
+        
+        .active-loader { display: flex; }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(56, 189, 248, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--accent-glow);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .status-badge.processing { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+        .status-badge.completed { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+        .status-badge.failed { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+        
+        .metric-card {
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+        }
+        
+        .metric-value { font-size: 1.5rem; font-weight: 700; color: #fff; }
+        .metric-label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header-panel">
+            <h1>Oracle Reconciliation API</h1>
+            <div id="connectionStatus" class="status-badge"><span style="margin-right: 6px; width: 6px; height: 6px; background: #34d399; border-radius: 50%; display: inline-block;"></span> Backend Connected</div>
+        </div>
+
+        <!-- Left Panel: Input -->
+        <div class="glass-panel">
+            <div class="panel-header">Request Payload</div>
+            
+            <div class="input-group">
+                <label for="apiKey">API Key</label>
+                <input type="password" id="apiKey" placeholder="Enter your API key..." value="b3c9f28d-71b5-42d8-9a4f-5f8e6c4a9b1c">
+            </div>
+
+            <label for="jsonInput">JSON Payload (Paste massive file here)</label>
+            <textarea id="jsonInput" placeholder="{\n  &quot;customer_name&quot;: &quot;...&quot;,\n  &quot;invoices&quot;: []\n}"></textarea>
+
+            <button id="submitBtn" onclick="submitJob()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                Process Asynchronously
+            </button>
+        </div>
+
+        <!-- Right Panel: Results & Status -->
+        <div class="glass-panel">
+            <div class="panel-header">
+                Execution Results
+                <span id="jobStatusBadge" class="status-badge hidden"></span>
+            </div>
+
+            <div id="loaderContainer" class="loader-container">
+                <div class="spinner"></div>
+                <div style="color: var(--accent-glow); font-weight: 500;" class="pulse" id="loaderText">Initializing Background Job...</div>
+                <div style="color: var(--text-secondary); font-size: 0.875rem;" id="loaderJobId"></div>
+            </div>
+            
+            <div id="metricsContainer" class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value" id="metricTime">0.0s</div>
+                    <div class="metric-label">Processing Time</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="metricCount">0</div>
+                    <div class="metric-label">Invoices Matched</div>
+                </div>
+            </div>
+
+            <div id="resultsArea" class="results-area">Results will stream here automatically once processing completes...</div>
+        </div>
+    </div>
+
+    <script>
+        // Simple syntax highlighter for JSON
+        function syntaxHighlight(json) {
+            if (typeof json != 'string') {
+                 json = JSON.stringify(json, undefined, 2);
+            }
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                var cls = 'number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'key';
+                    } else {
+                        cls = 'string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+
+        let pollInterval;
+        let jobStartTime = 0;
+
+        async function submitJob() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const jsonText = document.getElementById('jsonInput').value.trim();
+            const btn = document.getElementById('submitBtn');
+            const resArea = document.getElementById('resultsArea');
+            const loader = document.getElementById('loaderContainer');
+            const statusBadge = document.getElementById('jobStatusBadge');
+            const metrics = document.getElementById('metricsContainer');
+
+            if (!apiKey) return alert("API Key is required");
+            if (!jsonText) return alert("JSON Payload is required");
+
+            let payload;
+            try {
+                payload = JSON.parse(jsonText);
+            } catch (e) {
+                return alert("Invalid JSON Payload format");
+            }
+
+            // Reset UI
+            btn.disabled = true;
+            btn.innerHTML = 'Executing...';
+            resArea.classList.add('hidden');
+            loader.classList.add('active-loader');
+            metrics.style.display = 'none';
+            statusBadge.className = 'status-badge processing hidden';
+            
+            try {
+                // Determine the base URL (handles localhost vs Vercel/Render)
+                const baseUrl = window.location.origin;
+                jobStartTime = Date.now();
+                
+                const response = await fetch(`${baseUrl}/v2/reconcile/async`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': apiKey
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || "Server Error");
+                }
+
+                const data = await response.json();
+                const jobId = data.job_id;
+                
+                document.getElementById('loaderJobId').textContent = `Job ID: ${jobId}`;
+                document.getElementById('loaderText').textContent = "Server is matching invoices in background...";
+                statusBadge.textContent = "PROCESSING";
+                statusBadge.className = 'status-badge processing';
+                
+                // Start polling
+                pollInterval = setInterval(() => pollStatus(baseUrl, jobId, apiKey), 2000);
+
+            } catch (error) {
+                handleError(error.message);
+            }
+        }
+
+        async function pollStatus(baseUrl, jobId, apiKey) {
+            try {
+                const response = await fetch(`${baseUrl}/v2/reconcile/status/${jobId}`, {
+                    method: 'GET',
+                    headers: {
+                        'X-API-Key': apiKey
+                    }
+                });
+
+                if (!response.ok) throw new Error("Failed to poll status");
+
+                const data = await response.json();
+
+                if (data.status === 'completed') {
+                    clearInterval(pollInterval);
+                    showSuccess(data);
+                } else if (data.status === 'failed') {
+                    clearInterval(pollInterval);
+                    handleError(data.error);
+                }
+
+            } catch (error) {
+                clearInterval(pollInterval);
+                handleError(error.message);
+            }
+        }
+
+        function showSuccess(data) {
+            const btn = document.getElementById('submitBtn');
+            const resArea = document.getElementById('resultsArea');
+            const loader = document.getElementById('loaderContainer');
+            const statusBadge = document.getElementById('jobStatusBadge');
+            const metrics = document.getElementById('metricsContainer');
+
+            loader.classList.remove('active-loader');
+            resArea.classList.remove('hidden');
+            metrics.style.display = 'grid';
+            
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Process Another`;
+            
+            statusBadge.textContent = "COMPLETED";
+            statusBadge.className = 'status-badge completed';
+            
+            const timeTaken = (data.completed_at - data.created_at).toFixed(2);
+            const invoiceCount = data.result && data.result.invoices ? data.result.invoices.length : 0;
+            
+            document.getElementById('metricTime').textContent = `${timeTaken}s`;
+            document.getElementById('metricCount').textContent = invoiceCount;
+
+            resArea.innerHTML = syntaxHighlight(data.result);
+        }
+
+        function handleError(msg) {
+            const btn = document.getElementById('submitBtn');
+            const resArea = document.getElementById('resultsArea');
+            const loader = document.getElementById('loaderContainer');
+            const statusBadge = document.getElementById('jobStatusBadge');
+
+            loader.classList.remove('active-loader');
+            resArea.classList.remove('hidden');
+            
+            btn.disabled = false;
+            btn.innerHTML = 'Try Again';
+            
+            statusBadge.textContent = "FAILED";
+            statusBadge.className = 'status-badge failed';
+            
+            resArea.innerHTML = `<span style="color: var(--error)">Error: ${msg}</span>`;
+        }
+    </script>
+</body>
+</html>
