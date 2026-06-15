@@ -25,14 +25,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.config import get_oracle_url
 from src.models import MetaDataModel, ReconciliationRequest
-from src.services.oracle_bip import run_bip_bulk_match
 from src.services.oracle_matcher import (
     check_invoice_cascading,
     check_receipt_cascading,
-    is_invoice_open,
-    select_best_invoice,
-    safe_float_match,
-    safe_str_match,
 )
 from src.utils.date_formatter import safe_date_match
 
@@ -216,50 +211,38 @@ def _map_invoice_results(payload: ReconciliationRequest, unmatched_invoices: lis
 async def _process_reconciliation(payload: ReconciliationRequest, request_id: str, sem: asyncio.Semaphore | None = None) -> ReconciliationRequest:
     if sem is None:
         sem = app.state.oracle_sem
-    """
-    Core logic for executing the reconciliation matching.
-    """
+    
     x_oracle_user = os.getenv("ORACLE_USER")
     x_oracle_pass = os.getenv("ORACLE_PASS")
 
     if not x_oracle_user or not x_oracle_pass:
-        logger.error("Oracle credentials are not configured in the environment.")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Oracle credentials are not configured.")
 
     if not get_oracle_url():
-        logger.error("ORACLE_URL is not configured or is invalid in the environment.")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Oracle URL is not configured.")
 
     if not http_client:
-        logger.error("Global HTTP client is not initialized")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error: HTTP client not initialized")
 
     start_time = time.time()
 
     await _fetch_receipt_data(payload, x_oracle_user, x_oracle_pass, sem)
 
-    invoice_map = await _build_bip_invoice_map(payload, x_oracle_user, x_oracle_pass)
-    unmatched_invoices = _map_bip_invoices(payload, invoice_map)
-
     invoice_results: list = []
-    if unmatched_invoices:
-        logger.info(f"BIP matched {len(payload.invoices) - len(unmatched_invoices)} invoices. Falling back to REST for {len(unmatched_invoices)} unmatched invoices.")
+    if payload.invoices:
+        logger.info(f"Running custom Oracle BIP logic for {len(payload.invoices)} invoices.")
         customer_name = str(payload.customer_name) if payload.customer_name else ""
-        invoice_results = await _fetch_invoices_concurrently(payload, unmatched_invoices, x_oracle_user, x_oracle_pass, customer_name, sem)
-        _map_invoice_results(payload, unmatched_invoices, invoice_results)
+        invoice_results = await _fetch_invoices_concurrently(payload, payload.invoices, x_oracle_user, x_oracle_pass, customer_name, sem)
+        _map_invoice_results(payload, payload.invoices, invoice_results)
 
     execution_time = round(time.time() - start_time, 2)
-    bip_matched_count = len(payload.invoices) - len(unmatched_invoices)
-    rest_matched_count = len([inv for inv in unmatched_invoices if inv.fusion_invoice_number])
+    matched_count = len([inv for inv in payload.invoices if inv.fusion_invoice_number])
 
-    # Structured JSON Log
     log_data = {
         "request_id": request_id,
         "invoice_count": len(payload.invoices),
-        "bip_matched": bip_matched_count,
-        "rest_matched": rest_matched_count,
+        "bip_matched": matched_count,
         "duration_ms": int(execution_time * 1000),
-        "oracle_calls": len(invoice_results) if unmatched_invoices else 0, # Approximation of REST calls
     }
     logger.info(f"Reconciliation Summary: {json.dumps(log_data)}")
 

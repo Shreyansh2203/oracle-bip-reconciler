@@ -9,16 +9,11 @@ import httpx
 import pytest
 
 from src.models import InvoiceItem, ReconciliationRequest
-from src.services.oracle_matcher import OracleClientContext
 
 
 @pytest.fixture
 def mock_httpx_client():
     return httpx.AsyncClient()
-
-@pytest.fixture
-def oracle_context(mock_httpx_client):
-    return OracleClientContext(client=mock_httpx_client, user="test_user", password="test_password")
 
 @pytest.fixture
 def sample_payload():
