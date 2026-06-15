@@ -55,7 +55,7 @@ async def test_check_invoice_cascading_success(mock_httpx_client):
                 return httpx.Response(200, json={"items": [], "hasMore": False})
             return httpx.Response(200, json=mock_response)
 
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         result = await check_invoice_cascading(
             mock_httpx_client, "user", "pass", "INV-123", "2023-10-01", 100.0, "", ""
@@ -94,7 +94,7 @@ async def test_check_invoice_cascading_fallback(mock_httpx_client):
                 return httpx.Response(200, json=success_response)
             return httpx.Response(200, json=empty_response)
 
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         cache = {}
         lock = asyncio.Lock()
@@ -114,7 +114,7 @@ async def test_fetch_by_query_error_propagation(mock_httpx_client):
     with respx.mock:
         def side_effect(request):
             return httpx.Response(500, text="Internal Server Error")
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         with pytest.raises(Exception) as excinfo:
             await fetch_by_query(context, "TransactionNumber='123'", "", "")

@@ -195,6 +195,10 @@ async def _process_reconciliation(payload: ReconciliationRequest, request_id: st
         logger.error("Oracle credentials are not configured in the environment.")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Oracle credentials are not configured.")
 
+    if not get_oracle_url():
+        logger.error("ORACLE_URL is not configured or is invalid in the environment.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Oracle URL is not configured.")
+
     if not http_client:
         logger.error("Global HTTP client is not initialized")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error: HTTP client not initialized")
@@ -331,8 +335,8 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
             # Rules ordered per report_processing_rules.md: 1a, 1b, 2, 3, 4
             # Variables bound via default args to avoid late-binding closure issues (B023)
             rules = [
-                ("1a", lambda candidate, _inv_num=invoice_number, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
-                ("1b", lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
+                ("1a", lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
+                ("1b", lambda candidate, _inv_num=invoice_number, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
                 ("2",  lambda candidate, _doc=document_number, _d=inv_date, _amt=amount: bool(_doc) and safe_str_match(candidate.get("DocumentNumber"), _doc) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
                 ("3",  lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: bool(_inv_num) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(_inv_num).lower()) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
                 ("4",  lambda candidate, _cust=customer_name, _d=inv_date, _amt=amount: bool(_cust) and safe_str_match(candidate.get("BillToCustomerName"), _cust) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),

@@ -88,7 +88,7 @@ def test_safe_float_match_weird_strings():
 async def test_check_receipt_cascading_nan_inf_amounts(mock_httpx_client):
     # What happens when we pass float('nan') or float('inf') to check_receipt_cascading?
     with respx.mock:
-        respx.route(host="test.oracle.com").mock(httpx.Response(200, json={"items": [], "hasMore": False}))
+        respx.route(url__startswith="https://test.oracle.com").mock(httpx.Response(200, json={"items": [], "hasMore": False}))
 
         # NaN amount
         # float('nan') is caught by the guard, returning early without making an API request.
@@ -144,7 +144,7 @@ async def test_fetch_by_query_swallows_invoice_error(mock_httpx_client):
                 return httpx.Response(200, json={"items": [], "hasMore": False})
             return httpx.Response(404)
 
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         # Calling fetch_by_query should fail because receivablesInvoices failed.
         # It no longer swallows the exception.
