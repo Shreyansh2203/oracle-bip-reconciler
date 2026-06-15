@@ -29,7 +29,7 @@ class OracleBIPTransientError(Exception):
     reraise=True
 )
 async def run_bip_invoice_match(client: httpx.AsyncClient, user: str, pwd: str, invoice_number: str | None, inv_date: str | None, amount: float | None, customer_name: str | None) -> list[dict[str, Any]]:
-    report_path = "Custom/Financials/Receivables/Upgrade/Get Invoice Details Report.xdo"
+    report_path = "users/tripti.chugh@pinelabs.com/SHREYANSH/Get Invoice Details Report.xdo"
     url = f"{get_oracle_url()}/xmlpserver/services/rest/v1/reports/{report_path.replace('/', '%2F')}/run"
 
     formatted_date = ""
@@ -92,7 +92,7 @@ async def run_bip_invoice_match(client: httpx.AsyncClient, user: str, pwd: str, 
     reraise=True
 )
 async def run_bip_receipt_match(client: httpx.AsyncClient, user: str, pwd: str, receipt_number: str | None, receipt_date: str | None, amount: float | None, customer_name: str | None) -> list[dict[str, Any]]:
-    report_path = "Custom/Financials/Receivables/Upgrade/Get Receipt Details Report.xdo"
+    report_path = "users/tripti.chugh@pinelabs.com/SHREYANSH/Get Receipt Details Report.xdo"
     url = f"{get_oracle_url()}/xmlpserver/services/rest/v1/reports/{report_path.replace('/', '%2F')}/run"
 
     formatted_date = ""
