@@ -92,13 +92,17 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-API-Key"],
 )
 
+# Resolve absolute path for Vercel
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PUBLIC_DIR = os.path.join(BASE_DIR, "public")
+
 # Mount static files for the UI
-app.mount("/public", StaticFiles(directory="public"), name="public")
+app.mount("/public", StaticFiles(directory=PUBLIC_DIR), name="public")
 
 @app.get("/tester")
 async def tester_ui():
     """Serves the automated Async API Web Interface"""
-    return FileResponse("public/index.html")
+    return FileResponse(os.path.join(PUBLIC_DIR, "index.html"))
 
 @app.get("/")
 async def root() -> dict[str, str]:
