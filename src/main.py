@@ -260,7 +260,7 @@ async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: 
     if not invoice_list:
         return {}
 
-    chunk_size = 250
+    chunk_size = 100
     chunks = [invoice_list[i:i + chunk_size] for i in range(0, len(invoice_list), chunk_size)]
 
     tasks = []
