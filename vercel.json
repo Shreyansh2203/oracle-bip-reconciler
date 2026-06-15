@@ -4,7 +4,8 @@
       "src": "src/main.py",
       "use": "@vercel/python",
       "config": {
-        "maxDuration": 60
+        "maxDuration": 60,
+        "includeFiles": "public/**"
       }
     }
   ],
