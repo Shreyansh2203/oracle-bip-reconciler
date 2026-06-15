@@ -260,7 +260,7 @@ async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: 
     if not invoice_list:
         return {}
 
-    chunk_size = 500
+    chunk_size = 250
     chunks = [invoice_list[i:i + chunk_size] for i in range(0, len(invoice_list), chunk_size)]
 
     tasks = []
@@ -336,11 +336,11 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
             # Rules ordered per report_processing_rules.md: 1a, 1b, 2, 3, 4
             # Variables bound via default args to avoid late-binding closure issues (B023)
             rules = [
-                ("1a", lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt, allow_missing_expected=True)),
-                ("1b", lambda candidate, _inv_num=invoice_number, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_float_match(candidate.get("EnteredAmount"), _amt, allow_missing_expected=True)),
-                ("2",  lambda candidate, _doc=document_number, _d=inv_date, _amt=amount: bool(_doc) and safe_str_match(candidate.get("DocumentNumber"), _doc) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt, allow_missing_expected=True)),
-                ("3",  lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: bool(_inv_num) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(_inv_num).lower()) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt, allow_missing_expected=True)),
-                ("4",  lambda candidate, _cust=customer_name, _d=inv_date, _amt=amount: bool(_cust) and safe_str_match(candidate.get("BillToCustomerName"), _cust) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt, allow_missing_expected=True)),
+                ("1a", lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(_amt, candidate.get("EnteredAmount"), allow_missing_expected=True)),
+                ("1b", lambda candidate, _inv_num=invoice_number, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_float_match(_amt, candidate.get("EnteredAmount"), allow_missing_expected=True)),
+                ("2",  lambda candidate, _doc=document_number, _d=inv_date, _amt=amount: bool(_doc) and safe_str_match(candidate.get("DocumentNumber"), _doc) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(_amt, candidate.get("EnteredAmount"), allow_missing_expected=True)),
+                ("3",  lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: bool(_inv_num) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(_inv_num).lower()) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(_amt, candidate.get("EnteredAmount"), allow_missing_expected=True)),
+                ("4",  lambda candidate, _cust=customer_name, _d=inv_date, _amt=amount: bool(_cust) and safe_str_match(candidate.get("BillToCustomerName"), _cust) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(_amt, candidate.get("EnteredAmount"), allow_missing_expected=True)),
             ]
 
             # Two-Phase Status Priority check (Open first, then Closed)
