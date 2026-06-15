@@ -171,69 +171,29 @@ async def check_receipt_cascading(client: httpx.AsyncClient, user: str, password
     if amount is not None and not math.isfinite(amount):
         return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
 
-    context = OracleClientContext(client, user, password, sem=sem)
-    formatted_date = format_oracle_date(receipt_date)
-    fields = "ReceiptNumber,Amount,State,CustomerName,ReceiptDate"
-
-    async def _evaluate_candidates(candidates_list: list[dict[str, Any]]) -> dict[str, Any] | None:
-        if not candidates_list:
-            return None
-        seen = set()
-        unique_candidates = []
-        for c in candidates_list:
-            key = (str(c.get("ReceiptNumber", "")).strip(), str(c.get("Amount", "")).strip(), str(c.get("ReceiptDate", "")).strip(), str(c.get("State", "")).strip())
-            if key not in seen:
-                seen.add(key)
-                unique_candidates.append(c)
-        
-        # Phase 1: Unapplied
-        unapplied_candidates = [c for c in unique_candidates if is_receipt_unapplied(c)]
-        match, reason = select_best_receipt(unapplied_candidates, receipt_num, amount, receipt_date, customer_name)
-        if match:
-            logger.info(f"Receipt Matched ({reason}) in UNAPPLIED phase!")
-            return {"matched_in_oracle": True, "fusion_receipt_number": match.get("ReceiptNumber"), "fusion_receipt_date": match.get("ReceiptDate"), "fusion_customer_name": match.get("CustomerName"), "match_phase": "UNAPPLIED", "match_rule": reason}
-        elif reason == "ambiguous":
-            return {"matched_in_oracle": False, "error": "Ambiguous match: multiple identical scoring unapplied candidates found."}
-
-        # Phase 2: Applied
-        applied_candidates = [c for c in unique_candidates if not is_receipt_unapplied(c)]
-        match, reason = select_best_receipt(applied_candidates, receipt_num, amount, receipt_date, customer_name)
-        if match:
-            logger.info(f"Receipt Matched ({reason}) in APPLIED phase!")
-            return {"matched_in_oracle": True, "fusion_receipt_number": match.get("ReceiptNumber"), "fusion_receipt_date": match.get("ReceiptDate"), "fusion_customer_name": match.get("CustomerName"), "match_phase": "APPLIED", "match_rule": reason}
-        elif reason == "ambiguous":
-            return {"matched_in_oracle": False, "error": "Ambiguous match: multiple identical scoring applied candidates found."}
-        return None
-
+    from src.services.oracle_bip import run_bip_receipt_match
+    
     try:
-        primary_candidates = []
-        if receipt_num:
-            query = f"ReceiptNumber='{escape_oracle(receipt_num)}'"
-            primary_candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
-        if amount is not None and formatted_date:
-            query = f"Amount={amount} and ReceiptDate='{formatted_date}'"
-            primary_candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
-        
-        result = await _evaluate_candidates(primary_candidates)
-        if result:
-            return result
-
-        if customer_name:
-            customer_candidates = []
-            query = f"CustomerName='{escape_oracle(customer_name)}'"
-            customer_candidates.extend(await fetch_oracle_candidates(context, "standardReceipts", query, fields=fields))
-            
-            result = await _evaluate_candidates(customer_candidates)
-            if result:
-                return result
-
-    except httpx.RequestError as e:
-        return {"matched_in_oracle": False, "error": f"Oracle Fetch Request Error: {str(e)}"}
+        results = await run_bip_receipt_match(client, user, password, receipt_num, receipt_date, amount, customer_name)
     except Exception as e:
-        logger.exception("Unexpected error in check_receipt_cascading fetch")
-        return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
+        logger.exception("Unexpected error in BIP receipt fetch")
+        return {"matched_in_oracle": False, "error": f"BIP Fetch Error: {str(e)}"}
 
-    return {"matched_in_oracle": False, "error": "No single match found after scoring evaluation."}
+    if not results:
+        return {"matched_in_oracle": False, "error": "No single match found after scoring evaluation."}
+
+    match = results[0]
+    status_code = match.get("RECEIPT_STATUS_CODE", "")
+    phase = "UNAPPLIED" if status_code in ["UNAPP", "UNID"] else "APPLIED"
+
+    return {
+        "matched_in_oracle": True,
+        "fusion_receipt_number": match.get("RECEIPT_NUMBER"),
+        "fusion_receipt_date": match.get("RECEIPT_DATE"),
+        "fusion_customer_name": match.get("BILL_CUSTOMER_NAME"),
+        "match_phase": phase,
+        "match_rule": "bip_sql_match"
+    }
 
 async def fetch_by_query(context: OracleClientContext, query: str, inv_fields: str, cm_fields: str, force_both: bool = False) -> list[dict[str, Any]]:
     """
@@ -301,72 +261,32 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
     if amount is not None and not math.isfinite(amount):
         return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
 
-    context = OracleClientContext(client, user, password, sem=sem)
-    inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
-    cm_fields = "TransactionNumber,TransactionDate,EnteredAmount,CreditMemoStatus,TransactionBalanceDue,DocumentNumber,BillToCustomerName"
-
-    async def _evaluate_candidates(candidates_list: list[dict[str, Any]]) -> dict[str, Any] | None:
-        if not candidates_list:
-            return None
-        seen = set()
-        unique_candidates = []
-        for c in candidates_list:
-            key = (str(c.get("TransactionNumber", "")).strip(), str(c.get("EnteredAmount", "")).strip(), str(c.get("TransactionDate", "")).strip(), str(c.get("DocumentNumber", "")).strip())
-            if key not in seen:
-                seen.add(key)
-                unique_candidates.append(c)
-        
-        # Phase 1: Open
-        open_candidates = [c for c in unique_candidates if is_invoice_open(c)]
-        match, reason = select_best_invoice(open_candidates, invoice_number, document_number, inv_date, amount, customer_name)
-        if match:
-            logger.info(f"Invoice Matched ({reason}) in OPEN phase!")
-            return {"matched_in_oracle": True, "fusion_invoice_number": match.get("TransactionNumber"), "fusion_invoice_date": match.get("TransactionDate"), "fusion_invoice_amount": float(str(match.get("EnteredAmount")).replace(",", "")) if match.get("EnteredAmount") is not None else None, "match_phase": "OPEN", "match_rule": reason}
-        elif reason == "ambiguous":
-            return {"matched_in_oracle": False, "error": f"Ambiguous match for invoice {invoice_number} in OPEN phase."}
-
-        # Phase 2: Closed
-        closed_candidates = [c for c in unique_candidates if not is_invoice_open(c)]
-        match, reason = select_best_invoice(closed_candidates, invoice_number, document_number, inv_date, amount, customer_name)
-        if match:
-            logger.info(f"Invoice Matched ({reason}) in CLOSED phase!")
-            return {"matched_in_oracle": True, "fusion_invoice_number": match.get("TransactionNumber"), "fusion_invoice_date": match.get("TransactionDate"), "fusion_invoice_amount": float(str(match.get("EnteredAmount")).replace(",", "")) if match.get("EnteredAmount") is not None else None, "match_phase": "CLOSED", "match_rule": reason}
-        elif reason == "ambiguous":
-            return {"matched_in_oracle": False, "error": f"Ambiguous match for invoice {invoice_number} in CLOSED phase."}
-        
-        return None
-
+    from src.services.oracle_bip import run_bip_invoice_match
+    
     try:
-        primary_candidates = []
-        if invoice_number:
-            primary_candidates.extend(await fetch_by_field(context, "TransactionNumber", invoice_number, inv_fields, cm_fields))
-        if document_number:
-            primary_candidates.extend(await fetch_by_field(context, "DocumentNumber", document_number, inv_fields, cm_fields))
-        
-        result = await _evaluate_candidates(primary_candidates)
-        if result:
-            return result
-
-        if customer_name:
-            customer_candidates = []
-            if cache_customer is not None and customer_lock is not None:
-                c_name_lower = customer_name.lower()
-                if c_name_lower not in cache_customer:
-                    async with customer_lock:
-                        if c_name_lower not in cache_customer:
-                            cache_customer[c_name_lower] = await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields, is_unique=False)
-                customer_candidates.extend(cache_customer[c_name_lower])
-            else:
-                customer_candidates.extend(await fetch_by_field(context, "BillToCustomerName", customer_name, inv_fields, cm_fields, is_unique=False))
-            
-            result = await _evaluate_candidates(customer_candidates)
-            if result:
-                return result
-
-    except httpx.RequestError as e:
-        return {"matched_in_oracle": False, "error": f"Oracle Fetch Request Error: {str(e)}"}
+        results = await run_bip_invoice_match(client, user, password, invoice_number, inv_date, amount, customer_name)
     except Exception as e:
-        logger.exception("Unexpected error in check_invoice_cascading fetch")
-        return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
+        logger.exception("Unexpected error in BIP invoice fetch")
+        return {"matched_in_oracle": False, "error": f"BIP Fetch Error: {str(e)}"}
 
-    return {"matched_in_oracle": False, "error": f"No single match found for invoice {invoice_number}."}
+    if not results:
+        return {"matched_in_oracle": False, "error": f"No single match found for invoice {invoice_number}."}
+
+    match = results[0]
+    
+    amt_str = match.get("TRANSACTION_TOTAL", "")
+    parsed_amt = None
+    if amt_str:
+        try:
+            parsed_amt = float(amt_str.replace(",", ""))
+        except ValueError:
+            pass
+
+    return {
+        "matched_in_oracle": True,
+        "fusion_invoice_number": match.get("TRANSACTION_NUMBER"),
+        "fusion_invoice_date": match.get("TRANSACTION_DATE"),
+        "fusion_invoice_amount": parsed_amt,
+        "match_phase": match.get("INVOICE_STATUS", "OTHER"),
+        "match_rule": "bip_sql_match"
+    }
