@@ -10,7 +10,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 REPO_SLUG = "system_prompts_leaks"
 TRAFFIC_DIR = f"traffic-{REPO_SLUG}"
@@ -36,7 +36,7 @@ def fetch_from_branch(publish_dir, filename):
         return None
 
 def accumulate(publish_dir):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     data_dir = os.path.join(publish_dir, TRAFFIC_DIR)
 
     referrers = load_json(os.path.join(data_dir, "traffic_referrers.json"))
