@@ -14,7 +14,7 @@ def get_oracle_url():
         try:
             parsed = urlparse(url)
             host = parsed.hostname
-        except Exception:
+        except ValueError:
             host = None
         if host not in ["localhost", "127.0.0.1"]:
             raise ValueError(f"Insecure HTTP protocol is not allowed for non-localhost URLs: {url}")

@@ -2,6 +2,7 @@ import math
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from src.utils.validators import sanitize_string_val, sanitize_float_val
 
 
 class InvoiceItem(BaseModel):
@@ -19,29 +20,12 @@ class InvoiceItem(BaseModel):
     @field_validator("invoice_number", "invoice_date", "customer_invoice_number", mode="before")
     @classmethod
     def sanitize_strings(cls, v: str | int | None) -> str | int | None:
-        if v is None:
-            return ""
-        stripped = str(v).strip()
-        if stripped.lower() == "none":
-            return ""
-        return stripped
+        return sanitize_string_val(v)
 
     @field_validator("invoice_amount", "fusion_invoice_amount", mode="before")
     @classmethod
     def sanitize_floats(cls, v: Any) -> Any:
-        if isinstance(v, str):
-            v_clean = v.strip().replace(",", "")
-            if v_clean.lower() == "none":
-                return None
-            v = v_clean
-        if v is not None:
-            try:
-                f_val = float(v)
-                if not math.isfinite(f_val):
-                    raise ValueError("Float value must be a finite number.")
-            except (ValueError, TypeError):
-                raise ValueError("Float value must be a finite number.") from None
-        return v
+        return sanitize_float_val(v)
 
 class MetaDataModel(BaseModel):
     warnings: list[str] = Field(default_factory=list)
@@ -54,7 +38,7 @@ class ReconciliationRequest(BaseModel):
     payment_date: str | None = None
     fusion_receipt_date: str | None = None
     header_id: int | str | None = None
-    invoices: list[InvoiceItem] = Field(default=[], max_length=2500)
+    invoices: list[InvoiceItem] = Field(default_factory=list, max_length=2500)
     total_amount: float | None = None
     confidence_score: float | None = None
     confidence_label: str | None = None
@@ -64,29 +48,12 @@ class ReconciliationRequest(BaseModel):
     @field_validator("customer_name", "payment_reference", "payment_date", mode="before")
     @classmethod
     def sanitize_strings(cls, v: str | int | None) -> str | int | None:
-        if v is None:
-            return ""
-        stripped = str(v).strip()
-        if stripped.lower() == "none":
-            return ""
-        return stripped
+        return sanitize_string_val(v)
 
     @field_validator("total_amount", "confidence_score", mode="before")
     @classmethod
     def sanitize_floats(cls, v: Any) -> Any:
-        if isinstance(v, str):
-            v_clean = v.strip().replace(",", "")
-            if v_clean.lower() == "none":
-                return None
-            v = v_clean
-        if v is not None:
-            try:
-                f_val = float(v)
-                if not math.isfinite(f_val):
-                    raise ValueError("Float value must be a finite number.")
-            except (ValueError, TypeError):
-                raise ValueError("Float value must be a finite number.") from None
-        return v
+        return sanitize_float_val(v)
 
     @model_validator(mode="after")
     def _set_invoice_count(self) -> "ReconciliationRequest":

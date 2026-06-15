@@ -93,5 +93,5 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
         logger.warning(f"Transient BIP fetch error: {e}")
         raise e
     except Exception as e:
-        logger.error(f"Failed to execute BIP report: {e}")
+        logger.exception(f"Failed to execute BIP report: {e}")
         raise e

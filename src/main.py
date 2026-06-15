@@ -19,10 +19,10 @@ from src.config import get_oracle_url
 from src.models import MetaDataModel, ReconciliationRequest
 from src.services.oracle_bip import run_bip_bulk_match
 from src.services.oracle_matcher import (
-    apply_rules_to_candidates,
     check_invoice_cascading,
     check_receipt_cascading,
     is_invoice_open,
+    select_best_invoice,
     safe_float_match,
     safe_str_match,
 )
@@ -266,7 +266,7 @@ async def _background_reconcile_job(job_id: str, payload: ReconciliationRequest,
         jobs_store[job_id]["status"] = "completed"
         jobs_store[job_id]["completed_at"] = time.time()
     except Exception as e:
-        logger.error(f"[{job_id}] Background job failed: {e}", exc_info=True)
+        logger.exception(f"[{job_id}] Background job failed: {e}")
         jobs_store[job_id]["status"] = "failed"
         jobs_store[job_id]["error"] = str(e)
         jobs_store[job_id]["completed_at"] = time.time()
@@ -283,7 +283,7 @@ async def reconcile_data_v1(request: Request, payload: ReconciliationRequest, ap
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[{request_id}] Top-level processing exception: {e}", exc_info=True)
+        logger.exception(f"[{request_id}] Top-level processing exception: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected system error occurred during reconciliation.") from e
 
 @app.post("/v2/reconcile/async")
@@ -421,23 +421,13 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
             amount = inv.invoice_amount
             document_number = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
 
-            # Rules ordered per report_processing_rules.md: 1a, 1b, 2, 3, 4
-            # Variables bound via default args to avoid late-binding closure issues (B023)
-            rules = [
-                ("1a", lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(_amt, candidate.get("EnteredAmount"), allow_missing_expected=True)),
-                ("1b", lambda candidate, _inv_num=invoice_number, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_float_match(_amt, candidate.get("EnteredAmount"), allow_missing_expected=True)),
-                ("2",  lambda candidate, _doc=document_number, _d=inv_date, _amt=amount: bool(_doc) and safe_str_match(candidate.get("DocumentNumber"), _doc) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(_amt, candidate.get("EnteredAmount"), allow_missing_expected=True)),
-                ("3",  lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: bool(_inv_num) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(_inv_num).lower()) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(_amt, candidate.get("EnteredAmount"), allow_missing_expected=True)),
-                ("4",  lambda candidate, _cust=customer_name, _d=inv_date, _amt=amount: bool(_cust) and safe_str_match(candidate.get("BillToCustomerName"), _cust) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(_amt, candidate.get("EnteredAmount"), allow_missing_expected=True)),
-            ]
-
-            # Two-Phase Status Priority check (Open first, then Closed)
+            # Two-Phase Status Priority check (Open first, then Closed) using scoring
             open_candidates = [c for c in normalized_candidates if is_invoice_open(c)]
-            match, rule_name = apply_rules_to_candidates(open_candidates, rules)
+            match, reason = select_best_invoice(open_candidates, invoice_number, document_number, inv_date, amount, customer_name)
 
-            if not match:
+            if not match and reason != "ambiguous":
                 closed_candidates = [c for c in normalized_candidates if not is_invoice_open(c)]
-                match, rule_name = apply_rules_to_candidates(closed_candidates, rules)
+                match, reason = select_best_invoice(closed_candidates, invoice_number, document_number, inv_date, amount, customer_name)
 
             if match:
                 raw_amt = match.get("EnteredAmount")
