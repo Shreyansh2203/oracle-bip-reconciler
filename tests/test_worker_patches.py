@@ -127,18 +127,14 @@ def test_bip_pipeline_priority_and_duplicates():
 
 
 # 5. Test Insecure URL rejection in production
-def test_insecure_url_rejection(monkeypatch):
-    # Dev/Test/Dev environment should allow HTTP
-    monkeypatch.setenv("ENV", "dev")
-    monkeypatch.setenv("ORACLE_URL", "http://example.com/api")
-    assert get_oracle_url() == "http://example.com/api"
-
-    # Production environment should reject HTTP
+def test_oracle_url_validation(monkeypatch):
     monkeypatch.setenv("ENV", "production")
+    monkeypatch.setenv("ORACLE_URL", "https://example.com/api")
+    assert get_oracle_url() == "https://example.com/api"
+
     monkeypatch.setenv("ORACLE_URL", "http://example.com/api")
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match="Insecure HTTP protocol is not allowed for non-localhost URLs"):
         get_oracle_url()
-    assert "Insecure HTTP protocol is not allowed" in str(exc.value)
 
     # Localhost/127.0.0.1 should be allowed in production
     monkeypatch.setenv("ORACLE_URL", "http://localhost/api")
