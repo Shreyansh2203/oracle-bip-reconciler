@@ -16,6 +16,9 @@ from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from src.config import get_oracle_url
 from src.models import MetaDataModel, ReconciliationRequest
 from src.services.oracle_bip import run_bip_bulk_match
