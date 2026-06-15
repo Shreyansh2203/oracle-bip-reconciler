@@ -399,7 +399,7 @@
                 const baseUrl = window.location.origin;
                 jobStartTime = Date.now();
                 
-                const response = await fetch(`${baseUrl}/v2/reconcile/async`, {
+                const response = await fetch(`${baseUrl}/v1/reconcile`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -409,20 +409,23 @@
                 });
 
                 if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || "Server Error");
+                    let errStr = "Server Error";
+                    try {
+                        const err = await response.json();
+                        errStr = err.detail || errStr;
+                    } catch (e) {}
+                    throw new Error(errStr);
                 }
 
                 const data = await response.json();
-                const jobId = data.job_id;
                 
-                document.getElementById('loaderJobId').textContent = `Job ID: ${jobId}`;
-                document.getElementById('loaderText').textContent = "Server is matching invoices in background...";
-                statusBadge.textContent = "PROCESSING";
-                statusBadge.className = 'status-badge processing';
-                
-                // Start polling
-                pollInterval = setInterval(() => pollStatus(baseUrl, jobId, apiKey), 2000);
+                // Emulate the async payload structure for the UI
+                const syntheticData = {
+                    created_at: jobStartTime / 1000,
+                    completed_at: Date.now() / 1000,
+                    result: data
+                };
+                showSuccess(syntheticData);
 
             } catch (error) {
                 handleError(error.message);
