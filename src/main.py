@@ -43,8 +43,6 @@ logger = logging.getLogger("reconciliation_api")
 # Global HTTP client
 http_client = None
 
-# Global Job Store for async endpoint tracking
-jobs_store: dict[str, dict[str, Any]] = {}
 
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
@@ -248,34 +246,11 @@ async def _process_reconciliation(payload: ReconciliationRequest, request_id: st
 
     return payload
 
-async def _background_reconcile_job(job_id: str, payload: ReconciliationRequest, sem: asyncio.Semaphore) -> None:
-    """
-    Background worker that runs the exact same reconciliation logic, 
-    but catches all errors and securely updates the job store instead of returning an HTTP response.
-    """
-    try:
-        jobs_store[job_id]["status"] = "processing"
-        
-        # We need a new request_id for logging to distinguish it from the HTTP dispatch
-        req_id = str(uuid.uuid4())
-        
-        # Execute the core matching pipeline
-        result_payload = await _process_reconciliation(payload, req_id, sem)
-        
-        # Serialize the pydantic model cleanly for the job store
-        jobs_store[job_id]["result"] = json.loads(result_payload.model_dump_json())
-        jobs_store[job_id]["status"] = "completed"
-        jobs_store[job_id]["completed_at"] = time.time()
-    except Exception as e:
-        logger.exception(f"[{job_id}] Background job failed: {e}")
-        jobs_store[job_id]["status"] = "failed"
-        jobs_store[job_id]["error"] = str(e)
-        jobs_store[job_id]["completed_at"] = time.time()
 
 @app.post("/v1/reconcile", response_model=ReconciliationRequest)
 async def reconcile_data_v1(request: Request, payload: ReconciliationRequest, api_key: str = Depends(get_api_key)):
     """
-    Core hybrid endpoint executing BI Publisher bulk match with concurrent REST API fallback.
+    Core hybrid endpoint executing BI Publisher bulk match.
     """
     request_id = str(uuid.uuid4())
     sem = request.app.state.oracle_sem
@@ -286,57 +261,6 @@ async def reconcile_data_v1(request: Request, payload: ReconciliationRequest, ap
     except Exception as e:
         logger.exception(f"[{request_id}] Top-level processing exception: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected system error occurred during reconciliation.") from e
-
-@app.post("/v2/reconcile/async")
-async def reconcile_data_v2_async(
-    request: Request, 
-    payload: ReconciliationRequest, 
-    background_tasks: BackgroundTasks,
-    api_key: str = Depends(get_api_key)
-):
-    """
-    Asynchronous V2 Endpoint: Immediately returns a Job ID and pushes processing to a background worker.
-    This prevents API timeouts for massive enterprise payloads.
-    """
-    job_id = str(uuid.uuid4())
-    sem = request.app.state.oracle_sem
-    
-    # Initialize job state
-    jobs_store[job_id] = {
-        "status": "pending",
-        "created_at": time.time(),
-        "result": None,
-        "error": None,
-        "completed_at": None
-    }
-    
-    # Dispatch to background task
-    background_tasks.add_task(_background_reconcile_job, job_id, payload, sem)
-    
-    return {"status": "processing", "job_id": job_id}
-
-@app.get("/v2/reconcile/status/{job_id}")
-async def reconcile_status_v2(job_id: str, api_key: str = Depends(get_api_key)):
-    """
-    Status Polling V2 Endpoint: Check the status of an asynchronous job.
-    """
-    job = jobs_store.get(job_id)
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-        
-    response = {
-        "job_id": job_id,
-        "status": job["status"],
-        "created_at": job["created_at"],
-        "completed_at": job["completed_at"]
-    }
-    
-    if job["status"] == "completed":
-        response["result"] = job["result"]
-    elif job["status"] == "failed":
-        response["error"] = job["error"]
-        
-    return response
 
 async def _build_bip_invoice_map(payload: ReconciliationRequest, x_oracle_user: str, x_oracle_pass: str) -> dict[str, Any]:
     invoice_numbers = set()
