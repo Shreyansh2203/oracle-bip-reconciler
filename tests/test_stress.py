@@ -30,7 +30,7 @@ async def test_pagination_cap_limit(oracle_context, monkeypatch):
                 "hasMore": True
             })
 
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         results = await fetch_oracle_candidates(oracle_context, "receivablesInvoices", "TransactionNumber='123'")
 
@@ -79,7 +79,7 @@ async def test_concurrency_lock_and_semaphore_contention(mock_httpx_client):
             # Default fallback for prefix, transaction number, etc.
             return httpx.Response(200, json={"items": [], "hasMore": False})
 
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         # Create a payload with 10 invoices, all fallback to the same customer name
         payload = ReconciliationRequest(
@@ -135,7 +135,7 @@ async def test_short_prefix_search_inflation(mock_httpx_client):
                 )
             return httpx.Response(200, json={"items": [], "hasMore": False})
 
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         result = await check_invoice_cascading(
             mock_httpx_client, "user", "pass", "I", "2023-10-01", 100.0, "", ""

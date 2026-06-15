@@ -166,7 +166,7 @@ async def test_bip_retry_on_transient_status_codes(mock_httpx_client):
             encoded_csv = base64.b64encode(csv_data.encode("utf-8")).decode("utf-8")
             return httpx.Response(200, json={"reportBytes": encoded_csv})
 
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         # Should retry after 502 and succeed on the second try
         result = await run_bip_bulk_match(mock_httpx_client, "user", "pass", ["INV-001"])
@@ -182,11 +182,11 @@ async def test_bip_no_retry_on_permanent_errors(mock_httpx_client):
             calls_count += 1
             return httpx.Response(400, text="Bad Request")
 
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
-        # Permanent error (400) should log and return {} immediately without retry
-        result = await run_bip_bulk_match(mock_httpx_client, "user", "pass", ["INV-001"])
-        assert result == {}
+        # Permanent error (400) should raise immediately without retry
+        with pytest.raises(httpx.HTTPStatusError):
+            await run_bip_bulk_match(mock_httpx_client, "user", "pass", ["INV-001"])
         assert calls_count == 1
 
 def test_nan_inf_validation():

@@ -18,10 +18,13 @@ MAX_RETRIES = 3
 MIN_WAIT_SECONDS = 1
 MAX_WAIT_SECONDS = 10
 
+class OracleBIPTransientError(Exception):
+    pass
+
 @retry(
     stop=stop_after_attempt(MAX_RETRIES),
     wait=wait_exponential(multiplier=1, min=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS),
-    retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    retry=retry_if_exception_type((httpx.RequestError, OracleBIPTransientError)),
     reraise=True
 )
 async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, invoice_numbers: list[str]) -> dict[str, Any]:
@@ -82,13 +85,13 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
     except httpx.HTTPStatusError as e:
         if e.response.status_code in [429, 500, 502, 503, 504]:
             logger.warning(f"Transient BIP HTTP error ({e.response.status_code}): {e}. Retrying...")
-            raise e
+            raise OracleBIPTransientError(f"Transient BIP error {e}")
         else:
             logger.error(f"Permanent BIP HTTP error ({e.response.status_code}): {e}")
-            return {}
+            raise e
     except httpx.RequestError as e:
         logger.warning(f"Transient BIP fetch error: {e}")
         raise e
     except Exception as e:
         logger.error(f"Failed to execute BIP report: {e}")
-        return {}
+        raise e

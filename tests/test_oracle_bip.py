@@ -19,7 +19,7 @@ async def test_run_bip_bulk_match_success(mock_httpx_client):
     with respx.mock:
         def side_effect(request):
             return httpx.Response(200, json=mock_response)
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         invoice_numbers = ["INV-001", "INV-002"]
         result = await run_bip_bulk_match(mock_httpx_client, "user", "pass", invoice_numbers)
@@ -35,7 +35,7 @@ async def test_run_bip_bulk_match_missing_bytes(mock_httpx_client):
     with respx.mock:
         def side_effect(request):
             return httpx.Response(200, json=mock_response)
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         result = await run_bip_bulk_match(mock_httpx_client, "user", "pass", ["INV-001"])
         assert result == {}

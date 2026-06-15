@@ -342,8 +342,8 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
     # 2. Local Filtering Rules
     # Rules ordered per report_processing_rules.md: 1a, 1b, 2, 3, 4
     rules = [
-        ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_float_match(candidate.get("EnteredAmount"), amount)),
-        ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+        ("1a", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
+        ("1b", lambda candidate: safe_str_match(candidate.get("TransactionNumber"), invoice_number) and safe_float_match(candidate.get("EnteredAmount"), amount)),
         ("2",  lambda candidate: bool(document_number) and safe_str_match(candidate.get("DocumentNumber"), document_number) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
         ("3",  lambda candidate: bool(invoice_number) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(invoice_number).lower()) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),
         ("4",  lambda candidate: bool(customer_name) and safe_str_match(candidate.get("BillToCustomerName"), customer_name) and safe_date_match(candidate.get("TransactionDate"), inv_date) and safe_float_match(candidate.get("EnteredAmount"), amount)),

@@ -55,7 +55,7 @@ async def test_reconcile_integration_hybrid(override_env):
                 return httpx.Response(200, json={"items": [], "hasMore": False})
             return httpx.Response(404)
 
-        respx.route(host="test.oracle.com").mock(side_effect=side_effect)
+        respx.route(url__startswith="https://test.oracle.com").mock(side_effect=side_effect)
 
         # Create payload
         payload = {
