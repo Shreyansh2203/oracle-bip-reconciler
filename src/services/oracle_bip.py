@@ -46,7 +46,7 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
                 "listOfParamNameValues": [
                     {
                         "name": "P_INVOICE_LIST",
-                        "values": [",".join(invoice_numbers)]
+                        "values": [",".join(num.replace(",", "") for num in invoice_numbers)]
                     }
                 ]
             }

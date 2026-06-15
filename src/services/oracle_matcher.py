@@ -292,7 +292,8 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
         if invoice_number:
             candidates.extend(await fetch_by_field(context, "TransactionNumber", invoice_number, inv_fields, cm_fields))
             # Also fetch by prefix for Rule 3
-            prefix_query = f"TransactionNumber LIKE '{escape_oracle(invoice_number).upper()}%'"
+            escaped_prefix = escape_oracle(invoice_number).upper().replace("%", "\\%").replace("_", "\\_")
+            prefix_query = f"TransactionNumber LIKE '{escaped_prefix}%'"
             candidates.extend(await fetch_by_query(context, prefix_query, inv_fields, cm_fields))
 
         if document_number:
@@ -367,7 +368,7 @@ async def check_invoice_cascading(client: httpx.AsyncClient, user: str, password
             "matched_in_oracle": True,
             "fusion_invoice_number": match.get("TransactionNumber"),
             "fusion_invoice_date": match.get("TransactionDate"),
-            "fusion_invoice_amount": match.get("EnteredAmount"),
+            "fusion_invoice_amount": float(str(match.get("EnteredAmount")).replace(",", "")) if match.get("EnteredAmount") is not None else None,
             "match_phase": "OPEN" if is_invoice_open(match) else "CLOSED",
             "match_rule": rule_name
         }
