@@ -11,7 +11,9 @@ from typing import Any
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader
+from fastapi.staticfiles import StaticFiles
 
 from src.config import get_oracle_url
 from src.models import MetaDataModel, ReconciliationRequest
@@ -88,6 +90,14 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "X-API-Key"],
 )
+
+# Mount static files for the UI
+app.mount("/public", StaticFiles(directory="public"), name="public")
+
+@app.get("/tester")
+async def tester_ui():
+    """Serves the automated Async API Web Interface"""
+    return FileResponse("public/index.html")
 
 @app.get("/")
 async def root() -> dict[str, str]:
