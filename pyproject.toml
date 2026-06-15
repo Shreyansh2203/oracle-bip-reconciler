@@ -42,3 +42,6 @@ select = [
 ignore = [
     "E501", # line too long (handled by formatting)
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
