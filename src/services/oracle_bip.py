@@ -85,7 +85,7 @@ async def run_bip_bulk_match(client: httpx.AsyncClient, user: str, pwd: str, inv
     except httpx.HTTPStatusError as e:
         if e.response.status_code in [429, 500, 502, 503, 504]:
             logger.warning(f"Transient BIP HTTP error ({e.response.status_code}): {e}. Retrying...")
-            raise OracleBIPTransientError(f"Transient BIP error {e}")
+            raise OracleBIPTransientError(f"Transient BIP error {e}") from e
         else:
             logger.error(f"Permanent BIP HTTP error ({e.response.status_code}): {e}")
             raise e
