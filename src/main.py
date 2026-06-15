@@ -302,7 +302,7 @@ def normalize_invoice_candidate(raw: dict[str, Any]) -> dict[str, Any]:
     normalized["TransactionDate"] = get_any(["TransactionDate", "TRANSACTION_DATE", "InvoiceDate", "INVOICE_DATE"])
     normalized["EnteredAmount"] = get_any(["EnteredAmount", "ENTERED_AMOUNT", "TotalAmounts", "TOTAL_AMOUNTS", "Amount", "AMOUNT"])
     normalized["InvoiceStatus"] = get_any(["InvoiceStatus", "INVOICE_STATUS", "CreditMemoStatus", "CREDIT_MEMO_STATUS", "Status", "STATUS"])
-    normalized["InvoiceBalanceAmount"] = get_any(["InvoiceBalanceAmount", "INVOICE_BALANCE_AMOUNT", "TransactionBalanceDue", "TRANSACTION_BALANCE_DUE", "Balance", "BALANCE"])
+    normalized["InvoiceBalanceAmount"] = get_any(["InvoiceBalanceAmount", "INVOICE_BALANCE_AMOUNT", "TransactionBalanceDue", "TRANSACTION_BALANCE_DUE", "Balance", "BALANCE", "AMOUNT_DUE_REMAINING", "AmountDueRemaining"])
     normalized["DocumentNumber"] = get_any(["DocumentNumber", "DOCUMENT_NUMBER"])
     normalized["BillToCustomerName"] = get_any(["BillToCustomerName", "BILL_TO_CUSTOMER_NAME", "BillCustomerName", "BILL_CUSTOMER_NAME", "CustomerName", "CUSTOMER_NAME"])
     mapped_upper_keys = {mk.upper().replace("_", "").replace(" ", "") for mk in normalized}
@@ -336,11 +336,11 @@ def _map_bip_invoices(payload: ReconciliationRequest, invoice_map: dict[str, Any
             # Rules ordered per report_processing_rules.md: 1a, 1b, 2, 3, 4
             # Variables bound via default args to avoid late-binding closure issues (B023)
             rules = [
-                ("1a", lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
-                ("1b", lambda candidate, _inv_num=invoice_number, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
-                ("2",  lambda candidate, _doc=document_number, _d=inv_date, _amt=amount: bool(_doc) and safe_str_match(candidate.get("DocumentNumber"), _doc) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
-                ("3",  lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: bool(_inv_num) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(_inv_num).lower()) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
-                ("4",  lambda candidate, _cust=customer_name, _d=inv_date, _amt=amount: bool(_cust) and safe_str_match(candidate.get("BillToCustomerName"), _cust) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt)),
+                ("1a", lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt, allow_missing_expected=True)),
+                ("1b", lambda candidate, _inv_num=invoice_number, _amt=amount: safe_str_match(candidate.get("TransactionNumber"), _inv_num) and safe_float_match(candidate.get("EnteredAmount"), _amt, allow_missing_expected=True)),
+                ("2",  lambda candidate, _doc=document_number, _d=inv_date, _amt=amount: bool(_doc) and safe_str_match(candidate.get("DocumentNumber"), _doc) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt, allow_missing_expected=True)),
+                ("3",  lambda candidate, _inv_num=invoice_number, _d=inv_date, _amt=amount: bool(_inv_num) and str(candidate.get("TransactionNumber", "")).lower().startswith(str(_inv_num).lower()) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt, allow_missing_expected=True)),
+                ("4",  lambda candidate, _cust=customer_name, _d=inv_date, _amt=amount: bool(_cust) and safe_str_match(candidate.get("BillToCustomerName"), _cust) and safe_date_match(candidate.get("TransactionDate"), _d) and safe_float_match(candidate.get("EnteredAmount"), _amt, allow_missing_expected=True)),
             ]
 
             # Two-Phase Status Priority check (Open first, then Closed)

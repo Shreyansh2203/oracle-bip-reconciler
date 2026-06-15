@@ -19,6 +19,9 @@ def test_safe_float_match():
     assert safe_float_match(100.01, 100.01) is True
     assert safe_float_match(None, 100.0) is False
     assert safe_float_match(100.0, 200.0) is False
+    assert safe_float_match(100, 99.99) is False
+    assert safe_float_match(100, "100.0102") is False
+    assert safe_float_match(100, 100.034) is False
 
 def test_is_invoice_open():
     assert is_invoice_open({"InvoiceStatus": "Open"}) is True
@@ -119,4 +122,4 @@ async def test_fetch_by_query_error_propagation(mock_httpx_client):
         with pytest.raises(Exception) as excinfo:
             await fetch_by_query(context, "TransactionNumber='123'", "", "")
 
-        assert "Both Invoice and CM fetch failed" in str(excinfo.value)
+        assert "Transient Oracle API Error 500" in str(excinfo.value)

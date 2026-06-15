@@ -8,7 +8,7 @@ This document defines the strict, declarative rules engine for reconciling incom
    - **Phase 2:** If Phase 1 yields zero matches, evaluate all rules against **Applied Receipts / Closed Invoices** candidates.
 2. **Cascading Evaluation:** Rules must be evaluated sequentially in numerical order (e.g., A1 -> A2).
 3. **Termination Condition:** The moment a rule evaluates to **exactly 1 match**, halt execution and return that match. If a rule yields >1 matches, proceed to the next rule.
-4. **Strict Amount Matching:** Amount fields must match exactly. Floating-point rounding or fuzzy matching is prohibited.
+4. **Strict Amount Matching:** Amount fields must match exactly. Floating-point rounding or fuzzy matching is prohibited. **Exception:** If the expected amount in the payload is explicitly `null` (missing), the amount matching constraint is bypassed.
 5. **Data Normalization Requirements:** 
    - **Dates:** Normalize timezone-aware ISO-8601 timestamps to the calendar day (UTC) prior to comparison.
    - **Amounts:** Strip thousand-separators (e.g., `,`) before numerical evaluation.
@@ -65,7 +65,7 @@ This document defines the strict, declarative rules engine for reconciling incom
 | `customer_name` | `BILL_CUSTOMER_NAME` | `BillToCustomerName` |
 
 ### Execution Logic
-**Implicit Constraint:** EVERY rule below strictly requires `TOTAL_AMOUNTS` == `invoice_amount`. If amounts differ, the candidate is instantly rejected.
+**Implicit Constraint:** EVERY rule below strictly requires `TOTAL_AMOUNTS` == `invoice_amount` (unless `invoice_amount` is `null`). If amounts differ, the candidate is instantly rejected.
 
 * **Rule 1a (Number + Date):** 
   - **Match:** `TRANSACTION_NUMBER` AND `TRANSACTION_DATE`
