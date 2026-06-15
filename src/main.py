@@ -305,12 +305,13 @@ def normalize_invoice_candidate(raw: dict[str, Any]) -> dict[str, Any]:
     normalized["InvoiceBalanceAmount"] = get_any(["InvoiceBalanceAmount", "INVOICE_BALANCE_AMOUNT", "TransactionBalanceDue", "TRANSACTION_BALANCE_DUE", "Balance", "BALANCE"])
     normalized["DocumentNumber"] = get_any(["DocumentNumber", "DOCUMENT_NUMBER"])
     normalized["BillToCustomerName"] = get_any(["BillToCustomerName", "BILL_TO_CUSTOMER_NAME", "BillCustomerName", "BILL_CUSTOMER_NAME", "CustomerName", "CUSTOMER_NAME"])
+    mapped_upper_keys = {mk.upper().replace("_", "").replace(" ", "") for mk in normalized}
     for k, v in raw.items():
         # Only pass through keys whose normalized equivalent was NOT already mapped
         k_upper = k.upper().replace("_", "").replace(" ", "")
-        mapped_upper_keys = {mk.upper().replace("_", "").replace(" ", "") for mk in normalized}
         if k not in normalized and k_upper not in mapped_upper_keys:
             normalized[k] = v
+            mapped_upper_keys.add(k_upper)
     return normalized
 
 
