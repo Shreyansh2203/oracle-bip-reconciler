@@ -91,12 +91,13 @@ async def _run_bip_report(
     reraise=True
 )
 async def run_bip_invoice_match(client: httpx.AsyncClient, user: str, pwd: str, invoice_number: str | None, inv_date: str | None, amount: float | None, customer_name: str | None) -> list[dict[str, Any]]:
-    user_path = os.getenv("ORACLE_BIP_USER_PATH", "~tripti.chugh@pinelabs.com/SHREYANSH/Get Invoice Details Report.xdo")
+    # Paths retrieved from Oracle Catalog UI
     candidate_paths = [
+        os.getenv("ORACLE_BIP_INVOICE_PATH", ""),
         "Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
+        "~tripti.chugh@pinelabs.com/SHREYANSH/Get Invoice Details Report.xdo",
         "Custom/Financials/Receivables/Upgrade/Get Invoice Details Report.xdo",
-        "shared/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
-        user_path
+        "shared/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
     ]
 
     formatted_date = format_bip_date(inv_date or "")
@@ -117,15 +118,13 @@ async def run_bip_invoice_match(client: httpx.AsyncClient, user: str, pwd: str, 
     reraise=True
 )
 async def run_bip_receipt_match(client: httpx.AsyncClient, user: str, pwd: str, receipt_number: str | None, receipt_date: str | None, amount: float | None, customer_name: str | None) -> list[dict[str, Any]]:
-    user_path = os.getenv("ORACLE_BIP_USER_PATH", "~tripti.chugh@pinelabs.com/SHREYANSH/Get Receipt Details Report.xdo").replace("Get Invoice Details", "Get Receipt Details")
-    if "Get Receipt Details" not in user_path:
-        user_path = "~tripti.chugh@pinelabs.com/SHREYANSH/Get Receipt Details Report.xdo"
-
+    # Paths retrieved from Oracle Catalog UI
     candidate_paths = [
+        os.getenv("ORACLE_BIP_RECEIPT_PATH", ""),
         "Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
+        "~tripti.chugh@pinelabs.com/SHREYANSH/Get Receipt Details Report.xdo",
         "Custom/Financials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        "shared/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        user_path
+        "shared/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
     ]
 
     formatted_date = format_bip_date(receipt_date or "")
