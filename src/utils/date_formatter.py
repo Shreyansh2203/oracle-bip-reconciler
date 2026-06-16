@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any
-
 
 def format_oracle_date(date_str: str) -> str:
     """
@@ -59,11 +57,3 @@ def format_bip_date(date_str: str) -> str:
         return dt.strftime("%d-%m-%Y")
     except ValueError:
         return ""
-
-
-def safe_date_match(date1: Any, date2: Any) -> bool:
-    if not date1 or not date2:
-        return False
-    d1 = format_oracle_date(str(date1))
-    d2 = format_oracle_date(str(date2))
-    return bool(d1) and bool(d2) and d1 == d2
