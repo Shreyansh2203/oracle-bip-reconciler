@@ -1,12 +1,12 @@
-import pytest
 from src.services.oracle_matcher import (
     match_invoice_in_memory,
     match_receipt_in_memory,
 )
 
+
 def test_match_invoice_in_memory_success():
     bip_invoices = [
-        {'TRANSACTION_NUMBER': 'INV-123', 'TRANSACTION_DATE': '2023-10-01', 'TRANSACTION_TOTAL': '100.00', 'INVOICE_STATUS': 'OPEN'}
+        {'TRANSACTION_NUMBER': 'INV-123', 'TRANSACTION_DATE': '2023-10-01', 'TOTAL_AMOUNTS': '100.00', 'INVOICE_STATUS': 'OPEN'}
     ]
     result = match_invoice_in_memory('INV-123', '2023-10-01', 100.0, '', '', bip_invoices)
     assert result['matched_in_oracle'] is True
