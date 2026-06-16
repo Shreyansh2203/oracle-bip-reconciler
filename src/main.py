@@ -3,15 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request, Security, status
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import APIKeyHeader
 
 from src.config import get_oracle_url
 from src.models import MetaDataModel, ReconciliationRequest
@@ -39,25 +37,6 @@ def _redact(name: str | None) -> str:
 
 # Global HTTP client
 http_client = None
-
-API_KEY_NAME = "X-API-Key"
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
-
-async def get_api_key(api_key: str = Security(api_key_header)):
-    expected_api_key = os.getenv("API_KEY")
-    if not expected_api_key:
-        logger.error("API_KEY environment variable is not set. Failing closed.")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Server configuration error: API Key not configured.",
-        )
-
-    if not api_key or not secrets.compare_digest(api_key, expected_api_key):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API Key",
-        )
-    return api_key
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
