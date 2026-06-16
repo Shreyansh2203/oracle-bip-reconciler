@@ -30,9 +30,12 @@ class OracleBIPTransientError(Exception):
     reraise=True
 )
 async def run_bip_invoice_match(client: httpx.AsyncClient, user: str, pwd: str, invoice_number: str | None, inv_date: str | None, amount: float | None, customer_name: str | None) -> list[dict[str, Any]]:
-    report_path = "Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
-    encoded_path = urllib.parse.quote(report_path, safe='')
-    url = f"{get_oracle_url()}/xmlpserver/services/rest/v1/reports/{encoded_path}/run"
+    candidate_paths = [
+        "Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
+        "Custom/Financials/Receivables/Upgrade/Get Invoice Details Report.xdo",
+        "shared/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
+        "~tripti.chugh@pinelabs.com/SHREYANSH/Get Invoice Details Report.xdo"
+    ]
 
     formatted_date = ""
     if inv_date:
@@ -60,32 +63,44 @@ async def run_bip_invoice_match(client: httpx.AsyncClient, user: str, pwd: str, 
         }
     }
 
-    try:
-        response = await client.post(url, json=payload, auth=(user, pwd), timeout=BIP_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
+    last_error = None
+    for report_path in candidate_paths:
+        encoded_path = urllib.parse.quote(report_path, safe='')
+        url = f"{get_oracle_url()}/xmlpserver/services/rest/v1/reports/{encoded_path}/run"
 
-        if "reportBytes" not in data:
-            return []
+        try:
+            response = await client.post(url, json=payload, auth=(user, pwd), timeout=BIP_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
 
-        report_bytes = base64.b64decode(data["reportBytes"])
-        csv_text = report_bytes.decode("utf-8", errors="replace")
+            if "reportBytes" not in data:
+                return []
 
-        results = []
-        reader = csv.DictReader(io.StringIO(csv_text))
-        for row in reader:
-            clean_row = {k.strip().upper().replace(" ", ""): (v or "").strip() for k, v in row.items() if k}
-            if clean_row:
-                results.append(clean_row)
-        return results
+            report_bytes = base64.b64decode(data["reportBytes"])
+            csv_text = report_bytes.decode("utf-8", errors="replace")
 
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code in [429, 500, 502, 503, 504]:
-            raise OracleBIPTransientError(f"Transient BIP error {e}") from e
-        raise e
-    except Exception as e:
-        logger.exception(f"Failed to execute BIP report for invoice match: {e}")
-        raise e
+            results = []
+            reader = csv.DictReader(io.StringIO(csv_text))
+            for row in reader:
+                clean_row = {k.strip().upper().replace(" ", ""): (v or "").strip() for k, v in row.items() if k}
+                if clean_row:
+                    results.append(clean_row)
+            return results
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                last_error = e
+                continue
+            if e.response.status_code in [429, 500, 502, 503, 504]:
+                raise OracleBIPTransientError(f"Transient BIP error {e}") from e
+            raise e
+        except Exception as e:
+            logger.exception(f"Failed to execute BIP report for invoice match: {e}")
+            raise e
+
+    if last_error:
+        raise last_error
+    return []
 
 @retry(
     stop=stop_after_attempt(MAX_RETRIES),
@@ -94,9 +109,12 @@ async def run_bip_invoice_match(client: httpx.AsyncClient, user: str, pwd: str, 
     reraise=True
 )
 async def run_bip_receipt_match(client: httpx.AsyncClient, user: str, pwd: str, receipt_number: str | None, receipt_date: str | None, amount: float | None, customer_name: str | None) -> list[dict[str, Any]]:
-    report_path = "Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
-    encoded_path = urllib.parse.quote(report_path, safe='')
-    url = f"{get_oracle_url()}/xmlpserver/services/rest/v1/reports/{encoded_path}/run"
+    candidate_paths = [
+        "Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
+        "Custom/Financials/Receivables/Upgrade/Get Receipt Details Report.xdo",
+        "shared/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
+        "~tripti.chugh@pinelabs.com/SHREYANSH/Get Receipt Details Report.xdo"
+    ]
 
     formatted_date = ""
     if receipt_date:
@@ -124,29 +142,41 @@ async def run_bip_receipt_match(client: httpx.AsyncClient, user: str, pwd: str, 
         }
     }
 
-    try:
-        response = await client.post(url, json=payload, auth=(user, pwd), timeout=BIP_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
+    last_error = None
+    for report_path in candidate_paths:
+        encoded_path = urllib.parse.quote(report_path, safe='')
+        url = f"{get_oracle_url()}/xmlpserver/services/rest/v1/reports/{encoded_path}/run"
 
-        if "reportBytes" not in data:
-            return []
+        try:
+            response = await client.post(url, json=payload, auth=(user, pwd), timeout=BIP_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
 
-        report_bytes = base64.b64decode(data["reportBytes"])
-        csv_text = report_bytes.decode("utf-8", errors="replace")
+            if "reportBytes" not in data:
+                return []
 
-        results = []
-        reader = csv.DictReader(io.StringIO(csv_text))
-        for row in reader:
-            clean_row = {k.strip().upper().replace(" ", ""): (v or "").strip() for k, v in row.items() if k}
-            if clean_row:
-                results.append(clean_row)
-        return results
+            report_bytes = base64.b64decode(data["reportBytes"])
+            csv_text = report_bytes.decode("utf-8", errors="replace")
 
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code in [429, 500, 502, 503, 504]:
-            raise OracleBIPTransientError(f"Transient BIP error {e}") from e
-        raise e
-    except Exception as e:
-        logger.exception(f"Failed to execute BIP report for receipt match: {e}")
-        raise e
+            results = []
+            reader = csv.DictReader(io.StringIO(csv_text))
+            for row in reader:
+                clean_row = {k.strip().upper().replace(" ", ""): (v or "").strip() for k, v in row.items() if k}
+                if clean_row:
+                    results.append(clean_row)
+            return results
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                last_error = e
+                continue
+            if e.response.status_code in [429, 500, 502, 503, 504]:
+                raise OracleBIPTransientError(f"Transient BIP error {e}") from e
+            raise e
+        except Exception as e:
+            logger.exception(f"Failed to execute BIP report for receipt match: {e}")
+            raise e
+
+    if last_error:
+        raise last_error
+    return []
