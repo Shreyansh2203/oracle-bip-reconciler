@@ -116,7 +116,7 @@ async def readiness_check() -> dict[str, str]:
 # =========================================================================================
 
 @app.post("/v1/reconcile/batch", response_model=ReconciliationRequest)
-async def reconcile_data_batch(request: Request, payload: ReconciliationRequest, api_key: str = Depends(get_api_key)):
+async def reconcile_data_batch(request: Request, payload: ReconciliationRequest):
     request_id = str(uuid.uuid4())
     logger.info(f"[{request_id}] Starting APPROACH 1 (BATCH) for customer {payload.customer_name}")
     start_time = time.time()
@@ -184,7 +184,7 @@ async def reconcile_data_batch(request: Request, payload: ReconciliationRequest,
 # =========================================================================================
 
 @app.post("/v1/reconcile/native", response_model=ReconciliationRequest)
-async def reconcile_data_native(request: Request, payload: ReconciliationRequest, api_key: str = Depends(get_api_key)):
+async def reconcile_data_native(request: Request, payload: ReconciliationRequest):
     request_id = str(uuid.uuid4())
     logger.info(f"[{request_id}] Starting APPROACH 3 (NATIVE) for customer {payload.customer_name}")
     start_time = time.time()
