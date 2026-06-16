@@ -68,3 +68,8 @@ class ReconciliationRequest(BaseModel):
         """Auto-populate invoice_count from actual invoices list length."""
         self.invoice_count = len(self.invoices)
         return self
+
+    def add_warning(self, message: str) -> None:
+        if self.meta_data is None:
+            self.meta_data = MetaDataModel()
+        self.meta_data.warnings.append(message)

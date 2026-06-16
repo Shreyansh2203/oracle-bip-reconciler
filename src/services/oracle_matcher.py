@@ -5,17 +5,31 @@ import math
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from src.constants import (
+    ENDPOINT_RECEIVABLES_INVOICES,
+    ENDPOINT_STANDARD_RECEIPTS,
+    FSCM_REST_API_VERSION,
+    PHASE_APPLIED,
+    PHASE_CLOSED_OR_OTHER,
+    PHASE_OPEN,
+    PHASE_UNAPPLIED,
+    STATUS_APPLIED,
+    STATUS_CLOSED,
+    STATUS_OPEN,
+    STATUS_OTHER,
+    STATUS_UNAPPLIED,
+)
 from src.config import get_oracle_url
 from src.utils.date_formatter import format_oracle_date
 
 logger = logging.getLogger(__name__)
 
-def safe_float_match(val1, val2) -> bool:
+def safe_float_match(value1: Any, value2: Any) -> bool:
     try:
-        if val1 is None or val2 is None:
+        if value1 is None or value2 is None:
             return False
-        v1_str = str(val1).replace(",", "").strip()
-        v2_str = str(val2).replace(",", "").strip()
+        v1_str = str(value1).replace(",", "").strip()
+        v2_str = str(value2).replace(",", "").strip()
         if not v1_str or not v2_str:
             return False
         d1 = Decimal(v1_str).quantize(Decimal('0.01'))
@@ -24,40 +38,85 @@ def safe_float_match(val1, val2) -> bool:
     except (InvalidOperation, ValueError, TypeError):
         return False
 
-def safe_str_match(val1, val2):
-    if val1 is None or val2 is None:
+def safe_str_match(value1: Any, value2: Any) -> bool:
+    if value1 is None or value2 is None:
         return False
-    return str(val1).strip().lower() == str(val2).strip().lower()
+    return str(value1).strip().lower() == str(value2).strip().lower()
 
-def safe_starts_with(full_val, prefix_val):
-    if full_val is None or prefix_val is None:
+def safe_starts_with(full_value: Any, prefix_value: Any) -> bool:
+    if full_value is None or prefix_value is None:
         return False
-    return str(full_val).strip().lower().startswith(str(prefix_val).strip().lower())
+    return str(full_value).strip().lower().startswith(str(prefix_value).strip().lower())
 
-def escape_query_value(val: Any) -> str:
+def escape_query_value(value: Any) -> str:
     """Escapes single quotes for Oracle REST query strings."""
-    if val is None:
+    if value is None:
         return ""
-    return str(val).replace("'", "''")
+    return str(value).replace("'", "''")
 
 def get_receipt_phase(status_code: str) -> str:
-    return "UNAPPLIED" if status_code in ["UNAPP", "UNID", "Unapplied", "Unidentified"] else "APPLIED"
+    unapplied_codes = ["UNAPP", "UNID", "UNAPPLIED", "UNIDENTIFIED"]
+    if status_code and status_code.upper() in unapplied_codes:
+        return STATUS_UNAPPLIED
+    return STATUS_APPLIED
 
 def get_invoice_phase(status_code: str, balance: Any) -> str:
     if status_code:
         return status_code.upper()
     try:
         if float(balance) > 0:
-            return "OPEN"
-        return "CLOSED"
+            return STATUS_OPEN
+        return STATUS_CLOSED
     except (ValueError, TypeError):
-        return "OTHER"
+        return STATUS_OTHER
 
 # =========================================================================
 # IN-MEMORY BATCH MATCHING (APPROACH 1)
 # =========================================================================
 
-def match_receipt_in_memory(receipt_num: str, amount: float | None, receipt_date: str, customer_name: str, bip_receipts: list[dict[str, Any]]) -> dict[str, Any]:
+def _filter_receipt_candidates(
+    candidates: list[dict[str, Any]],
+    receipt_number: str | None = None,
+    amount: float | None = None,
+    formatted_date: str | None = None,
+    customer_name: str | None = None
+) -> list[dict[str, Any]]:
+    return [
+        candidate for candidate in candidates
+        if (not receipt_number or safe_str_match(candidate.get("RECEIPT_NUMBER"), receipt_number))
+        and (amount is None or safe_float_match(candidate.get("RECEIPT_AMOUNT"), amount))
+        and (not formatted_date or safe_str_match(candidate.get("RECEIPT_DATE"), formatted_date))
+        and (not customer_name or safe_str_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name))
+    ]
+
+def _apply_receipt_scenario_a(candidates: list[dict[str, Any]], receipt_number: str, amount: float | None, formatted_date: str | None, customer_name: str) -> dict[str, Any] | None:
+    # A1: Num, Amount, Date, [Customer]
+    results = _filter_receipt_candidates(candidates, receipt_number, amount, formatted_date, customer_name)
+    if len(results) == 1: return _build_receipt_response(results[0], "A1")
+
+    # A2: Num, Amount, [Customer]
+    results = _filter_receipt_candidates(candidates, receipt_number, amount, None, customer_name)
+    if len(results) == 1: return _build_receipt_response(results[0], "A2")
+
+    # A3: Num, [Customer]
+    results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name)
+    if len(results) == 1: return _build_receipt_response(results[0], "A3")
+
+    # A4: Customer, Amount, Date
+    if customer_name and amount is not None and formatted_date:
+        results = _filter_receipt_candidates(candidates, None, amount, formatted_date, customer_name)
+        if len(results) == 1: return _build_receipt_response(results[0], "A4")
+    
+    return None
+
+def _apply_receipt_scenario_b(candidates: list[dict[str, Any]], amount: float | None, formatted_date: str | None, customer_name: str) -> dict[str, Any] | None:
+    # B1: Amount, Date, [Customer]
+    if amount is not None and formatted_date:
+        results = _filter_receipt_candidates(candidates, None, amount, formatted_date, customer_name)
+        if len(results) == 1: return _build_receipt_response(results[0], "B1")
+    return None
+
+def match_receipt_in_memory(receipt_number: str, amount: float | None, receipt_date: str, customer_name: str, bip_receipts: list[dict[str, Any]]) -> dict[str, Any]:
     if amount is not None and not math.isfinite(amount):
         return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
 
@@ -67,54 +126,26 @@ def match_receipt_in_memory(receipt_num: str, amount: float | None, receipt_date
     formatted_date = format_oracle_date(receipt_date) if receipt_date else None
 
     # Phase 1: Unapplied/Unidentified, Phase 2: Applied
-    for phase_num in [1, 2]:
+    for phase_num in [PHASE_UNAPPLIED, PHASE_APPLIED]:
+        target_status = STATUS_UNAPPLIED if phase_num == PHASE_UNAPPLIED else STATUS_APPLIED
         candidates = [
-            c for c in bip_receipts
-            if (phase_num == 1 and get_receipt_phase(c.get("RECEIPT_STATUS_CODE", "")) == "UNAPPLIED") or
-               (phase_num == 2 and get_receipt_phase(c.get("RECEIPT_STATUS_CODE", "")) == "APPLIED")
+            candidate for candidate in bip_receipts
+            if get_receipt_phase(candidate.get("RECEIPT_STATUS_CODE", "")) == target_status
         ]
 
         if not candidates:
             continue
 
-        if receipt_num:
-            # Scenario A
-            # A1: Num, Amount, Date, [Customer]
-            res = [c for c in candidates if safe_str_match(c.get("RECEIPT_NUMBER"), receipt_num)
-                   and (amount is None or safe_float_match(c.get("RECEIPT_AMOUNT"), amount))
-                   and safe_str_match(c.get("RECEIPT_DATE"), formatted_date)
-                   and (not customer_name or safe_str_match(c.get("BILL_CUSTOMER_NAME"), customer_name))]
-            if len(res) == 1: return _build_receipt_response(res[0], "A1")
-
-            # A2: Num, Amount, [Customer]
-            res = [c for c in candidates if safe_str_match(c.get("RECEIPT_NUMBER"), receipt_num)
-                   and (amount is None or safe_float_match(c.get("RECEIPT_AMOUNT"), amount))
-                   and (not customer_name or safe_str_match(c.get("BILL_CUSTOMER_NAME"), customer_name))]
-            if len(res) == 1: return _build_receipt_response(res[0], "A2")
-
-            # A3: Num, [Customer]
-            res = [c for c in candidates if safe_str_match(c.get("RECEIPT_NUMBER"), receipt_num)
-                   and (not customer_name or safe_str_match(c.get("BILL_CUSTOMER_NAME"), customer_name))]
-            if len(res) == 1: return _build_receipt_response(res[0], "A3")
-
-            # A4: Customer, Amount, Date
-            if customer_name and amount is not None and formatted_date:
-                res = [c for c in candidates if safe_str_match(c.get("BILL_CUSTOMER_NAME"), customer_name)
-                       and safe_float_match(c.get("RECEIPT_AMOUNT"), amount)
-                       and safe_str_match(c.get("RECEIPT_DATE"), formatted_date)]
-                if len(res) == 1: return _build_receipt_response(res[0], "A4")
+        if receipt_number:
+            match = _apply_receipt_scenario_a(candidates, receipt_number, amount, formatted_date, customer_name)
+            if match: return match
         else:
-            # Scenario B
-            # B1: Amount, Date, [Customer]
-            if amount is not None and formatted_date:
-                res = [c for c in candidates if safe_float_match(c.get("RECEIPT_AMOUNT"), amount)
-                       and safe_str_match(c.get("RECEIPT_DATE"), formatted_date)
-                       and (not customer_name or safe_str_match(c.get("BILL_CUSTOMER_NAME"), customer_name))]
-                if len(res) == 1: return _build_receipt_response(res[0], "B1")
+            match = _apply_receipt_scenario_b(candidates, amount, formatted_date, customer_name)
+            if match: return match
 
     return {"matched_in_oracle": False, "error": "No single match found after cascading rules"}
 
-def _build_receipt_response(match, rule_name):
+def _build_receipt_response(match: dict[str, Any], rule_name: str) -> dict[str, Any]:
     return {
         "matched_in_oracle": True,
         "fusion_receipt_number": match.get("RECEIPT_NUMBER"),
@@ -125,66 +156,72 @@ def _build_receipt_response(match, rule_name):
     }
 
 
-def match_invoice_in_memory(invoice_number: str, inv_date: str, amount: float | None, document_number: str, customer_name: str, bip_invoices: list[dict[str, Any]]) -> dict[str, Any]:
+def _apply_invoice_rules(candidates: list[dict[str, Any]], invoice_number: str, formatted_date: str | None, document_number: str, customer_name: str) -> dict[str, Any] | None:
+    # Rule 1a: Num + Date
+    if invoice_number and formatted_date:
+        results = [candidate for candidate in candidates if safe_str_match(candidate.get("TRANSACTION_NUMBER"), invoice_number)
+                and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
+        if len(results) == 1: return _build_invoice_response(results[0], "Rule 1a")
+
+    # Rule 1b: Exact Num
+    if invoice_number:
+        results = [candidate for candidate in candidates if safe_str_match(candidate.get("TRANSACTION_NUMBER"), invoice_number)]
+        if len(results) == 1: return _build_invoice_response(results[0], "Rule 1b")
+
+    # Rule 2: Doc Num + Date
+    if document_number and formatted_date:
+        results = [candidate for candidate in candidates if safe_str_match(candidate.get("DOCUMENT_NUMBER"), document_number)
+                and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
+        if len(results) == 1: return _build_invoice_response(results[0], "Rule 2")
+
+    # Rule 3: Prefix Match + Date
+    if invoice_number and formatted_date:
+        results = [candidate for candidate in candidates if safe_starts_with(candidate.get("TRANSACTION_NUMBER"), invoice_number)
+                and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
+        if len(results) == 1: return _build_invoice_response(results[0], "Rule 3")
+
+    # Rule 4: Customer + Date
+    if customer_name and formatted_date:
+        results = [candidate for candidate in candidates if safe_str_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)
+                and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
+        if len(results) == 1: return _build_invoice_response(results[0], "Rule 4")
+    
+    return None
+
+def match_invoice_in_memory(invoice_number: str, invoice_date: str, amount: float | None, document_number: str, customer_name: str, bip_invoices: list[dict[str, Any]]) -> dict[str, Any]:
     if amount is not None and not math.isfinite(amount):
         return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
 
     if not bip_invoices:
         return {"matched_in_oracle": False, "error": "No customer invoices returned from Oracle Batch."}
 
-    formatted_date = format_oracle_date(inv_date) if inv_date else None
+    formatted_date = format_oracle_date(invoice_date) if invoice_date else None
 
     # Filter base candidates by amount constraint up front (implicit constraint)
-    base_candidates = [c for c in bip_invoices if amount is None or safe_float_match(c.get("TOTAL_AMOUNTS"), amount)]
+    base_candidates = [candidate for candidate in bip_invoices if amount is None or safe_float_match(candidate.get("TOTAL_AMOUNTS"), amount)]
 
     # Phase 1: OPEN, Phase 2: CLOSED/OTHER
-    for phase_num in [1, 2]:
+    for phase_num in [PHASE_OPEN, PHASE_CLOSED_OR_OTHER]:
         candidates = [
-            c for c in base_candidates
-            if (phase_num == 1 and get_invoice_phase(c.get("INVOICE_STATUS"), 0) == "OPEN") or
-               (phase_num == 2 and get_invoice_phase(c.get("INVOICE_STATUS"), 0) != "OPEN")
+            candidate for candidate in base_candidates
+            if (phase_num == PHASE_OPEN and get_invoice_phase(candidate.get("INVOICE_STATUS"), 0) == STATUS_OPEN) or
+               (phase_num == PHASE_CLOSED_OR_OTHER and get_invoice_phase(candidate.get("INVOICE_STATUS"), 0) != STATUS_OPEN)
         ]
 
         if not candidates:
             continue
-
-        # Rule 1a: Num + Date
-        if invoice_number and formatted_date:
-            res = [c for c in candidates if safe_str_match(c.get("TRANSACTION_NUMBER"), invoice_number)
-                   and safe_str_match(c.get("TRANSACTION_DATE"), formatted_date)]
-            if len(res) == 1: return _build_invoice_response(res[0], "Rule 1a")
-
-        # Rule 1b: Exact Num
-        if invoice_number:
-            res = [c for c in candidates if safe_str_match(c.get("TRANSACTION_NUMBER"), invoice_number)]
-            if len(res) == 1: return _build_invoice_response(res[0], "Rule 1b")
-
-        # Rule 2: Doc Num + Date
-        if document_number and formatted_date:
-            res = [c for c in candidates if safe_str_match(c.get("DOCUMENT_NUMBER"), document_number)
-                   and safe_str_match(c.get("TRANSACTION_DATE"), formatted_date)]
-            if len(res) == 1: return _build_invoice_response(res[0], "Rule 2")
-
-        # Rule 3: Prefix Match + Date
-        if invoice_number and formatted_date:
-            res = [c for c in candidates if safe_starts_with(c.get("TRANSACTION_NUMBER"), invoice_number)
-                   and safe_str_match(c.get("TRANSACTION_DATE"), formatted_date)]
-            if len(res) == 1: return _build_invoice_response(res[0], "Rule 3")
-
-        # Rule 4: Customer + Date
-        if customer_name and formatted_date:
-            res = [c for c in candidates if safe_str_match(c.get("BILL_CUSTOMER_NAME"), customer_name)
-                   and safe_str_match(c.get("TRANSACTION_DATE"), formatted_date)]
-            if len(res) == 1: return _build_invoice_response(res[0], "Rule 4")
+        
+        match = _apply_invoice_rules(candidates, invoice_number, formatted_date, document_number, customer_name)
+        if match: return match
 
     return {"matched_in_oracle": False, "error": "No single match found after cascading rules"}
 
-def _build_invoice_response(match, rule_name):
-    amt_str = match.get("TOTAL_AMOUNTS", "")
-    parsed_amt = None
-    if amt_str:
+def _build_invoice_response(match: dict[str, Any], rule_name: str) -> dict[str, Any]:
+    amount_string = match.get("TOTAL_AMOUNTS", "")
+    parsed_amount = None
+    if amount_string:
         try:
-            parsed_amt = float(amt_str.replace(",", ""))
+            parsed_amount = float(amount_string.replace(",", ""))
         except ValueError:
             pass
 
@@ -192,8 +229,8 @@ def _build_invoice_response(match, rule_name):
         "matched_in_oracle": True,
         "fusion_invoice_number": match.get("TRANSACTION_NUMBER"),
         "fusion_invoice_date": match.get("TRANSACTION_DATE"),
-        "fusion_invoice_amount": parsed_amt,
-        "match_phase": get_invoice_phase(match.get("INVOICE_STATUS", "OTHER"), 0),
+        "fusion_invoice_amount": parsed_amount,
+        "match_phase": get_invoice_phase(match.get("INVOICE_STATUS", STATUS_OTHER), 0),
         "match_rule": rule_name
     }
 
@@ -202,29 +239,29 @@ def _build_invoice_response(match, rule_name):
 # LEGACY NATIVE REST API MATCHING (APPROACH 3)
 # =========================================================================
 
-async def fetch_oracle_candidates_native(client, user, pwd, endpoint, query, limit=None, fields=None, sem=None):
+async def fetch_oracle_candidates_native(client: Any, username: str, password: str, endpoint: str, query: str, limit: int | None = None, fields: str | None = None, semaphore: Any = None) -> list[dict[str, Any]]:
     base_url = get_oracle_url()
-    url = f"{base_url}/fscmRestApi/resources/11.13.18.05/{endpoint}"
-    params = {"q": query}
+    url = f"{base_url}/fscmRestApi/resources/{FSCM_REST_API_VERSION}/{endpoint}"
+    params: dict[str, Any] = {"q": query}
     if limit: params["limit"] = limit
     if fields: params["fields"] = fields
 
-    async def _do_fetch():
+    async def _do_fetch() -> list[dict[str, Any]]:
         try:
-            response = await client.get(url, params=params, auth=(user, pwd))
+            response = await client.get(url, params=params, auth=(username, password))
             response.raise_for_status()
             return response.json().get("items", [])
-        except Exception as e:
-            logger.error(f"Native Oracle fetch exception: {e}")
+        except Exception as error:
+            logger.error(f"Native Oracle fetch exception: {error}")
             raise
 
-    if sem:
-        async with sem:
+    if semaphore:
+        async with semaphore:
             return await _do_fetch()
     else:
         return await _do_fetch()
 
-async def check_receipt_cascading_native(client, user, pwd, receipt_num, amount, receipt_date, customer_name, sem=None) -> dict[str, Any]:
+async def check_receipt_cascading_native(client: Any, username: str, password: str, receipt_number: str, amount: float | None, receipt_date: str, customer_name: str, semaphore: Any = None) -> dict[str, Any]:
     if amount is not None and not math.isfinite(amount):
         return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
 
@@ -233,16 +270,18 @@ async def check_receipt_cascading_native(client, user, pwd, receipt_num, amount,
     candidates = []
 
     try:
-        if receipt_num:
-            query = f"ReceiptNumber='{escape_query_value(receipt_num)}'"
-            candidates = await fetch_oracle_candidates_native(client, user, pwd, "standardReceipts", query, fields=fields, sem=sem)
+        if receipt_number:
+            query = f"ReceiptNumber='{escape_query_value(receipt_number)}'"
+            candidates = await fetch_oracle_candidates_native(client, username, password, ENDPOINT_STANDARD_RECEIPTS, query, fields=fields, semaphore=semaphore)
 
         if not candidates and amount is not None and formatted_date:
             query = f"Amount={float(amount):.2f} and ReceiptDate='{escape_query_value(formatted_date)}'"
-            candidates = await fetch_oracle_candidates_native(client, user, pwd, "standardReceipts", query, fields=fields, sem=sem)
-    except Exception as e:
-        return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
+            candidates = await fetch_oracle_candidates_native(client, username, password, ENDPOINT_STANDARD_RECEIPTS, query, fields=fields, semaphore=semaphore)
+    except Exception as error:
+        return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(error)}"}
 
+    if candidates and len(candidates) > 1:
+        return {"matched_in_oracle": False, "error": "Ambiguous match: multiple records found native."}
     if not candidates:
         return {"matched_in_oracle": False, "error": "No single match found native."}
 
@@ -256,26 +295,28 @@ async def check_receipt_cascading_native(client, user, pwd, receipt_num, amount,
         "match_rule": "native_rest_match"
     }
 
-async def check_invoice_cascading_native(client, user, pwd, inv_num, inv_date, amount, doc_num, customer_name, sem=None) -> dict[str, Any]:
+async def check_invoice_cascading_native(client: Any, username: str, password: str, invoice_number: str, invoice_date: str, amount: float | None, document_number: str, customer_name: str, semaphore: Any = None) -> dict[str, Any]:
     if amount is not None and not math.isfinite(amount):
         return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
 
-    formatted_date = format_oracle_date(inv_date) if inv_date else None
+    formatted_date = format_oracle_date(invoice_date) if invoice_date else None
     candidates = []
-    inv_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
+    invoice_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
 
     try:
-        if inv_num:
-            query = f"TransactionNumber='{escape_query_value(inv_num)}'"
-            candidates = await fetch_oracle_candidates_native(client, user, pwd, "receivablesInvoices", query, fields=inv_fields, sem=sem)
+        if invoice_number:
+            query = f"TransactionNumber='{escape_query_value(invoice_number)}'"
+            candidates = await fetch_oracle_candidates_native(client, username, password, ENDPOINT_RECEIVABLES_INVOICES, query, fields=invoice_fields, semaphore=semaphore)
         if not candidates and customer_name and amount is not None:
             query = f"BillToCustomerName='{escape_query_value(customer_name)}' and EnteredAmount={float(amount):.2f}"
-            candidates = await fetch_oracle_candidates_native(client, user, pwd, "receivablesInvoices", query, fields=inv_fields, sem=sem)
-    except Exception as e:
-        return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(e)}"}
+            candidates = await fetch_oracle_candidates_native(client, username, password, ENDPOINT_RECEIVABLES_INVOICES, query, fields=invoice_fields, semaphore=semaphore)
+    except Exception as error:
+        return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(error)}"}
 
+    if candidates and len(candidates) > 1:
+        return {"matched_in_oracle": False, "error": "Ambiguous match: multiple records found native."}
     if not candidates:
-        return {"matched_in_oracle": False, "error": f"No single match found native for {inv_num}."}
+        return {"matched_in_oracle": False, "error": f"No single match found native for {invoice_number}."}
 
     match = candidates[0]
     return {
