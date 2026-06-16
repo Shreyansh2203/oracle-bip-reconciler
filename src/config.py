@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 def get_oracle_url():
     url = os.getenv("ORACLE_URL", "")
     if not url:
-        return url.rstrip('/')
+        raise ValueError("ORACLE_URL environment variable is missing! Please set it in your hosting provider's dashboard.")
 
     if not (url.startswith("http://") or url.startswith("https://")):
         raise ValueError(f"ORACLE_URL must include a scheme (http:// or https://). Got: {url}")
