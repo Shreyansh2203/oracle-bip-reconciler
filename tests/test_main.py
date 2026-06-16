@@ -32,16 +32,13 @@ def test_reconcile_endpoint_happy_path(mock_oracle_env):
         ]
     }
 
-    with patch("src.main._fetch_receipt_data"), \
-         patch("src.main._build_bip_invoice_map", return_value={"INV-001": {"TRANSACTIONNUMBER": "INV-001", "TRANSACTIONDATE": "2023-10-01", "ENTEREDAMOUNT": "50.0"}}), \
-         patch("src.main._fetch_invoices_concurrently", return_value=[{
-             "fusion_invoice_number": "INV-001",
-             "fusion_invoice_amount": 50.0,
-             "matched_in_oracle": True,
-             "amount_matches": True,
-             "is_closed_in_oracle": False,
-             "status": "Ready for CashApp"
-         }]):
+    with patch("src.main.run_bip_invoice_match", return_value=[{
+             "TRANSACTION_NUMBER": "INV-001",
+             "TRANSACTION_DATE": "2023-10-01",
+             "TOTAL_AMOUNTS": "50.0",
+             "INVOICE_STATUS": "OPEN"
+         }]), \
+         patch("src.main.run_bip_receipt_match", return_value=[]):
 
         with TestClient(app) as test_client:
             response = test_client.post("/v1/reconcile/batch", json=payload, headers={"X-API-Key": "test_key"})

@@ -1,36 +1,27 @@
 from __future__ import annotations
-from fastapi import FastAPI
-import traceback
-app = FastAPI()
 
 import asyncio
-import json
 import logging
 import os
 import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any
 
 import httpx
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Security, status
+from fastapi import FastAPI, HTTPException, Request, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
-
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.config import get_oracle_url
 from src.models import MetaDataModel, ReconciliationRequest
 from src.services.oracle_bip import run_bip_invoice_match, run_bip_receipt_match
 from src.services.oracle_matcher import (
-    match_receipt_in_memory,
-    match_invoice_in_memory,
-    check_receipt_cascading_native,
     check_invoice_cascading_native,
+    check_receipt_cascading_native,
+    match_invoice_in_memory,
+    match_receipt_in_memory,
 )
-from src.utils.date_formatter import safe_date_match
 
 # Constants
 DEFAULT_TIMEOUT = 15.0
@@ -40,6 +31,11 @@ DEFAULT_CONCURRENCY = 50
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("reconciliation_api")
+
+def _redact(name: str | None) -> str:
+    if not name:
+        return "UNKNOWN"
+    return f"{name[:3]}***"
 
 # Global HTTP client
 http_client = None
@@ -118,9 +114,9 @@ async def readiness_check() -> dict[str, str]:
 @app.post("/v1/reconcile/batch", response_model=ReconciliationRequest)
 async def reconcile_data_batch(request: Request, payload: ReconciliationRequest):
     request_id = str(uuid.uuid4())
-    logger.info(f"[{request_id}] Starting APPROACH 1 (BATCH) for customer {payload.customer_name}")
+    logger.info(f"[{request_id}] Starting APPROACH 1 (BATCH) for customer {_redact(payload.customer_name)}")
     start_time = time.time()
-    
+
     x_oracle_user = os.getenv("ORACLE_USER")
     x_oracle_pass = os.getenv("ORACLE_PASS")
 
@@ -132,8 +128,8 @@ async def reconcile_data_batch(request: Request, payload: ReconciliationRequest)
     try:
         bip_invoices = await run_bip_invoice_match(http_client, x_oracle_user, x_oracle_pass, "", "", None, customer_name)
     except Exception as e:
-        logger.error(f"BIP Batch fetch failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"BIP Batch invoice fetch failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve invoice data from Oracle ERP.")
 
     # Fetch receipt in ONE network call
     receipt_num = str(payload.payment_reference) if payload.payment_reference else ""
@@ -142,6 +138,9 @@ async def reconcile_data_batch(request: Request, payload: ReconciliationRequest)
     try:
         bip_receipts = await run_bip_receipt_match(http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_date, receipt_amount, customer_name)
     except Exception as e:
+        logger.error(f"BIP Batch receipt fetch failed: {e}")
+        if payload.meta_data is None: payload.meta_data = MetaDataModel()
+        payload.meta_data.warnings.append("Oracle receipt fetch failed. Downstream receipt matching will be skipped.")
         bip_receipts = []
 
     # Map Receipt Locally
@@ -150,6 +149,8 @@ async def reconcile_data_batch(request: Request, payload: ReconciliationRequest)
         payload.fusion_receipt_number = receipt_res.get("fusion_receipt_number")
         payload.fusion_receipt_date = receipt_res.get("fusion_receipt_date")
         payload.fusion_customer_name = receipt_res.get("fusion_customer_name")
+        payload.match_phase = receipt_res.get("match_phase")
+        payload.match_rule = receipt_res.get("match_rule")
     else:
         if payload.meta_data is None: payload.meta_data = MetaDataModel()
         payload.meta_data.warnings.append(f"Receipt match failed: {receipt_res.get('error')}")
@@ -164,11 +165,13 @@ async def reconcile_data_batch(request: Request, payload: ReconciliationRequest)
             doc_num = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
 
             inv_res = match_invoice_in_memory(inv_num, inv_date, inv_amount, doc_num, customer_name, bip_invoices)
-            
+
             if inv_res.get("matched_in_oracle"):
                 inv.fusion_invoice_number = inv_res.get("fusion_invoice_number")
                 inv.fusion_invoice_date = inv_res.get("fusion_invoice_date")
                 inv.fusion_invoice_amount = inv_res.get("fusion_invoice_amount")
+                inv.match_phase = inv_res.get("match_phase")
+                inv.match_rule = inv_res.get("match_rule")
                 matched_count += 1
             else:
                 if payload.meta_data is None: payload.meta_data = MetaDataModel()
@@ -186,25 +189,29 @@ async def reconcile_data_batch(request: Request, payload: ReconciliationRequest)
 @app.post("/v1/reconcile/native", response_model=ReconciliationRequest)
 async def reconcile_data_native(request: Request, payload: ReconciliationRequest):
     request_id = str(uuid.uuid4())
-    logger.info(f"[{request_id}] Starting APPROACH 3 (NATIVE) for customer {payload.customer_name}")
+    logger.info(f"[{request_id}] Starting APPROACH 3 (NATIVE) for customer {_redact(payload.customer_name)}")
     start_time = time.time()
-    
+
     sem = request.app.state.oracle_sem
     x_oracle_user = os.getenv("ORACLE_USER")
     x_oracle_pass = os.getenv("ORACLE_PASS")
 
     customer_name = str(payload.customer_name) if payload.customer_name else ""
+    if not customer_name:
+        raise HTTPException(status_code=400, detail="customer_name is required for native matching.")
 
     # Receipt Fetch
     receipt_num = str(payload.payment_reference) if payload.payment_reference else ""
     receipt_amount = payload.total_amount
     receipt_date = str(payload.payment_date) if payload.payment_date else ""
-    
+
     receipt_res = await check_receipt_cascading_native(http_client, x_oracle_user, x_oracle_pass, receipt_num, receipt_amount, receipt_date, customer_name, sem)
     if receipt_res.get("matched_in_oracle"):
         payload.fusion_receipt_number = receipt_res.get("fusion_receipt_number")
         payload.fusion_receipt_date = receipt_res.get("fusion_receipt_date")
         payload.fusion_customer_name = receipt_res.get("fusion_customer_name")
+        payload.match_phase = receipt_res.get("match_phase")
+        payload.match_rule = receipt_res.get("match_rule")
     else:
         if payload.meta_data is None: payload.meta_data = MetaDataModel()
         payload.meta_data.warnings.append(f"Receipt match failed: {receipt_res.get('error')}")
@@ -218,20 +225,23 @@ async def reconcile_data_native(request: Request, payload: ReconciliationRequest
             inv_date = str(inv.invoice_date) if inv.invoice_date else ""
             inv_amount = inv.invoice_amount
             doc_num = str(inv.customer_invoice_number) if inv.customer_invoice_number else ""
-            
+
             tasks.append(check_invoice_cascading_native(http_client, x_oracle_user, x_oracle_pass, inv_num, inv_date, inv_amount, doc_num, customer_name, sem))
-        
+
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         for idx, inv_res in enumerate(results):
             inv = payload.invoices[idx]
             if isinstance(inv_res, BaseException):
                 if payload.meta_data is None: payload.meta_data = MetaDataModel()
                 payload.meta_data.warnings.append(f"Invoice {inv.invoice_number} match failed: {str(inv_res)}")
+                logger.error(f"[{request_id}] Invoice {inv.invoice_number} match exception: {str(inv_res)}")
             elif inv_res and inv_res.get("matched_in_oracle"):
                 inv.fusion_invoice_number = inv_res.get("fusion_invoice_number")
                 inv.fusion_invoice_date = inv_res.get("fusion_invoice_date")
                 inv.fusion_invoice_amount = inv_res.get("fusion_invoice_amount")
+                inv.match_phase = inv_res.get("match_phase")
+                inv.match_rule = inv_res.get("match_rule")
                 matched_count += 1
             else:
                 if payload.meta_data is None: payload.meta_data = MetaDataModel()
@@ -240,4 +250,3 @@ async def reconcile_data_native(request: Request, payload: ReconciliationRequest
     duration = int((time.time() - start_time) * 1000)
     logger.info(f"[{request_id}] Native Match Complete: {matched_count}/{len(payload.invoices)} matched in {duration}ms")
     return payload
-

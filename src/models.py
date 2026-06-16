@@ -1,12 +1,15 @@
 from __future__ import annotations
-import math
+
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
-from src.utils.validators import sanitize_string_val, sanitize_float_val
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from src.utils.validators import sanitize_float_val, sanitize_string_val
 
 
 class InvoiceItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     line_id: int | str | None = Field(None, alias="Line_ID")
     invoice_number: str | int | None = None
     fusion_invoice_number: str | None = None
@@ -17,6 +20,8 @@ class InvoiceItem(BaseModel):
     description: str | None = None
     customer_invoice_number: str | int | None = None
     store_no: str | int | None = Field(None, alias="storeNo")
+    match_phase: str | None = None
+    match_rule: str | None = None
 
     @field_validator("invoice_number", "invoice_date", "customer_invoice_number", mode="before")
     @classmethod
@@ -45,6 +50,8 @@ class ReconciliationRequest(BaseModel):
     confidence_label: str | None = None
     invoice_count: int | None = None
     meta_data: MetaDataModel | None = None
+    match_phase: str | None = None
+    match_rule: str | None = None
 
     @field_validator("customer_name", "payment_reference", "payment_date", mode="before")
     @classmethod
@@ -57,7 +64,7 @@ class ReconciliationRequest(BaseModel):
         return sanitize_float_val(v)
 
     @model_validator(mode="after")
-    def _set_invoice_count(self) -> "ReconciliationRequest":
+    def _set_invoice_count(self) -> ReconciliationRequest:
         """Auto-populate invoice_count from actual invoices list length."""
         self.invoice_count = len(self.invoices)
         return self

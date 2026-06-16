@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import re
 from datetime import datetime
 from typing import Any
@@ -25,8 +26,12 @@ def format_oracle_date(date_str: str) -> str:
 
     date_str = re.sub(r'\+00:00$', 'Z', date_str)
 
+    # NOTE on format ordering: DD-MM-YYYY is tried before MM-DD-YYYY because
+    # this system integrates with Oracle ERP in an India locale where day-first
+    # date formats are the norm. For ambiguous dates where day <= 12
+    # (e.g. "06-03-2026"), this will parse as 6th March, not June 3rd.
     formats = [
-        "%Y-%m-%d", "%m-%d-%Y", "%d-%m-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
+        "%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
         "%Y-%m-%dT%H:%M:%SZ"
     ]
 
@@ -41,6 +46,20 @@ def format_oracle_date(date_str: str) -> str:
     return ""
 
 
+def format_bip_date(date_str: str) -> str:
+    """
+    Converts a date string to DD-MM-YYYY format required by Oracle BIP report parameters.
+    Uses format_oracle_date internally for normalization, then reformats.
+    """
+    normalized = format_oracle_date(date_str)
+    if not normalized:
+        return ""
+    try:
+        dt = datetime.strptime(normalized, "%Y-%m-%d")
+        return dt.strftime("%d-%m-%Y")
+    except ValueError:
+        return ""
+
 
 def safe_date_match(date1: Any, date2: Any) -> bool:
     if not date1 or not date2:
@@ -48,4 +67,3 @@ def safe_date_match(date1: Any, date2: Any) -> bool:
     d1 = format_oracle_date(str(date1))
     d2 = format_oracle_date(str(date2))
     return bool(d1) and bool(d2) and d1 == d2
-
