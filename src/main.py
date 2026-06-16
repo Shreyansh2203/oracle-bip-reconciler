@@ -129,7 +129,9 @@ async def reconcile_data_batch(request: Request, payload: ReconciliationRequest)
         bip_invoices = await run_bip_invoice_match(http_client, x_oracle_user, x_oracle_pass, "", "", None, customer_name)
     except Exception as e:
         logger.error(f"BIP Batch invoice fetch failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve invoice data from Oracle ERP.")
+        if payload.meta_data is None: payload.meta_data = MetaDataModel()
+        payload.meta_data.warnings.append("Oracle invoice fetch failed. Downstream invoice matching will be skipped.")
+        bip_invoices = []
 
     # Fetch receipt in ONE network call
     receipt_num = str(payload.payment_reference) if payload.payment_reference else ""
