@@ -44,7 +44,7 @@ def test_reconcile_endpoint_happy_path(mock_oracle_env):
          }]):
 
         with TestClient(app) as test_client:
-            response = test_client.post("/v1/reconcile", json=payload, headers={"X-API-Key": "test_key"})
+            response = test_client.post("/v1/reconcile/batch", json=payload, headers={"X-API-Key": "test_key"})
 
             assert response.status_code == 200
             data = response.json()
