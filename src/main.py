@@ -16,9 +16,7 @@ from typing import Any
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader
-from fastapi.staticfiles import StaticFiles
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -94,21 +92,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-API-Key"],
 )
 
-# Resolve absolute path for Vercel
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PUBLIC_DIR = os.path.join(BASE_DIR, "public")
 
-if os.path.isdir(PUBLIC_DIR):
-    app.mount("/public", StaticFiles(directory=PUBLIC_DIR), name="public")
-else:
-    logger.warning(f"Public directory not found at {PUBLIC_DIR}. Skipping static mount.")
-
-@app.get("/tester")
-async def tester_ui():
-    target = os.path.join(PUBLIC_DIR, "index.html")
-    if os.path.isfile(target):
-        return FileResponse(target)
-    return {"message": "UI not found. Please access it via /public/index.html if configured natively."}
 
 @app.get("/")
 async def root() -> dict[str, str]:
