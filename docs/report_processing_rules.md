@@ -48,17 +48,17 @@ The engine dynamically selects its execution path based on the presence of the `
 
 #### Scenario A: `payment_reference` is Provided
 The system executes the following rules sequentially:
-1. **Rule A1:** Match `RECEIPT_NUMBER` (Bidirectional Substring) **AND** `RECEIPT_AMOUNT`. *(If `customer_name` is present in the payload, it must also match)*.
-2. **Rule A2:** Match `RECEIPT_NUMBER` (Bidirectional Substring). *(If `customer_name` is present in the payload, it must also match)*.
-3. **Rule A3:** Match `RECEIPT_NUMBER` (Bidirectional Substring) **AND** `RECEIPT_AMOUNT` **AND** `RECEIPT_DATE`. *(If `customer_name` is present in the payload, it must also match)*.
-4. **Rule A4:** Match `BILL_CUSTOMER_NAME` **AND** `RECEIPT_AMOUNT`. *(This rule is bypassed if the payload lacks either field)*.
-5. **Rule A5:** Match `BILL_CUSTOMER_NAME` **AND** `RECEIPT_DATE`. *(This rule is bypassed if the payload lacks either field)*.
+1. **Rule A1:** Match `RECEIPT_NUMBER` (Bidirectional Substring, min 4 chars) **AND** `RECEIPT_AMOUNT`. *(If `customer_name` is present in the payload, it must also match via Bidirectional Substring, min 4 chars)*.
+2. **Rule A2:** Match `RECEIPT_NUMBER` (Exact Match only). *(If `customer_name` is present in the payload, it must also match via Bidirectional Substring, min 4 chars)*.
+3. **Rule A3:** Match `RECEIPT_NUMBER` (Bidirectional Substring, min 4 chars) **AND** `RECEIPT_AMOUNT` **AND** `RECEIPT_DATE`. *(If `customer_name` is present in the payload, it must also match via Bidirectional Substring, min 4 chars)*.
+4. **Rule A4:** Match `BILL_CUSTOMER_NAME` (Bidirectional Substring, min 4 chars) **AND** `RECEIPT_AMOUNT`. *(This rule is bypassed if the payload lacks either field)*.
+5. **Rule A5:** Match `BILL_CUSTOMER_NAME` (Bidirectional Substring, min 4 chars) **AND** `RECEIPT_DATE`. *(This rule is bypassed if the payload lacks either field)*.
 
 #### Scenario B: `payment_reference` is Null or Missing
 The system executes the following rules sequentially:
-1. **Rule B1:** Match `RECEIPT_AMOUNT` **AND** `RECEIPT_DATE`. *(If `customer_name` is present in the payload, it must also match)*.
-2. **Rule B2:** Match `BILL_CUSTOMER_NAME` **AND** `RECEIPT_AMOUNT`. *(This rule is bypassed if the payload lacks either field)*.
-3. **Rule B3:** Match `BILL_CUSTOMER_NAME` **AND** `RECEIPT_DATE`. *(This rule is bypassed if the payload lacks either field)*.
+1. **Rule B1:** Match `RECEIPT_AMOUNT` **AND** `RECEIPT_DATE`. *(If `customer_name` is present in the payload, it must also match via Bidirectional Substring, min 4 chars)*.
+2. **Rule B2:** Match `BILL_CUSTOMER_NAME` (Bidirectional Substring, min 4 chars) **AND** `RECEIPT_AMOUNT`. *(This rule is bypassed if the payload lacks either field)*.
+3. **Rule B3:** Match `BILL_CUSTOMER_NAME` (Bidirectional Substring, min 4 chars) **AND** `RECEIPT_DATE`. *(This rule is bypassed if the payload lacks either field)*.
 
 ---
 
@@ -86,4 +86,4 @@ The system executes the following rules sequentially for each invoice item:
 2. **Rule 1b:** Match `TRANSACTION_NUMBER` (Exact).
 3. **Rule 2:** Match `DOCUMENT_NUMBER` **AND** `TRANSACTION_DATE`. *(This rule is bypassed if the payload lacks `customer_invoice_number`)*.
 4. **Rule 3:** Match `TRANSACTION_NUMBER` by Prefix (verifying if the Oracle number begins with the payload number) **AND** `TRANSACTION_DATE`.
-5. **Rule 4:** Match `BILL_CUSTOMER_NAME` **AND** `TRANSACTION_DATE`. *(This rule is bypassed if the payload lacks `customer_name`)*.
+5. **Rule 4:** Match `BILL_CUSTOMER_NAME` (Bidirectional Substring, min 4 chars) **AND** `TRANSACTION_DATE`. *(This rule is bypassed if the payload lacks `customer_name`)*.

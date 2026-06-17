@@ -55,6 +55,28 @@ def safe_starts_with(full_value: Any, prefix_value: Any) -> bool:
         return False
     return str(full_value).strip().lower().startswith(str(prefix_value).strip().lower())
 
+def safe_receipt_number_match(value1: Any, value2: Any) -> bool:
+    if not value1 or not value2:
+        return False
+    v1_str = str(value1).strip().lower()
+    v2_str = str(value2).strip().lower()
+    if len(v1_str) < 4 or len(v2_str) < 4:
+        return v1_str == v2_str
+    return v1_str in v2_str or v2_str in v1_str
+
+def safe_customer_name_match(value1: Any, value2: Any) -> bool:
+    if not value1 or not value2:
+        return False
+    v1_str = str(value1).strip().lower()
+    v2_str = str(value2).strip().lower()
+    if v1_str == v2_str:
+        return True
+    if len(v1_str) >= 4 and v1_str in v2_str:
+        return True
+    if len(v2_str) >= 4 and v2_str in v1_str:
+        return True
+    return False
+
 def escape_query_value(value: Any) -> str:
     """Escapes single quotes for Oracle REST query strings."""
     if value is None:
@@ -86,14 +108,15 @@ def _filter_receipt_candidates(
     receipt_number: str | None = None,
     amount: float | None = None,
     formatted_date: str | None = None,
-    customer_name: str | None = None
+    customer_name: str | None = None,
+    exact_receipt: bool = False
 ) -> list[dict[str, Any]]:
     return [
         candidate for candidate in candidates
-        if (not receipt_number or safe_substring_match(candidate.get("RECEIPT_NUMBER"), receipt_number))
+        if (not receipt_number or (safe_str_match(candidate.get("RECEIPT_NUMBER"), receipt_number) if exact_receipt else safe_receipt_number_match(candidate.get("RECEIPT_NUMBER"), receipt_number)))
         and (amount is None or safe_float_match(candidate.get("RECEIPT_AMOUNT"), amount))
         and (not formatted_date or safe_str_match(candidate.get("RECEIPT_DATE"), formatted_date))
-        and (not customer_name or safe_str_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name))
+        and (not customer_name or safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name))
     ]
 
 def _apply_receipt_scenario_a(candidates: list[dict[str, Any]], receipt_number: str, amount: float | None, formatted_date: str | None, customer_name: str) -> dict[str, Any] | None:
@@ -102,7 +125,7 @@ def _apply_receipt_scenario_a(candidates: list[dict[str, Any]], receipt_number: 
     if len(results) == 1: return _build_receipt_response(results[0], "A1")
 
     # A2: Substring Num, [Customer]
-    results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name)
+    results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name, exact_receipt=True)
     if len(results) == 1: return _build_receipt_response(results[0], "A2")
 
     # A3: Substring Num, Amount, Date, [Customer]
@@ -209,7 +232,7 @@ def _apply_invoice_rules(candidates: list[dict[str, Any]], invoice_number: str, 
 
     # Rule 4: Customer + Date
     if customer_name and formatted_date:
-        results = [candidate for candidate in candidates if safe_str_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)
+        results = [candidate for candidate in candidates if safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)
                 and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
         if len(results) == 1: return _build_invoice_response(results[0], "Rule 4")
     
