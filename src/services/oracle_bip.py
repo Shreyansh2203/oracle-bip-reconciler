@@ -19,7 +19,6 @@ from src.constants import (
     BIP_TIMEOUT,
 )
 from src.config import get_oracle_url
-from src.utils.date_formatter import format_bip_date
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +62,7 @@ async def _run_bip_report(
       <pub:runReport>
          <pub:reportRequest>
             <pub:attributeFormat>csv</pub:attributeFormat>
-            <pub:parameterNameValues>
-               <pub:listOfParamNameValues>{param_xml}
-               </pub:listOfParamNameValues>
+            <pub:parameterNameValues>{param_xml}
             </pub:parameterNameValues>
             <pub:reportAbsolutePath>{report_path.strip()}</pub:reportAbsolutePath>
             <pub:sizeOfDataChunkDownload>{BIP_CHUNK_DOWNLOAD_SIZE}</pub:sizeOfDataChunkDownload>
@@ -125,8 +122,7 @@ async def _run_bip_report(
     retry=retry_if_exception_type((httpx.RequestError, OracleBIPTransientError)),
     reraise=True
 )
-async def run_bip_invoice_match(client: httpx.AsyncClient, username: str, password: str, invoice_number: str | None, invoice_date: str | None, amount: float | None, customer_name: str | None) -> list[dict[str, Any]]:
-    # Paths retrieved from Oracle Catalog UI
+async def fetch_bip_invoices(client: httpx.AsyncClient, username: str, password: str, invoice_number: str | None = None, customer_name: str | None = None) -> list[dict[str, Any]]:
     candidate_paths = [
         os.getenv("ORACLE_BIP_INVOICE_PATH", ""),
         "/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
@@ -138,12 +134,10 @@ async def run_bip_invoice_match(client: httpx.AsyncClient, username: str, passwo
         "Shared Folders/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
     ]
 
-    formatted_date = format_bip_date(invoice_date or "")
-
     parameters = [
         {"name": "P_INVOICE_NUM", "values": [invoice_number or ""]},
-        {"name": "P_INVOICE_DATE", "values": [formatted_date]},
-        {"name": "P_INVOICE_AMOUNT", "values": [str(amount) if amount is not None else ""]},
+        {"name": "P_INVOICE_DATE", "values": [""]},
+        {"name": "P_INVOICE_AMOUNT", "values": [""]},
         {"name": "P_CUSTOMER_NAME", "values": [customer_name or ""]}
     ]
 
@@ -155,8 +149,7 @@ async def run_bip_invoice_match(client: httpx.AsyncClient, username: str, passwo
     retry=retry_if_exception_type((httpx.RequestError, OracleBIPTransientError)),
     reraise=True
 )
-async def run_bip_receipt_match(client: httpx.AsyncClient, username: str, password: str, receipt_number: str | None, receipt_date: str | None, amount: float | None, customer_name: str | None) -> list[dict[str, Any]]:
-    # Paths retrieved from Oracle Catalog UI
+async def fetch_bip_receipts(client: httpx.AsyncClient, username: str, password: str, receipt_number: str | None = None, customer_name: str | None = None) -> list[dict[str, Any]]:
     candidate_paths = [
         os.getenv("ORACLE_BIP_RECEIPT_PATH", ""),
         "/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
@@ -168,12 +161,10 @@ async def run_bip_receipt_match(client: httpx.AsyncClient, username: str, passwo
         "Shared Folders/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
     ]
 
-    formatted_date = format_bip_date(receipt_date or "")
-
     parameters = [
         {"name": "P_RECEIPT_NUMBER", "values": [receipt_number or ""]},
-        {"name": "P_RECEIPT_DATE", "values": [formatted_date]},
-        {"name": "P_RECEIPT_AMOUNT", "values": [str(amount) if amount is not None else ""]},
+        {"name": "P_RECEIPT_DATE", "values": [""]},
+        {"name": "P_RECEIPT_AMOUNT", "values": [""]},
         {"name": "P_CUSTOMER_NAME", "values": [customer_name or ""]}
     ]
 

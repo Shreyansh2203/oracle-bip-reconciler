@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.constants import DEFAULT_CONCURRENCY, DEFAULT_TIMEOUT, MAX_CONNECTIONS
 from src.config import get_oracle_url
 from src.models import MetaDataModel, ReconciliationRequest
-from src.services.oracle_bip import run_bip_invoice_match, run_bip_receipt_match
+from src.services.oracle_bip import fetch_bip_invoices, fetch_bip_receipts
 from src.services.oracle_matcher import (
     check_invoice_cascading_native,
     check_receipt_cascading_native,
@@ -97,56 +97,93 @@ async def readiness_check() -> dict[str, str]:
     return {"status": "ready"}
 
 # Helpers for Batch Mapping
-async def _fetch_bip_invoices(customer_name: str, payload: ReconciliationRequest) -> list[dict[str, Any]]:
-    try:
-        return await run_bip_invoice_match(get_http_client(), os.getenv("ORACLE_USER", ""), os.getenv("ORACLE_PASS", ""), "", "", None, customer_name)
-    except Exception as error:
-        logger.error(f"BIP Batch invoice fetch failed: {error}")
-        payload.add_warning("Oracle invoice fetch failed. Downstream invoice matching will be skipped.")
-        return []
+async def _process_batch_receipt_multi_stage(payload: ReconciliationRequest, receipt_number: str, receipt_amount: float | None, receipt_date: str, customer_name: str) -> None:
+    client = get_http_client()
+    user = os.getenv("ORACLE_USER", "")
+    pwd = os.getenv("ORACLE_PASS", "")
+    
+    # Stage 1: Fetch by Receipt Number
+    if receipt_number:
+        try:
+            bip_receipts = await fetch_bip_receipts(client, user, pwd, receipt_number=receipt_number)
+            if bip_receipts:
+                receipt_result = match_receipt_in_memory(receipt_number, receipt_amount, receipt_date, customer_name, bip_receipts)
+                if receipt_result.get("matched_in_oracle"):
+                    _apply_receipt_match_result(payload, receipt_result)
+                    return
+        except Exception as error:
+            logger.error(f"BIP receipt fetch by number failed: {error}")
+            
+    # Stage 2: Fallback Fetch by Customer Name
+    if customer_name:
+        try:
+            bip_receipts = await fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
+            if bip_receipts:
+                receipt_result = match_receipt_in_memory(receipt_number, receipt_amount, receipt_date, customer_name, bip_receipts)
+                if receipt_result.get("matched_in_oracle"):
+                    _apply_receipt_match_result(payload, receipt_result)
+                    return
+                else:
+                    payload.add_warning(f"Receipt match failed after customer fallback: {receipt_result.get('error')}")
+                    return
+        except Exception as error:
+            logger.error(f"BIP receipt fetch by customer failed: {error}")
+            
+    payload.add_warning("Receipt match failed: No records matched after cascading fetch rules.")
 
-async def _fetch_bip_receipts(receipt_number: str, receipt_amount: float | None, receipt_date: str, customer_name: str, payload: ReconciliationRequest) -> list[dict[str, Any]]:
-    try:
-        return await run_bip_receipt_match(get_http_client(), os.getenv("ORACLE_USER", ""), os.getenv("ORACLE_PASS", ""), receipt_number, receipt_date, receipt_amount, customer_name)
-    except Exception as error:
-        logger.error(f"BIP Batch receipt fetch failed: {error}")
-        payload.add_warning("Oracle receipt fetch failed. Downstream receipt matching will be skipped.")
-        return []
+def _apply_receipt_match_result(payload: ReconciliationRequest, receipt_result: dict[str, Any]) -> None:
+    payload.fusion_receipt_number = receipt_result.get("fusion_receipt_number")
+    payload.fusion_receipt_date = receipt_result.get("fusion_receipt_date")
+    payload.fusion_customer_name = receipt_result.get("fusion_customer_name")
+    payload.match_phase = receipt_result.get("match_phase")
+    payload.match_rule = receipt_result.get("match_rule")
 
-def _process_batch_receipt_match(payload: ReconciliationRequest, receipt_number: str, receipt_amount: float | None, receipt_date: str, customer_name: str, bip_receipts: list[dict[str, Any]]) -> None:
-    receipt_result = match_receipt_in_memory(receipt_number, receipt_amount, receipt_date, customer_name, bip_receipts)
-    if receipt_result.get("matched_in_oracle"):
-        payload.fusion_receipt_number = receipt_result.get("fusion_receipt_number")
-        payload.fusion_receipt_date = receipt_result.get("fusion_receipt_date")
-        payload.fusion_customer_name = receipt_result.get("fusion_customer_name")
-        payload.match_phase = receipt_result.get("match_phase")
-        payload.match_rule = receipt_result.get("match_rule")
-    else:
-        payload.add_warning(f"Receipt match failed: {receipt_result.get('error')}")
+async def _process_batch_invoice_multi_stage(invoice: Any, customer_name: str, payload: ReconciliationRequest) -> bool:
+    client = get_http_client()
+    user = os.getenv("ORACLE_USER", "")
+    pwd = os.getenv("ORACLE_PASS", "")
+    
+    invoice_number = str(invoice.invoice_number) if invoice.invoice_number else ""
+    invoice_date = str(invoice.invoice_date) if invoice.invoice_date else ""
+    invoice_amount = invoice.invoice_amount
+    document_number = str(invoice.customer_invoice_number) if invoice.customer_invoice_number else ""
+    
+    # Stage 1: Fetch by Invoice Number
+    if invoice_number:
+        try:
+            bip_invoices = await fetch_bip_invoices(client, user, pwd, invoice_number=invoice_number)
+            if bip_invoices:
+                invoice_result = match_invoice_in_memory(invoice_number, invoice_date, invoice_amount, document_number, customer_name, bip_invoices)
+                if invoice_result.get("matched_in_oracle"):
+                    _apply_invoice_match_result(invoice, invoice_result)
+                    return True
+        except Exception as error:
+            logger.error(f"BIP invoice fetch by number failed for {invoice_number}: {error}")
+            
+    # Stage 2: Fallback Fetch by Customer Name
+    if customer_name:
+        try:
+            bip_invoices = await fetch_bip_invoices(client, user, pwd, customer_name=customer_name)
+            if bip_invoices:
+                invoice_result = match_invoice_in_memory(invoice_number, invoice_date, invoice_amount, document_number, customer_name, bip_invoices)
+                if invoice_result.get("matched_in_oracle"):
+                    _apply_invoice_match_result(invoice, invoice_result)
+                    return True
+                else:
+                    payload.add_warning(f"Invoice {invoice_number} match failed after customer fallback: {invoice_result.get('error')}")
+                    return False
+        except Exception as error:
+            logger.error(f"BIP invoice fetch by customer failed for {invoice_number}: {error}")
 
-def _process_batch_invoices(payload: ReconciliationRequest, customer_name: str, bip_invoices: list[dict[str, Any]]) -> int:
-    matched_count = 0
-    if not payload.invoices:
-        return matched_count
+    payload.add_warning(f"Invoice {invoice_number} match failed: No records matched after cascading fetch rules.")
+    return False
 
-    for invoice in payload.invoices:
-        invoice_number = str(invoice.invoice_number) if invoice.invoice_number else ""
-        invoice_date = str(invoice.invoice_date) if invoice.invoice_date else ""
-        invoice_amount = invoice.invoice_amount
-        document_number = str(invoice.customer_invoice_number) if invoice.customer_invoice_number else ""
-
-        invoice_result = match_invoice_in_memory(invoice_number, invoice_date, invoice_amount, document_number, customer_name, bip_invoices)
-
-        if invoice_result.get("matched_in_oracle"):
-            invoice.fusion_invoice_number = invoice_result.get("fusion_invoice_number")
-            invoice.fusion_invoice_date = invoice_result.get("fusion_invoice_date")
-            invoice.fusion_invoice_amount = invoice_result.get("fusion_invoice_amount")
-            invoice.match_phase = invoice_result.get("match_phase")
-            invoice.match_rule = invoice_result.get("match_rule")
-            matched_count += 1
-        else:
-            payload.add_warning(f"Invoice {invoice_number} match failed: {invoice_result.get('error')}")
-    return matched_count
+def _apply_invoice_match_result(invoice: Any, invoice_result: dict[str, Any]) -> None:
+    invoice.fusion_invoice_number = invoice_result.get("fusion_invoice_number")
+    invoice.fusion_invoice_date = invoice_result.get("fusion_invoice_date")
+    invoice.fusion_invoice_amount = invoice_result.get("fusion_invoice_amount")
+    invoice.match_phase = invoice_result.get("match_phase")
+    invoice.match_rule = invoice_result.get("match_rule")
 
 @app.post("/v1/reconcile/batch", response_model=ReconciliationRequest)
 async def reconcile_data_batch(request: Request, payload: ReconciliationRequest):
@@ -160,15 +197,21 @@ async def reconcile_data_batch(request: Request, payload: ReconciliationRequest)
     receipt_amount = payload.total_amount
     receipt_date = str(payload.payment_date) if payload.payment_date else ""
 
-    # Fetch data concurrently (optimization possible but keeping logic flow same for now, or maybe just sequential as before)
-    bip_invoices = await _fetch_bip_invoices(customer_name, payload)
-    bip_receipts = await _fetch_bip_receipts(receipt_number, receipt_amount, receipt_date, customer_name, payload)
-
-    _process_batch_receipt_match(payload, receipt_number, receipt_amount, receipt_date, customer_name, bip_receipts)
-    matched_count = _process_batch_invoices(payload, customer_name, bip_invoices)
+    # Process receipt matching
+    await _process_batch_receipt_multi_stage(payload, receipt_number, receipt_amount, receipt_date, customer_name)
+    
+    # Process invoice matching
+    matched_count = 0
+    if payload.invoices:
+        tasks = []
+        for invoice in payload.invoices:
+            tasks.append(_process_batch_invoice_multi_stage(invoice, customer_name, payload))
+        
+        results = await asyncio.gather(*tasks)
+        matched_count = sum(1 for r in results if r)
 
     duration = int((time.time() - start_time) * 1000)
-    logger.info(f"[{request_id}] Batch Match Complete: {matched_count}/{len(payload.invoices)} matched in {duration}ms")
+    logger.info(f"[{request_id}] Batch Match Complete: {matched_count}/{len(payload.invoices or [])} matched in {duration}ms")
     return payload
 
 # Helpers for Native Mapping
