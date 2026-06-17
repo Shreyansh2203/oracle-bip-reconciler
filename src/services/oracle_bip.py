@@ -97,9 +97,10 @@ async def run_bip_invoice_match(client: httpx.AsyncClient, username: str, passwo
     # Paths retrieved from Oracle Catalog UI
     candidate_paths = [
         os.getenv("ORACLE_BIP_INVOICE_PATH", ""),
+        "/~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
+        "~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
         "/users/suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
         "/Users/suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
-        "~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
         "/Shared Folders/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
         "Shared Folders/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
     ]
@@ -125,9 +126,10 @@ async def run_bip_receipt_match(client: httpx.AsyncClient, username: str, passwo
     # Paths retrieved from Oracle Catalog UI
     candidate_paths = [
         os.getenv("ORACLE_BIP_RECEIPT_PATH", ""),
+        "/~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
+        "~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
         "/users/suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
         "/Users/suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        "~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
         "/Shared Folders/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
         "Shared Folders/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
     ]

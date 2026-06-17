@@ -43,6 +43,13 @@ def safe_str_match(value1: Any, value2: Any) -> bool:
         return False
     return str(value1).strip().lower() == str(value2).strip().lower()
 
+def safe_substring_match(value1: Any, value2: Any) -> bool:
+    if not value1 or not value2:
+        return False
+    v1_str = str(value1).strip().lower()
+    v2_str = str(value2).strip().lower()
+    return v1_str in v2_str or v2_str in v1_str
+
 def safe_starts_with(full_value: Any, prefix_value: Any) -> bool:
     if full_value is None or prefix_value is None:
         return False
@@ -83,29 +90,34 @@ def _filter_receipt_candidates(
 ) -> list[dict[str, Any]]:
     return [
         candidate for candidate in candidates
-        if (not receipt_number or safe_str_match(candidate.get("RECEIPT_NUMBER"), receipt_number))
+        if (not receipt_number or safe_substring_match(candidate.get("RECEIPT_NUMBER"), receipt_number))
         and (amount is None or safe_float_match(candidate.get("RECEIPT_AMOUNT"), amount))
         and (not formatted_date or safe_str_match(candidate.get("RECEIPT_DATE"), formatted_date))
         and (not customer_name or safe_str_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name))
     ]
 
 def _apply_receipt_scenario_a(candidates: list[dict[str, Any]], receipt_number: str, amount: float | None, formatted_date: str | None, customer_name: str) -> dict[str, Any] | None:
-    # A1: Num, Amount, Date, [Customer]
-    results = _filter_receipt_candidates(candidates, receipt_number, amount, formatted_date, customer_name)
+    # A1: Substring Num, Amount, [Customer]
+    results = _filter_receipt_candidates(candidates, receipt_number, amount, None, customer_name)
     if len(results) == 1: return _build_receipt_response(results[0], "A1")
 
-    # A2: Num, Amount, [Customer]
-    results = _filter_receipt_candidates(candidates, receipt_number, amount, None, customer_name)
+    # A2: Substring Num, [Customer]
+    results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name)
     if len(results) == 1: return _build_receipt_response(results[0], "A2")
 
-    # A3: Num, [Customer]
-    results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name)
+    # A3: Substring Num, Amount, Date, [Customer]
+    results = _filter_receipt_candidates(candidates, receipt_number, amount, formatted_date, customer_name)
     if len(results) == 1: return _build_receipt_response(results[0], "A3")
 
-    # A4: Customer, Amount, Date
-    if customer_name and amount is not None and formatted_date:
-        results = _filter_receipt_candidates(candidates, None, amount, formatted_date, customer_name)
+    # A4: Customer, Amount
+    if customer_name and amount is not None:
+        results = _filter_receipt_candidates(candidates, None, amount, None, customer_name)
         if len(results) == 1: return _build_receipt_response(results[0], "A4")
+
+    # A5: Customer, Date
+    if customer_name and formatted_date:
+        results = _filter_receipt_candidates(candidates, None, None, formatted_date, customer_name)
+        if len(results) == 1: return _build_receipt_response(results[0], "A5")
     
     return None
 
@@ -114,6 +126,17 @@ def _apply_receipt_scenario_b(candidates: list[dict[str, Any]], amount: float | 
     if amount is not None and formatted_date:
         results = _filter_receipt_candidates(candidates, None, amount, formatted_date, customer_name)
         if len(results) == 1: return _build_receipt_response(results[0], "B1")
+
+    # B2: Customer, Amount
+    if customer_name and amount is not None:
+        results = _filter_receipt_candidates(candidates, None, amount, None, customer_name)
+        if len(results) == 1: return _build_receipt_response(results[0], "B2")
+
+    # B3: Customer, Date
+    if customer_name and formatted_date:
+        results = _filter_receipt_candidates(candidates, None, None, formatted_date, customer_name)
+        if len(results) == 1: return _build_receipt_response(results[0], "B3")
+
     return None
 
 def match_receipt_in_memory(receipt_number: str, amount: float | None, receipt_date: str, customer_name: str, bip_receipts: list[dict[str, Any]]) -> dict[str, Any]:
