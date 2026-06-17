@@ -28,28 +28,40 @@ This document defines the strict, declarative rules engine for reconciling incom
 ### Scenario A: Payment Reference is Present
 **Precondition:** Payload `payment_reference` is not null/empty.
 
-* **Rule A1 (Full Strict Match):** 
-  - **Match:** `RECEIPT_NUMBER` AND `RECEIPT_AMOUNT` AND `RECEIPT_DATE`
+* **Rule A1 (Substring, Amount, Customer):** 
+  - **Match:** `RECEIPT_NUMBER` (Bidirectional Substring) AND `RECEIPT_AMOUNT`
   - **Conditional Match:** AND `BILL_CUSTOMER_NAME` (if `customer_name` exists in Payload)
 
-* **Rule A2 (Number & Amount):** 
-  - **Match:** `RECEIPT_NUMBER` AND `RECEIPT_AMOUNT`
+* **Rule A2 (Substring, Customer):** 
+  - **Match:** `RECEIPT_NUMBER` (Bidirectional Substring)
   - **Conditional Match:** AND `BILL_CUSTOMER_NAME` (if `customer_name` exists in Payload)
 
-* **Rule A3 (Number Only):** 
-  - **Match:** `RECEIPT_NUMBER`
+* **Rule A3 (Substring, Amount, Date, Customer):** 
+  - **Match:** `RECEIPT_NUMBER` (Bidirectional Substring) AND `RECEIPT_AMOUNT` AND `RECEIPT_DATE`
   - **Conditional Match:** AND `BILL_CUSTOMER_NAME` (if `customer_name` exists in Payload)
 
-* **Rule A4 (Amount & Date Fallback):** 
-  - **Match:** `BILL_CUSTOMER_NAME` AND `RECEIPT_AMOUNT` AND `RECEIPT_DATE`
-  - **Precondition for A4:** Payload MUST contain `customer_name`.
+* **Rule A4 (Customer, Amount):** 
+  - **Match:** `BILL_CUSTOMER_NAME` AND `RECEIPT_AMOUNT`
+  - **Precondition for A4:** Payload MUST contain `customer_name` and `total_amount`.
+
+* **Rule A5 (Customer, Date):** 
+  - **Match:** `BILL_CUSTOMER_NAME` AND `RECEIPT_DATE`
+  - **Precondition for A5:** Payload MUST contain `customer_name` and `payment_date`.
 
 ### Scenario B: Payment Reference is Absent
 **Precondition:** Payload `payment_reference` is null/empty.
 
-* **Rule B1 (Amount & Date):** 
+* **Rule B1 (Amount, Date, Customer):** 
   - **Match:** `RECEIPT_AMOUNT` AND `RECEIPT_DATE`
   - **Conditional Match:** AND `BILL_CUSTOMER_NAME` (if `customer_name` exists in Payload)
+
+* **Rule B2 (Customer, Amount):** 
+  - **Match:** `BILL_CUSTOMER_NAME` AND `RECEIPT_AMOUNT`
+  - **Precondition for B2:** Payload MUST contain `customer_name` and `total_amount`.
+
+* **Rule B3 (Customer, Date):** 
+  - **Match:** `BILL_CUSTOMER_NAME` AND `RECEIPT_DATE`
+  - **Precondition for B3:** Payload MUST contain `customer_name` and `payment_date`.
 
 ---
 
