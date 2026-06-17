@@ -1,106 +1,72 @@
-# Data Reconciliation Rules & Mapping
+# Oracle ERP Data Reconciliation Rules Engine
 
-This document defines the strict, declarative rules engine for reconciling incoming Payload data against Oracle ERP Reports. 
+## System Overview
+This document defines the deterministic rules for matching incoming JSON payloads against Oracle ERP Cloud records. The system attempts to match **Receipts** and **Invoices**. It is designed to be highly flexible, eagerly attempting matches even if payload data is partially missing.
 
-## 1. Universal Execution Principles
-1. **Two-Phase Status Priority:**
-   - **Phase 1:** Evaluate all rules against **Unapplied Receipts / Open Invoices** candidates only.
-   - **Phase 2:** If Phase 1 yields zero matches, evaluate all rules against **Applied Receipts / Closed Invoices** candidates.
-2. **Cascading Evaluation:** Rules must be evaluated sequentially in numerical order (e.g., A1 -> A2).
-3. **Termination Condition:** The moment a rule evaluates to **exactly 1 match**, halt execution and return that match. If a rule yields >1 matches, proceed to the next rule.
-4. **Strict Amount Matching:** Amount fields must match exactly. Floating-point rounding or fuzzy matching is prohibited. **Exception:** If the expected amount in the payload is explicitly `null` (missing), the amount matching constraint is bypassed.
-5. **Data Normalization Requirements:** 
-   - **Dates:** Normalize timezone-aware ISO-8601 timestamps to the calendar day (UTC) prior to comparison.
-   - **Amounts:** Strip thousand-separators (e.g., `,`) before numerical evaluation.
+## 1. Global Processing Rules
+- **Status Filtering:** 
+  - The system ALWAYS evaluates rules against "Unapplied Receipts" and "Open Invoices" first (Phase 1).
+  - If and ONLY if Phase 1 yields exactly `0` matches, the system evaluates against "Applied Receipts" and "Closed Invoices" (Phase 2).
+- **Match Termination:**
+  - The system evaluates rules in sequential order (e.g., Step 1, then Step 2).
+  - If a rule yields exactly `1` match, execution immediately HALTS and returns that match.
+  - If a rule yields `0` matches, or `> 1` matches, execution proceeds to the next rule in the sequence.
+  - If all rules are exhausted without finding exactly 1 match, the system returns `null` (No Match).
+- **Data Sanitization:**
+  - Amounts: Strip commas before comparison. Missing amounts (`null` or invalid strings) bypass amount-matching constraints.
+  - Dates: Normalize to YYYY-MM-DD UTC before comparison.
+  - Substring Matching: "Bidirectional Substring" means `String A contains String B` OR `String B contains String A` (case-insensitive).
 
----
+## 2. Receipt Reconciliation Logic
+Matches the payload against Oracle Standard Receipts.
 
-## 2. Receipt Reconciliation (Standard Receipts)
+### Field Mapping
+* `payment_reference` (Payload) <--> `RECEIPT_NUMBER` (Oracle)
+* `total_amount` (Payload) <--> `RECEIPT_AMOUNT` (Oracle)
+* `payment_date` (Payload) <--> `RECEIPT_DATE` (Oracle)
+* `customer_name` (Payload) <--> `BILL_CUSTOMER_NAME` (Oracle)
 
-### Data Mappings
-| Payload Entity | Oracle Report Column | Oracle API Field |
-| :--- | :--- | :--- |
-| `payment_reference` | `RECEIPT_NUMBER` | `ReceiptNumber` |
-| `total_amount` | `RECEIPT_AMOUNT` | `Amount` |
-| `payment_date` | `RECEIPT_DATE` | `ReceiptDate` |
-| `customer_name` | `BILL_CUSTOMER_NAME` | `CustomerName` |
+### Execution Cascade
+Evaluate which scenario applies based on the presence of `payment_reference`:
 
-### Scenario A: Payment Reference is Present
-**Precondition:** Payload `payment_reference` is not null/empty.
+#### Scenario A: IF `payment_reference` IS NOT NULL
+Execute these rules sequentially:
+1. **Rule A1**: Match `RECEIPT_NUMBER` (Bidirectional Substring) AND `RECEIPT_AMOUNT`. *(If `customer_name` is present in payload, also match `BILL_CUSTOMER_NAME`)*.
+2. **Rule A2**: Match `RECEIPT_NUMBER` (Bidirectional Substring). *(If `customer_name` is present in payload, also match `BILL_CUSTOMER_NAME`)*.
+3. **Rule A3**: Match `RECEIPT_NUMBER` (Bidirectional Substring) AND `RECEIPT_AMOUNT` AND `RECEIPT_DATE`. *(If `customer_name` is present in payload, also match `BILL_CUSTOMER_NAME`)*.
+4. **Rule A4**: Match `BILL_CUSTOMER_NAME` AND `RECEIPT_AMOUNT`. *(Skips if payload is missing `customer_name` or `total_amount`)*.
+5. **Rule A5**: Match `BILL_CUSTOMER_NAME` AND `RECEIPT_DATE`. *(Skips if payload is missing `customer_name` or `payment_date`)*.
 
-* **Rule A1 (Substring, Amount, Customer):** 
-  - **Match:** `RECEIPT_NUMBER` (Bidirectional Substring) AND `RECEIPT_AMOUNT`
-  - **Conditional Match:** AND `BILL_CUSTOMER_NAME` (if `customer_name` exists in Payload)
+#### Scenario B: IF `payment_reference` IS NULL
+Execute these rules sequentially:
+1. **Rule B1**: Match `RECEIPT_AMOUNT` AND `RECEIPT_DATE`. *(If `customer_name` is present in payload, also match `BILL_CUSTOMER_NAME`)*.
+2. **Rule B2**: Match `BILL_CUSTOMER_NAME` AND `RECEIPT_AMOUNT`. *(Skips if payload is missing `customer_name` or `total_amount`)*.
+3. **Rule B3**: Match `BILL_CUSTOMER_NAME` AND `RECEIPT_DATE`. *(Skips if payload is missing `customer_name` or `payment_date`)*.
 
-* **Rule A2 (Substring, Customer):** 
-  - **Match:** `RECEIPT_NUMBER` (Bidirectional Substring)
-  - **Conditional Match:** AND `BILL_CUSTOMER_NAME` (if `customer_name` exists in Payload)
+## 3. Invoice Reconciliation Logic
+Matches individual invoice items from the payload against Oracle Receivables Invoices.
 
-* **Rule A3 (Substring, Amount, Date, Customer):** 
-  - **Match:** `RECEIPT_NUMBER` (Bidirectional Substring) AND `RECEIPT_AMOUNT` AND `RECEIPT_DATE`
-  - **Conditional Match:** AND `BILL_CUSTOMER_NAME` (if `customer_name` exists in Payload)
+### Field Mapping
+* `invoice_number` (Payload) <--> `TRANSACTION_NUMBER` (Oracle)
+* `invoice_date` (Payload) <--> `TRANSACTION_DATE` (Oracle)
+* `invoice_amount` (Payload) <--> `TOTAL_AMOUNTS` (Oracle)
+* `customer_invoice_number` (Payload) <--> `DOCUMENT_NUMBER` (Oracle)
+* `customer_name` (Payload) <--> `BILL_CUSTOMER_NAME` (Oracle)
 
-* **Rule A4 (Customer, Amount):** 
-  - **Match:** `BILL_CUSTOMER_NAME` AND `RECEIPT_AMOUNT`
-  - **Precondition for A4:** Payload MUST contain `customer_name` and `total_amount`.
+### Global Invoice Constraint
+- EVERY invoice rule below strictly requires `TOTAL_AMOUNTS` == `invoice_amount`.
+- If `invoice_amount` is `null` in the payload, this constraint is ignored.
 
-* **Rule A5 (Customer, Date):** 
-  - **Match:** `BILL_CUSTOMER_NAME` AND `RECEIPT_DATE`
-  - **Precondition for A5:** Payload MUST contain `customer_name` and `payment_date`.
+### Execution Cascade
+Execute these rules sequentially for each invoice in the payload:
+1. **Rule 1a**: Match `TRANSACTION_NUMBER` (Exact) AND `TRANSACTION_DATE`.
+2. **Rule 1b**: Match `TRANSACTION_NUMBER` (Exact).
+3. **Rule 2**: Match `DOCUMENT_NUMBER` AND `TRANSACTION_DATE`. *(Skips if payload is missing `customer_invoice_number`)*.
+4. **Rule 3**: Match `TRANSACTION_NUMBER` (Prefix: Oracle number starts with Payload number) AND `TRANSACTION_DATE`.
+5. **Rule 4**: Match `BILL_CUSTOMER_NAME` AND `TRANSACTION_DATE`. *(Skips if payload is missing `customer_name`)*.
 
-### Scenario B: Payment Reference is Absent
-**Precondition:** Payload `payment_reference` is null/empty.
-
-* **Rule B1 (Amount, Date, Customer):** 
-  - **Match:** `RECEIPT_AMOUNT` AND `RECEIPT_DATE`
-  - **Conditional Match:** AND `BILL_CUSTOMER_NAME` (if `customer_name` exists in Payload)
-
-* **Rule B2 (Customer, Amount):** 
-  - **Match:** `BILL_CUSTOMER_NAME` AND `RECEIPT_AMOUNT`
-  - **Precondition for B2:** Payload MUST contain `customer_name` and `total_amount`.
-
-* **Rule B3 (Customer, Date):** 
-  - **Match:** `BILL_CUSTOMER_NAME` AND `RECEIPT_DATE`
-  - **Precondition for B3:** Payload MUST contain `customer_name` and `payment_date`.
-
----
-
-## 3. Invoice Reconciliation (Receivables Invoices)
-
-### Data Mappings
-| Payload Entity | Oracle Report Column | Oracle API Field |
-| :--- | :--- | :--- |
-| `invoice_number` | `TRANSACTION_NUMBER` | `TransactionNumber` |
-| `invoice_date` | `TRANSACTION_DATE` | `TransactionDate` |
-| `invoice_amount` | `TOTAL_AMOUNTS` | `EnteredAmount` |
-| `customer_invoice_number`| `DOCUMENT_NUMBER` | `DocumentNumber` |
-| `customer_name` | `BILL_CUSTOMER_NAME` | `BillToCustomerName` |
-
-### Execution Logic
-**Implicit Constraint:** EVERY rule below strictly requires `TOTAL_AMOUNTS` == `invoice_amount` (unless `invoice_amount` is `null`). If amounts differ, the candidate is instantly rejected.
-
-* **Rule 1a (Number + Date):** 
-  - **Match:** `TRANSACTION_NUMBER` AND `TRANSACTION_DATE`
-
-* **Rule 1b (Exact Number):** 
-  - **Match:** `TRANSACTION_NUMBER`
-
-* **Rule 2 (Document Match):** 
-  - **Match:** `DOCUMENT_NUMBER` AND `TRANSACTION_DATE`
-  - **Precondition for Rule 2:** Payload MUST contain `customer_invoice_number`.
-
-* **Rule 3 (Prefix Match):** 
-  - **Match:** `TRANSACTION_NUMBER` starts with Payload `invoice_number` AND `TRANSACTION_DATE`
-
-* **Rule 4 (Customer Fallback):** 
-  - **Match:** `BILL_CUSTOMER_NAME` AND `TRANSACTION_DATE`
-  - **Precondition for Rule 4:** Payload MUST contain `customer_name`.
-
----
-
-## 4. Fallback Failure
-
-**Trigger:** All rules within the applicable scenario fail to yield exactly 1 match.
-**Action:** The system MUST return the following structured JSON-like response:
-- `error_code`: `NO_SINGLE_MATCH`
-- `message`: `"No single match found after cascading rules"` (Contextual identifiers like invoice/receipt numbers may be appended for debugging).
+## 4. Unmatched Fallback
+If the execution cascades complete without finding exactly 1 match:
+* Halt execution for that specific record.
+* Return `matched_in_oracle: false`.
+* Set error message: `"No single match found after cascading rules"`.
