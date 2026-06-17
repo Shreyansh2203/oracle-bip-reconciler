@@ -38,20 +38,20 @@ WHERE 1 = 1
     AND (
         -- Base case: If no parameters are passed, return ALL UNAPP / UNID receipts
         ( acr.status IN ('UNID','UNAPP')
-          AND :P_RECEIPT_NUMBER IS NULL
-          AND :P_CUSTOMER_NAME IS NULL
-          AND :P_RECEIPT_DATE IS NULL
-          AND :P_RECEIPT_AMOUNT IS NULL
+          AND TRIM(:P_RECEIPT_NUMBER) IS NULL
+          AND TRIM(:P_CUSTOMER_NAME) IS NULL
+          AND TRIM(:P_RECEIPT_DATE) IS NULL
+          AND TRIM(:P_RECEIPT_AMOUNT) IS NULL
         )
         OR
         -- Parameterized case: If ANY parameter is passed, search ALL receipts regardless of status
         (
-            ( :P_RECEIPT_NUMBER IS NOT NULL OR :P_CUSTOMER_NAME IS NOT NULL OR :P_RECEIPT_DATE IS NOT NULL OR :P_RECEIPT_AMOUNT IS NOT NULL )
+            ( TRIM(:P_RECEIPT_NUMBER) IS NOT NULL OR TRIM(:P_CUSTOMER_NAME) IS NOT NULL OR TRIM(:P_RECEIPT_DATE) IS NOT NULL OR TRIM(:P_RECEIPT_AMOUNT) IS NOT NULL )
             AND (
-                (hp.party_name = :P_CUSTOMER_NAME AND :P_CUSTOMER_NAME IS NOT NULL)
-                OR (acr.receipt_number LIKE '%'||:P_RECEIPT_NUMBER||'%' AND :P_RECEIPT_NUMBER IS NOT NULL)
-                OR (TO_DATE(TO_CHAR(:P_RECEIPT_DATE,'DD-MM-YYYY'),'DD-MM-YYYY') BETWEEN trunc(acr.receipt_date-3) AND trunc(acr.receipt_date+3) AND :P_RECEIPT_DATE IS NOT NULL)
-                OR (acr.amount = :P_RECEIPT_AMOUNT AND :P_RECEIPT_AMOUNT IS NOT NULL)
+                (hp.party_name = :P_CUSTOMER_NAME AND TRIM(:P_CUSTOMER_NAME) IS NOT NULL)
+                OR (acr.receipt_number LIKE '%'||TRIM(:P_RECEIPT_NUMBER)||'%' AND TRIM(:P_RECEIPT_NUMBER) IS NOT NULL)
+                OR (TO_DATE(NVL(TRIM(:P_RECEIPT_DATE), '01-01-1900'), 'DD-MM-YYYY') BETWEEN trunc(acr.receipt_date-3) AND trunc(acr.receipt_date+3) AND TRIM(:P_RECEIPT_DATE) IS NOT NULL)
+                OR (acr.amount = TO_NUMBER(NVL(TRIM(:P_RECEIPT_AMOUNT), '-999999999')) AND TRIM(:P_RECEIPT_AMOUNT) IS NOT NULL)
             )
         )
     )

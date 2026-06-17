@@ -66,20 +66,20 @@ WHERE 1=1
     AND (
         -- Base case: If no parameters are passed, return ALL OPEN Invoices
         ( abs(ps.amount_due_remaining) > 0
-          AND :P_CUSTOMER_NAME IS NULL
-          AND :P_INVOICE_NUM IS NULL
-          AND :P_INVOICE_DATE IS NULL
-          AND :P_INVOICE_AMOUNT IS NULL
+          AND TRIM(:P_CUSTOMER_NAME) IS NULL
+          AND TRIM(:P_INVOICE_NUM) IS NULL
+          AND TRIM(:P_INVOICE_DATE) IS NULL
+          AND TRIM(:P_INVOICE_AMOUNT) IS NULL
         )
         OR
         -- Parameterized case: If ANY parameter is passed, search BOTH Open and Closed Invoices
         (
-            ( :P_CUSTOMER_NAME IS NOT NULL OR :P_INVOICE_NUM IS NOT NULL OR :P_INVOICE_DATE IS NOT NULL OR :P_INVOICE_AMOUNT IS NOT NULL )
+            ( TRIM(:P_CUSTOMER_NAME) IS NOT NULL OR TRIM(:P_INVOICE_NUM) IS NOT NULL OR TRIM(:P_INVOICE_DATE) IS NOT NULL OR TRIM(:P_INVOICE_AMOUNT) IS NOT NULL )
             AND (
-                (hp_bill.party_name = :P_CUSTOMER_NAME AND :P_CUSTOMER_NAME IS NOT NULL)
-                OR (trx.trx_number LIKE '%'||:P_INVOICE_NUM||'%' AND :P_INVOICE_NUM IS NOT NULL)
-                OR ((TRUNC(trx.trx_date) BETWEEN (TO_DATE(TO_CHAR(:P_INVOICE_DATE,'DD-MM-YYYY'),'DD-MM-YYYY')-1) AND TRUNC(SYSDATE) ) AND :P_INVOICE_DATE IS NOT NULL)
-                OR (ps.amount_due_original = :P_INVOICE_AMOUNT AND :P_INVOICE_AMOUNT IS NOT NULL)
+                (hp_bill.party_name = :P_CUSTOMER_NAME AND TRIM(:P_CUSTOMER_NAME) IS NOT NULL)
+                OR (trx.trx_number LIKE '%'||TRIM(:P_INVOICE_NUM)||'%' AND TRIM(:P_INVOICE_NUM) IS NOT NULL)
+                OR (TRUNC(trx.trx_date) BETWEEN (TO_DATE(NVL(TRIM(:P_INVOICE_DATE), '01-01-1900'), 'DD-MM-YYYY') - 1) AND TRUNC(SYSDATE) AND TRIM(:P_INVOICE_DATE) IS NOT NULL)
+                OR (ps.amount_due_original = TO_NUMBER(NVL(TRIM(:P_INVOICE_AMOUNT), '-999999999')) AND TRIM(:P_INVOICE_AMOUNT) IS NOT NULL)
             )
         )
     )
