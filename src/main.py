@@ -9,8 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request, Security, Depends
-from fastapi.security import APIKeyHeader
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.constants import DEFAULT_CONCURRENCY, DEFAULT_TIMEOUT, MAX_CONNECTIONS
@@ -28,13 +27,7 @@ from src.services.oracle_matcher import (
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("reconciliation_api")
 
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-def verify_api_key(api_key: str = Security(api_key_header)):
-    expected = os.getenv("API_KEY")
-    if expected:
-        if not api_key or api_key != expected:
-            raise HTTPException(status_code=401, detail="Invalid or missing API Key")
 
 def _redact(name: str | None) -> str:
     if not name:
@@ -141,7 +134,7 @@ def _process_batch_invoices(payload: ReconciliationRequest, customer_name: str, 
             payload.add_warning(f"Invoice {invoice_number} match failed: {invoice_result.get('error')}")
     return matched_count
 
-@app.post("/v1/reconcile/batch", response_model=ReconciliationRequest, dependencies=[Depends(verify_api_key)])
+@app.post("/v1/reconcile/batch", response_model=ReconciliationRequest)
 async def reconcile_data_batch(request: Request, payload: ReconciliationRequest):
     request_id = str(uuid.uuid4())
     logger.info(f"[{request_id}] Starting APPROACH 1 (BATCH) for customer {_redact(payload.customer_name)}")
@@ -167,7 +160,7 @@ async def reconcile_data_batch(request: Request, payload: ReconciliationRequest)
     return payload
 
 # Helpers for Native Mapping
-@app.post("/v1/reconcile/native", response_model=ReconciliationRequest, dependencies=[Depends(verify_api_key)])
+@app.post("/v1/reconcile/native", response_model=ReconciliationRequest)
 async def reconcile_data_native(request: Request, payload: ReconciliationRequest):
     request_id = str(uuid.uuid4())
     logger.info(f"[{request_id}] Starting APPROACH 3 (NATIVE) for customer {_redact(payload.customer_name)}")
