@@ -118,25 +118,30 @@ def _filter_receipt_candidates(
 def _apply_receipt_scenario_a(candidates: list[dict[str, Any]], receipt_number: str, amount: float | None, formatted_date: str | None, customer_name: str) -> dict[str, Any] | None:
     # A1: Substring Num, Amount, [Customer]
     results = _filter_receipt_candidates(candidates, receipt_number, amount, None, customer_name)
-    if len(results) == 1: return _build_receipt_response(results[0], "A1")
+    if len(results) == 1:
+        return _build_receipt_response(results[0], "A1")
 
     # A2: Substring Num, [Customer]
     results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name, exact_receipt=True)
-    if len(results) == 1: return _build_receipt_response(results[0], "A2")
+    if len(results) == 1:
+        return _build_receipt_response(results[0], "A2")
 
     # A3: Substring Num, Amount, Date, [Customer]
     results = _filter_receipt_candidates(candidates, receipt_number, amount, formatted_date, customer_name)
-    if len(results) == 1: return _build_receipt_response(results[0], "A3")
+    if len(results) == 1:
+        return _build_receipt_response(results[0], "A3")
 
     # A4: Customer, Amount
     if customer_name and amount is not None:
         results = _filter_receipt_candidates(candidates, None, amount, None, customer_name)
-        if len(results) == 1: return _build_receipt_response(results[0], "A4")
+        if len(results) == 1:
+            return _build_receipt_response(results[0], "A4")
 
     # A5: Customer, Date
     if customer_name and formatted_date:
         results = _filter_receipt_candidates(candidates, None, None, formatted_date, customer_name)
-        if len(results) == 1: return _build_receipt_response(results[0], "A5")
+        if len(results) == 1:
+            return _build_receipt_response(results[0], "A5")
 
     return None
 
@@ -144,17 +149,20 @@ def _apply_receipt_scenario_b(candidates: list[dict[str, Any]], amount: float | 
     # B1: Amount, Date, [Customer]
     if amount is not None and formatted_date:
         results = _filter_receipt_candidates(candidates, None, amount, formatted_date, customer_name)
-        if len(results) == 1: return _build_receipt_response(results[0], "B1")
+        if len(results) == 1:
+            return _build_receipt_response(results[0], "B1")
 
     # B2: Customer, Amount
     if customer_name and amount is not None:
         results = _filter_receipt_candidates(candidates, None, amount, None, customer_name)
-        if len(results) == 1: return _build_receipt_response(results[0], "B2")
+        if len(results) == 1:
+            return _build_receipt_response(results[0], "B2")
 
     # B3: Customer, Date
     if customer_name and formatted_date:
         results = _filter_receipt_candidates(candidates, None, None, formatted_date, customer_name)
-        if len(results) == 1: return _build_receipt_response(results[0], "B3")
+        if len(results) == 1:
+            return _build_receipt_response(results[0], "B3")
 
     return None
 
@@ -180,10 +188,12 @@ def match_receipt_in_memory(receipt_number: str, amount: float | None, receipt_d
 
         if receipt_number:
             match = _apply_receipt_scenario_a(candidates, receipt_number, amount, formatted_date, customer_name)
-            if match: return match
+            if match:
+                return match
         else:
             match = _apply_receipt_scenario_b(candidates, amount, formatted_date, customer_name)
-            if match: return match
+            if match:
+                return match
 
     return {"matched_in_oracle": False, "error": "No single match found after cascading rules"}
 
@@ -207,30 +217,35 @@ def _apply_invoice_rules(candidates: list[dict[str, Any]], invoice_number: str, 
     if invoice_number and formatted_date:
         results = [candidate for candidate in candidates if safe_str_match(candidate.get("TRANSACTION_NUMBER"), invoice_number)
                 and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
-        if len(results) == 1: return _build_invoice_response(results[0], "Rule 1a")
+        if len(results) == 1:
+            return _build_invoice_response(results[0], "Rule 1a")
 
     # Rule 1b: Exact Num
     if invoice_number:
         results = [candidate for candidate in candidates if safe_str_match(candidate.get("TRANSACTION_NUMBER"), invoice_number)]
-        if len(results) == 1: return _build_invoice_response(results[0], "Rule 1b")
+        if len(results) == 1:
+            return _build_invoice_response(results[0], "Rule 1b")
 
     # Rule 2: Doc Num + Date
     if document_number and formatted_date:
         results = [candidate for candidate in candidates if safe_str_match(candidate.get("DOCUMENT_NUMBER"), document_number)
                 and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
-        if len(results) == 1: return _build_invoice_response(results[0], "Rule 2")
+        if len(results) == 1:
+            return _build_invoice_response(results[0], "Rule 2")
 
     # Rule 3: Prefix Match + Date
     if invoice_number and formatted_date:
         results = [candidate for candidate in candidates if safe_starts_with(candidate.get("TRANSACTION_NUMBER"), invoice_number)
                 and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
-        if len(results) == 1: return _build_invoice_response(results[0], "Rule 3")
+        if len(results) == 1:
+            return _build_invoice_response(results[0], "Rule 3")
 
     # Rule 4: Customer + Date
     if customer_name and formatted_date:
         results = [candidate for candidate in candidates if safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)
                 and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
-        if len(results) == 1: return _build_invoice_response(results[0], "Rule 4")
+        if len(results) == 1:
+            return _build_invoice_response(results[0], "Rule 4")
 
     return None
 
@@ -258,7 +273,8 @@ def match_invoice_in_memory(invoice_number: str, invoice_date: str, amount: floa
             continue
 
         match = _apply_invoice_rules(candidates, invoice_number, formatted_date, document_number, customer_name)
-        if match: return match
+        if match:
+            return match
 
     return {"matched_in_oracle": False, "error": "No single match found after cascading rules"}
 
