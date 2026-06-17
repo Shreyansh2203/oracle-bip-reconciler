@@ -33,15 +33,18 @@ async def _run_bip_report(
     parameters: list[dict[str, Any]],
     report_type: str
 ) -> list[dict[str, Any]]:
-    # Construct parameter XML blocks
+    # Filter out empty parameters to prevent Oracle BIP from treating them as empty strings
+    # which causes ORA-01858 errors in TO_DATE functions.
+    valid_parameters = [p for p in parameters if p["values"] and p["values"][0]]
+
+    # Build parameter XML
     param_xml = ""
-    for p in parameters:
-        val = p["values"][0] if p["values"] else ""
+    for param in valid_parameters:
         param_xml += f"""
                <pub:item>
-                  <pub:name>{p["name"]}</pub:name>
+                  <pub:name>{param['name']}</pub:name>
                   <pub:values>
-                     <pub:item>{val}</pub:item>
+                     <pub:item>{param['values'][0]}</pub:item>
                   </pub:values>
                </pub:item>"""
 
@@ -62,8 +65,7 @@ async def _run_bip_report(
       <pub:runReport>
          <pub:reportRequest>
             <pub:attributeFormat>csv</pub:attributeFormat>
-            <pub:parameterNameValues>{param_xml}
-            </pub:parameterNameValues>
+            <pub:parameterNameValues>{param_xml}</pub:parameterNameValues>
             <pub:reportAbsolutePath>{report_path.strip()}</pub:reportAbsolutePath>
             <pub:sizeOfDataChunkDownload>{BIP_CHUNK_DOWNLOAD_SIZE}</pub:sizeOfDataChunkDownload>
          </pub:reportRequest>
