@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 import time
 import uuid
 from contextlib import asynccontextmanager
