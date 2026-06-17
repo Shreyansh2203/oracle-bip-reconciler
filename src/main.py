@@ -40,17 +40,30 @@ def _redact(name: str | None) -> str:
 # Global HTTP client
 http_client: httpx.AsyncClient | None = None
 
+def get_http_client() -> httpx.AsyncClient:
+    global http_client
+    if http_client is None:
+        http_client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, limits=httpx.Limits(max_connections=MAX_CONNECTIONS, max_keepalive_connections=MAX_CONNECTIONS))
+        logger.info("Lazily initialized global HTTP client")
+    return http_client
+
+def get_oracle_sem(app: FastAPI) -> asyncio.Semaphore:
+    if not hasattr(app.state, "oracle_sem"):
+        sem_limit = int(os.getenv("MAX_CONCURRENCY", str(DEFAULT_CONCURRENCY)))
+        app.state.oracle_sem = asyncio.Semaphore(sem_limit)
+        logger.info(f"Lazily initialized oracle semaphore with limit {sem_limit}")
+    return app.state.oracle_sem
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global http_client
-    http_client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, limits=httpx.Limits(max_connections=MAX_CONNECTIONS, max_keepalive_connections=MAX_CONNECTIONS))
-    sem_limit = int(os.getenv("MAX_CONCURRENCY", str(DEFAULT_CONCURRENCY)))
-    app.state.oracle_sem = asyncio.Semaphore(sem_limit)
-    logger.info("Starting up global HTTP client")
+    get_http_client()
+    get_oracle_sem(app)
     yield
     logger.info("Shutting down global HTTP client")
+    global http_client
     if http_client:
         await http_client.aclose()
+        http_client = None
 
 app = FastAPI(
     title="Oracle Reconciliation Live API",
@@ -79,8 +92,6 @@ async def health_check() -> dict[str, str]:
 
 @app.get("/ready")
 async def readiness_check() -> dict[str, str]:
-    if not http_client:
-        raise HTTPException(status_code=503, detail="Service not ready")
     if not os.getenv("ORACLE_USER") or not os.getenv("ORACLE_PASS") or not get_oracle_url():
         raise HTTPException(status_code=503, detail="Service not ready: missing required configuration")
     return {"status": "ready"}
@@ -88,7 +99,7 @@ async def readiness_check() -> dict[str, str]:
 # Helpers for Batch Mapping
 async def _fetch_bip_invoices(customer_name: str, payload: ReconciliationRequest) -> list[dict[str, Any]]:
     try:
-        return await run_bip_invoice_match(http_client, os.getenv("ORACLE_USER", ""), os.getenv("ORACLE_PASS", ""), "", "", None, customer_name)
+        return await run_bip_invoice_match(get_http_client(), os.getenv("ORACLE_USER", ""), os.getenv("ORACLE_PASS", ""), "", "", None, customer_name)
     except Exception as error:
         logger.error(f"BIP Batch invoice fetch failed: {error}")
         payload.add_warning("Oracle invoice fetch failed. Downstream invoice matching will be skipped.")
@@ -96,7 +107,7 @@ async def _fetch_bip_invoices(customer_name: str, payload: ReconciliationRequest
 
 async def _fetch_bip_receipts(receipt_number: str, receipt_amount: float | None, receipt_date: str, customer_name: str, payload: ReconciliationRequest) -> list[dict[str, Any]]:
     try:
-        return await run_bip_receipt_match(http_client, os.getenv("ORACLE_USER", ""), os.getenv("ORACLE_PASS", ""), receipt_number, receipt_date, receipt_amount, customer_name)
+        return await run_bip_receipt_match(get_http_client(), os.getenv("ORACLE_USER", ""), os.getenv("ORACLE_PASS", ""), receipt_number, receipt_date, receipt_amount, customer_name)
     except Exception as error:
         logger.error(f"BIP Batch receipt fetch failed: {error}")
         payload.add_warning("Oracle receipt fetch failed. Downstream receipt matching will be skipped.")
@@ -169,7 +180,8 @@ async def reconcile_data_native(request: Request, payload: ReconciliationRequest
     logger.info(f"[{request_id}] Starting APPROACH 3 (NATIVE) for customer {_redact(payload.customer_name)}")
     start_time = time.time()
 
-    semaphore = request.app.state.oracle_sem
+    semaphore = get_oracle_sem(request.app)
+    client = get_http_client()
     oracle_username = os.getenv("ORACLE_USER", "")
     oracle_password = os.getenv("ORACLE_PASS", "")
 
@@ -181,7 +193,7 @@ async def reconcile_data_native(request: Request, payload: ReconciliationRequest
     receipt_amount = payload.total_amount
     receipt_date = str(payload.payment_date) if payload.payment_date else ""
 
-    receipt_result = await check_receipt_cascading_native(http_client, oracle_username, oracle_password, receipt_number, receipt_amount, receipt_date, customer_name, semaphore)
+    receipt_result = await check_receipt_cascading_native(client, oracle_username, oracle_password, receipt_number, receipt_amount, receipt_date, customer_name, semaphore)
     if receipt_result.get("matched_in_oracle"):
         payload.fusion_receipt_number = receipt_result.get("fusion_receipt_number")
         payload.fusion_receipt_date = receipt_result.get("fusion_receipt_date")
@@ -200,7 +212,7 @@ async def reconcile_data_native(request: Request, payload: ReconciliationRequest
             invoice_amount = invoice.invoice_amount
             document_number = str(invoice.customer_invoice_number) if invoice.customer_invoice_number else ""
 
-            tasks.append(check_invoice_cascading_native(http_client, oracle_username, oracle_password, invoice_number, invoice_date, invoice_amount, document_number, customer_name, semaphore))
+            tasks.append(check_invoice_cascading_native(client, oracle_username, oracle_password, invoice_number, invoice_date, invoice_amount, document_number, customer_name, semaphore))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
