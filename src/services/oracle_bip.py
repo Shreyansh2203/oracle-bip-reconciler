@@ -59,13 +59,14 @@ async def _run_bip_report(
     }
 
     for report_path in valid_paths:
+        param_block = f"<pub:parameterNameValues>{param_xml}</pub:parameterNameValues>" if param_xml else ""
         xml_payload = f"""<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
    <soap:Header/>
    <soap:Body>
       <pub:runReport>
          <pub:reportRequest>
             <pub:attributeFormat>csv</pub:attributeFormat>
-            <pub:parameterNameValues>{param_xml}</pub:parameterNameValues>
+            {param_block}
             <pub:reportAbsolutePath>{report_path.strip()}</pub:reportAbsolutePath>
             <pub:sizeOfDataChunkDownload>{BIP_CHUNK_DOWNLOAD_SIZE}</pub:sizeOfDataChunkDownload>
          </pub:reportRequest>
