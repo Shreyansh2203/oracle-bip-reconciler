@@ -95,10 +95,8 @@ async def run_bip_invoice_match(client: httpx.AsyncClient, username: str, passwo
     # Paths retrieved from Oracle Catalog UI
     candidate_paths = [
         os.getenv("ORACLE_BIP_INVOICE_PATH", ""),
-        "Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
-        "~tripti.chugh@pinelabs.com/SHREYANSH/Get Invoice Details Report.xdo",
-        "Custom/Financials/Receivables/Upgrade/Get Invoice Details Report.xdo",
-        "shared/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
+        "/Shared Folders/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
+        "Shared Folders/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
     ]
 
     formatted_date = format_bip_date(invoice_date or "")
@@ -122,10 +120,8 @@ async def run_bip_receipt_match(client: httpx.AsyncClient, username: str, passwo
     # Paths retrieved from Oracle Catalog UI
     candidate_paths = [
         os.getenv("ORACLE_BIP_RECEIPT_PATH", ""),
-        "Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        "~tripti.chugh@pinelabs.com/SHREYANSH/Get Receipt Details Report.xdo",
-        "Custom/Financials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        "shared/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
+        "/Shared Folders/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
+        "Shared Folders/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
     ]
 
     formatted_date = format_bip_date(receipt_date or "")
