@@ -1,0 +1,62 @@
+{
+  "customer_name": null,
+  "payment_reference": "823140200",
+  "payment_date": "2025/11/07",
+  "invoices": [
+    {
+      "invoice_number": "225304329661",
+      "invoice_date": "2025/10/23",
+      "invoice_amount": 133.73,
+      "description": null,
+      "customer_invoice_number": null,
+      "storeNo": null
+    },
+    {
+      "invoice_number": "225304330089",
+      "invoice_date": "2025/10/27",
+      "invoice_amount": 203.46,
+      "description": null,
+      "customer_invoice_number": null,
+      "storeNo": null
+    },
+    {
+      "invoice_number": "225304330317",
+      "invoice_date": "2025/10/30",
+      "invoice_amount": 157.93,
+      "description": null,
+      "customer_invoice_number": null,
+      "storeNo": null
+    },
+    {
+      "invoice_number": "225304330741",
+      "invoice_date": "2025/11/03",
+      "invoice_amount": 182.13,
+      "description": null,
+      "customer_invoice_number": null,
+      "storeNo": null
+    },
+    {
+      "invoice_number": "225304331088",
+      "invoice_date": "2025/11/06",
+      "invoice_amount": 160.45,
+      "description": null,
+      "customer_invoice_number": null,
+      "storeNo": null
+    }
+  ],
+  "total_amount": 837.7,
+  "confidence_score": 0.8,
+  "confidence_label": "HIGH",
+  "invoice_count": 5,
+  "_meta": {
+    "file_kind": "excel",
+    "filename": "837.70 W.xlsx",
+    "input_tokens": 6472,
+    "output_tokens": 317,
+    "total_tokens": 6789,
+    "api_calls": 2,
+    "response_time_ms": 3314,
+    "num_pages": 1,
+    "warnings": []
+  }
+}

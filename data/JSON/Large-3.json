@@ -1,0 +1,3993 @@
+{
+  "customer_name": "",
+  "payment_reference": "",
+  "payment_date": "",
+  "header_id": 300000053976718,
+  "invoices": [
+    {
+      "Line_ID": 300000053976722,
+      "invoice_number": "6650303377",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-29.07",
+      "customer_invoice_number": "",
+      "storeNo": "11020"
+    },
+    {
+      "Line_ID": 300000053478152,
+      "invoice_number": "5884219948A2507",
+      "invoice_date": "2025-07-21",
+      "invoice_amount": -4.78,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976723,
+      "invoice_number": "6650303378",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "209.15",
+      "customer_invoice_number": "",
+      "storeNo": "11020"
+    },
+    {
+      "Line_ID": 300000053976723,
+      "invoice_number": "6650306773378",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "209.15",
+      "customer_invoice_number": "",
+      "storeNo": "11020"
+    },
+    {
+      "Line_ID": 300000053976723,
+      "invoice_number": "6650303378",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "209.15",
+      "customer_invoice_number": "",
+      "storeNo": "11020"
+    },
+    {
+      "Line_ID": 300000053976723,
+      "invoice_number": "665039803378",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "220.15",
+      "customer_invoice_number": "",
+      "storeNo": "11020"
+    },
+    {
+      "Line_ID": 300000053976723,
+      "invoice_number": "",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "209.15",
+      "customer_invoice_number": "",
+      "storeNo": "11020"
+    },
+    {
+      "Line_ID": 300000053976724,
+      "invoice_number": "6650503306",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "211.76",
+      "customer_invoice_number": "",
+      "storeNo": "11084"
+    },
+    {
+      "Line_ID": 300000053989293,
+      "invoice_number": "6650503307",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-28.08",
+      "customer_invoice_number": "",
+      "storeNo": "11084"
+    },
+    {
+      "Line_ID": 300000053976725,
+      "invoice_number": "6650503308",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "36.75",
+      "customer_invoice_number": "",
+      "storeNo": "11084"
+    },
+    {
+      "Line_ID": 300000053989294,
+      "invoice_number": "6802303487",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "48.45",
+      "customer_invoice_number": "",
+      "storeNo": "11089"
+    },
+    {
+      "Line_ID": 300000053976727,
+      "invoice_number": "6802303491",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-38.76",
+      "customer_invoice_number": "",
+      "storeNo": "11089"
+    },
+    {
+      "Line_ID": 300000053989295,
+      "invoice_number": "6650403590",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-41.99",
+      "customer_invoice_number": "",
+      "storeNo": "11094"
+    },
+    {
+      "Line_ID": 300000053976728,
+      "invoice_number": "6650403591",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "265.71",
+      "customer_invoice_number": "",
+      "storeNo": "11094"
+    },
+    {
+      "Line_ID": 300000053989296,
+      "invoice_number": "6650403044",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "203.91",
+      "customer_invoice_number": "",
+      "storeNo": "11095"
+    },
+    {
+      "Line_ID": 300000053976729,
+      "invoice_number": "6650403045",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-22.61",
+      "customer_invoice_number": "",
+      "storeNo": "11095"
+    },
+    {
+      "Line_ID": 300000053989297,
+      "invoice_number": "6650403478",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-19.38",
+      "customer_invoice_number": "",
+      "storeNo": "11096"
+    },
+    {
+      "Line_ID": 300000053976730,
+      "invoice_number": "6650403479",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "253.99",
+      "customer_invoice_number": "",
+      "storeNo": "11096"
+    },
+    {
+      "Line_ID": 300000053989298,
+      "invoice_number": "6650403039",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "177.34",
+      "customer_invoice_number": "",
+      "storeNo": "11109"
+    },
+    {
+      "Line_ID": 300000053976731,
+      "invoice_number": "6650403040",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-38.76",
+      "customer_invoice_number": "",
+      "storeNo": "11109"
+    },
+    {
+      "Line_ID": 300000053989299,
+      "invoice_number": "6650102991",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "121.47",
+      "customer_invoice_number": "",
+      "storeNo": "11112"
+    },
+    {
+      "Line_ID": 300000053976732,
+      "invoice_number": "6650102993",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-16.15",
+      "customer_invoice_number": "",
+      "storeNo": "11112"
+    },
+    {
+      "Line_ID": 300000053989300,
+      "invoice_number": "6650203446",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "152.65",
+      "customer_invoice_number": "",
+      "storeNo": "11133"
+    },
+    {
+      "Line_ID": 300000053976733,
+      "invoice_number": "6650203447",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-45.96",
+      "customer_invoice_number": "",
+      "storeNo": "11133"
+    },
+    {
+      "Line_ID": 300000053989301,
+      "invoice_number": "6650202914",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "106.98",
+      "customer_invoice_number": "",
+      "storeNo": "11139"
+    },
+    {
+      "Line_ID": 300000053976734,
+      "invoice_number": "6650202915",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-78.9",
+      "customer_invoice_number": "",
+      "storeNo": "11139"
+    },
+    {
+      "Line_ID": 300000053989302,
+      "invoice_number": "6841203076",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "150.48",
+      "customer_invoice_number": "",
+      "storeNo": "11144"
+    },
+    {
+      "Line_ID": 300000053976735,
+      "invoice_number": "6841203087",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-26.27",
+      "customer_invoice_number": "",
+      "storeNo": "11144"
+    },
+    {
+      "Line_ID": 300000053989303,
+      "invoice_number": "6801002992",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "292.56",
+      "customer_invoice_number": "",
+      "storeNo": "11146"
+    },
+    {
+      "Line_ID": 300000053976736,
+      "invoice_number": "6801003008",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "43.29",
+      "customer_invoice_number": "",
+      "storeNo": "11146"
+    },
+    {
+      "Line_ID": 300000053989304,
+      "invoice_number": "6801003009",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-23.45",
+      "customer_invoice_number": "",
+      "storeNo": "11146"
+    },
+    {
+      "Line_ID": 300000053976737,
+      "invoice_number": "6801003010",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "21.61",
+      "customer_invoice_number": "",
+      "storeNo": "11146"
+    },
+    {
+      "Line_ID": 300000053989305,
+      "invoice_number": "6650102996",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "90.09",
+      "customer_invoice_number": "",
+      "storeNo": "11147"
+    },
+    {
+      "Line_ID": 300000053976738,
+      "invoice_number": "6650102997",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-36.53",
+      "customer_invoice_number": "",
+      "storeNo": "11147"
+    },
+    {
+      "Line_ID": 300000053989306,
+      "invoice_number": "6844903353",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "96.11",
+      "customer_invoice_number": "",
+      "storeNo": "11150"
+    },
+    {
+      "Line_ID": 300000053976739,
+      "invoice_number": "6650403472",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "234.49",
+      "customer_invoice_number": "",
+      "storeNo": "11156"
+    },
+    {
+      "Line_ID": 300000053989307,
+      "invoice_number": "6650403473",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-86.33",
+      "customer_invoice_number": "",
+      "storeNo": "11156"
+    },
+    {
+      "Line_ID": 300000053976740,
+      "invoice_number": "6650103023",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "112.67",
+      "customer_invoice_number": "",
+      "storeNo": "11158"
+    },
+    {
+      "Line_ID": 300000053989308,
+      "invoice_number": "6650103025",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-97.95",
+      "customer_invoice_number": "",
+      "storeNo": "11158"
+    },
+    {
+      "Line_ID": 300000053976741,
+      "invoice_number": "6845302961",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "88.1",
+      "customer_invoice_number": "",
+      "storeNo": "11162"
+    },
+    {
+      "Line_ID": 300000053989309,
+      "invoice_number": "6845302962",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-19.38",
+      "customer_invoice_number": "",
+      "storeNo": "11162"
+    },
+    {
+      "Line_ID": 300000053976742,
+      "invoice_number": "6802403034",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "106.5",
+      "customer_invoice_number": "",
+      "storeNo": "11166"
+    },
+    {
+      "Line_ID": 300000053989310,
+      "invoice_number": "6802403039",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-19.38",
+      "customer_invoice_number": "",
+      "storeNo": "11166"
+    },
+    {
+      "Line_ID": 300000053976743,
+      "invoice_number": "6650302841",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "65.53",
+      "customer_invoice_number": "",
+      "storeNo": "11170"
+    },
+    {
+      "Line_ID": 300000053989311,
+      "invoice_number": "6650303505",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "70.48",
+      "customer_invoice_number": "",
+      "storeNo": "11170"
+    },
+    {
+      "Line_ID": 300000053976744,
+      "invoice_number": "6650403464",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-32.3",
+      "customer_invoice_number": "",
+      "storeNo": "11175"
+    },
+    {
+      "Line_ID": 300000053989312,
+      "invoice_number": "6650403465",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "143.55",
+      "customer_invoice_number": "",
+      "storeNo": "11175"
+    },
+    {
+      "Line_ID": 300000053976745,
+      "invoice_number": "6650503434",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-25.84",
+      "customer_invoice_number": "",
+      "storeNo": "11181"
+    },
+    {
+      "Line_ID": 300000053989313,
+      "invoice_number": "6650503435",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "16.92",
+      "customer_invoice_number": "",
+      "storeNo": "11181"
+    },
+    {
+      "Line_ID": 300000053976746,
+      "invoice_number": "6650503437",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "88.82",
+      "customer_invoice_number": "",
+      "storeNo": "11181"
+    },
+    {
+      "Line_ID": 300000053989314,
+      "invoice_number": "6805703348",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "54.91",
+      "customer_invoice_number": "",
+      "storeNo": "11183"
+    },
+    {
+      "Line_ID": 300000053976747,
+      "invoice_number": "6805703450",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "102.6",
+      "customer_invoice_number": "",
+      "storeNo": "11183"
+    },
+    {
+      "Line_ID": 300000053976748,
+      "invoice_number": "6805703457",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-41.99",
+      "customer_invoice_number": "",
+      "storeNo": "11183"
+    },
+    {
+      "Line_ID": 300000053989315,
+      "invoice_number": "6833303114",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "-9.69",
+      "customer_invoice_number": "",
+      "storeNo": "11184"
+    },
+    {
+      "Line_ID": 300000053976749,
+      "invoice_number": "6833303115",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "137.72",
+      "customer_invoice_number": "",
+      "storeNo": "11184"
+    },
+    {
+      "Line_ID": 300000053989316,
+      "invoice_number": "6650103027",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-34.16",
+      "customer_invoice_number": "",
+      "storeNo": "11185"
+    },
+    {
+      "Line_ID": 300000053976750,
+      "invoice_number": "6650103028",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "250.16",
+      "customer_invoice_number": "",
+      "storeNo": "11185"
+    },
+    {
+      "Line_ID": 300000053989317,
+      "invoice_number": "6840503027",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "304.68",
+      "customer_invoice_number": "",
+      "storeNo": "11191"
+    },
+    {
+      "Line_ID": 300000053976751,
+      "invoice_number": "6840503028",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-61.37",
+      "customer_invoice_number": "",
+      "storeNo": "11191"
+    },
+    {
+      "Line_ID": 300000053989318,
+      "invoice_number": "6840503029",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-21.99",
+      "customer_invoice_number": "",
+      "storeNo": "11191"
+    },
+    {
+      "Line_ID": 300000053976752,
+      "invoice_number": "6801002993",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "145.35",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989319,
+      "invoice_number": "6801003018",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-9.69",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976753,
+      "invoice_number": "6845203007",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "104.47",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989320,
+      "invoice_number": "6845203021",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-67.83",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976754,
+      "invoice_number": "6650302952",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "306.16",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989321,
+      "invoice_number": "6650303584",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-12.92",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976755,
+      "invoice_number": "6650303585",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "101.48",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989322,
+      "invoice_number": "6801002994",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "389.6",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976756,
+      "invoice_number": "6801003012",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "43.29",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989323,
+      "invoice_number": "6801003013",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-19.38",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976757,
+      "invoice_number": "6650403027",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "198.46",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989324,
+      "invoice_number": "6650403028",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-103.36",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976758,
+      "invoice_number": "6650403455",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-35.53",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989325,
+      "invoice_number": "6650403456",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "169.58",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976759,
+      "invoice_number": "6802403035",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "208.16",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989326,
+      "invoice_number": "6802403040",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-31.64",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976760,
+      "invoice_number": "6650103335",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "134.79",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989327,
+      "invoice_number": "6650103336",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-48.45",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976761,
+      "invoice_number": "6650503309",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "110.04",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989328,
+      "invoice_number": "6650503310",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-16.15",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976762,
+      "invoice_number": "6833303121",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "193.66",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989329,
+      "invoice_number": "6833303122",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "-9.69",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976763,
+      "invoice_number": "6812402979",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "67.11",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989330,
+      "invoice_number": "6812402980",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-21.88",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976764,
+      "invoice_number": "6650203436",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "138.89",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989331,
+      "invoice_number": "6650203437",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-99.27",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976765,
+      "invoice_number": "6650203444",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "49.22",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989332,
+      "invoice_number": "6650203445",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-34.54",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976766,
+      "invoice_number": "6650102994",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "88.32",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989333,
+      "invoice_number": "6650102995",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-48.45",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976767,
+      "invoice_number": "6651003340",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "73.68",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989334,
+      "invoice_number": "6651003341",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-35.53",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976768,
+      "invoice_number": "6651003333",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "292.36",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989335,
+      "invoice_number": "6651003334",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-32.3",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976769,
+      "invoice_number": "6651003342",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "137.09",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989336,
+      "invoice_number": "6651003343",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-38.76",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976770,
+      "invoice_number": "6651003331",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "84.81",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989337,
+      "invoice_number": "6651003332",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-21.99",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976771,
+      "invoice_number": "6650803315",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "74.73",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989339,
+      "invoice_number": "6650803316",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-30.32",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976773,
+      "invoice_number": "6650803317",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "221.99",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989340,
+      "invoice_number": "6650803318",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-102.55",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976774,
+      "invoice_number": "6650902892",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "248.95",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989354,
+      "invoice_number": "6650902893",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-74.29",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976775,
+      "invoice_number": "6650902894",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "4.47",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989356,
+      "invoice_number": "6650903546",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "145.9",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976776,
+      "invoice_number": "6650903547",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-26.59",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989357,
+      "invoice_number": "6651003481",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "149.77",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976777,
+      "invoice_number": "6651003482",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-31.78",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989358,
+      "invoice_number": "6650803308",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "158.47",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976778,
+      "invoice_number": "6650803309",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-64.6",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989359,
+      "invoice_number": "6650902887",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "251.3",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976779,
+      "invoice_number": "6650902888",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-50.94",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989360,
+      "invoice_number": "6650902889",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-11.92",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053976780,
+      "invoice_number": "6650903539",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "166.27",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989361,
+      "invoice_number": "6650903540",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-19.38",
+      "customer_invoice_number": "",
+      "storeNo": "22049"
+    },
+    {
+      "Line_ID": 300000053976781,
+      "invoice_number": "6650903541",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-4.45",
+      "customer_invoice_number": "",
+      "storeNo": "22049"
+    },
+    {
+      "Line_ID": 300000053989362,
+      "invoice_number": "6650903542",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "25.67",
+      "customer_invoice_number": "",
+      "storeNo": "22049"
+    },
+    {
+      "Line_ID": 300000053976782,
+      "invoice_number": "6650903543",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-10.99",
+      "customer_invoice_number": "",
+      "storeNo": "22049"
+    },
+    {
+      "Line_ID": 300000053989363,
+      "invoice_number": "6463902863",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "32.3",
+      "customer_invoice_number": "",
+      "storeNo": "22052"
+    },
+    {
+      "Line_ID": 300000053976783,
+      "invoice_number": "6463902865",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "51.3",
+      "customer_invoice_number": "",
+      "storeNo": "22052"
+    },
+    {
+      "Line_ID": 300000053989364,
+      "invoice_number": "6463902866",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-14.41",
+      "customer_invoice_number": "",
+      "storeNo": "22052"
+    },
+    {
+      "Line_ID": 300000053976784,
+      "invoice_number": "6463902867",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "136.78",
+      "customer_invoice_number": "",
+      "storeNo": "22052"
+    },
+    {
+      "Line_ID": 300000053989365,
+      "invoice_number": "6463903310",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "58.14",
+      "customer_invoice_number": "",
+      "storeNo": "22052"
+    },
+    {
+      "Line_ID": 300000053976785,
+      "invoice_number": "6403603053",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "51.68",
+      "customer_invoice_number": "",
+      "storeNo": "22053"
+    },
+    {
+      "Line_ID": 300000053976786,
+      "invoice_number": "6403603054",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-3.23",
+      "customer_invoice_number": "",
+      "storeNo": "22053"
+    },
+    {
+      "Line_ID": 300000053989366,
+      "invoice_number": "6651003348",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "95.83",
+      "customer_invoice_number": "",
+      "storeNo": "22054"
+    },
+    {
+      "Line_ID": 300000053976787,
+      "invoice_number": "6651003349",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-35.53",
+      "customer_invoice_number": "",
+      "storeNo": "22054"
+    },
+    {
+      "Line_ID": 300000053989367,
+      "invoice_number": "6650902895",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "283.6",
+      "customer_invoice_number": "",
+      "storeNo": "22056"
+    },
+    {
+      "Line_ID": 300000053976788,
+      "invoice_number": "6650902896",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-9.69",
+      "customer_invoice_number": "",
+      "storeNo": "22056"
+    },
+    {
+      "Line_ID": 300000053989368,
+      "invoice_number": "6650903548",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "219.28",
+      "customer_invoice_number": "",
+      "storeNo": "22056"
+    },
+    {
+      "Line_ID": 300000053976789,
+      "invoice_number": "6650903549",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-10.93",
+      "customer_invoice_number": "",
+      "storeNo": "22056"
+    },
+    {
+      "Line_ID": 300000053989369,
+      "invoice_number": "6650803310",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "240.31",
+      "customer_invoice_number": "",
+      "storeNo": "22057"
+    },
+    {
+      "Line_ID": 300000053976790,
+      "invoice_number": "6650803311",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-38.76",
+      "customer_invoice_number": "",
+      "storeNo": "22057"
+    },
+    {
+      "Line_ID": 300000053989370,
+      "invoice_number": "6650902885",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "184.39",
+      "customer_invoice_number": "",
+      "storeNo": "22063"
+    },
+    {
+      "Line_ID": 300000053976791,
+      "invoice_number": "6650902886",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-49.01",
+      "customer_invoice_number": "",
+      "storeNo": "22063"
+    },
+    {
+      "Line_ID": 300000053989371,
+      "invoice_number": "6650903537",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "292.37",
+      "customer_invoice_number": "",
+      "storeNo": "22063"
+    },
+    {
+      "Line_ID": 300000053976792,
+      "invoice_number": "6650903538",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-35.53",
+      "customer_invoice_number": "",
+      "storeNo": "22063"
+    },
+    {
+      "Line_ID": 300000053989372,
+      "invoice_number": "6650803312",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "159.78",
+      "customer_invoice_number": "",
+      "storeNo": "22076"
+    },
+    {
+      "Line_ID": 300000053976793,
+      "invoice_number": "6650803314",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-50.45",
+      "customer_invoice_number": "",
+      "storeNo": "22076"
+    },
+    {
+      "Line_ID": 300000053989373,
+      "invoice_number": "6650802988",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "99.27",
+      "customer_invoice_number": "",
+      "storeNo": "22082"
+    },
+    {
+      "Line_ID": 300000053976794,
+      "invoice_number": "6650802989",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-22.61",
+      "customer_invoice_number": "",
+      "storeNo": "22082"
+    },
+    {
+      "Line_ID": 300000053989374,
+      "invoice_number": "6452203493",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "220.84",
+      "customer_invoice_number": "",
+      "storeNo": "22091"
+    },
+    {
+      "Line_ID": 300000053976795,
+      "invoice_number": "6452203494",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-26.84",
+      "customer_invoice_number": "",
+      "storeNo": "22091"
+    },
+    {
+      "Line_ID": 300000053989375,
+      "invoice_number": "6651003467",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-62.14",
+      "customer_invoice_number": "",
+      "storeNo": "22111"
+    },
+    {
+      "Line_ID": 300000053976796,
+      "invoice_number": "6651003469",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "156.7",
+      "customer_invoice_number": "",
+      "storeNo": "22111"
+    },
+    {
+      "Line_ID": 300000053989376,
+      "invoice_number": "6651003337",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-48.45",
+      "customer_invoice_number": "",
+      "storeNo": "22112"
+    },
+    {
+      "Line_ID": 300000053976797,
+      "invoice_number": "6651003338",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "141.4",
+      "customer_invoice_number": "",
+      "storeNo": "22112"
+    },
+    {
+      "Line_ID": 300000053989377,
+      "invoice_number": "6650902802",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "241.59",
+      "customer_invoice_number": "",
+      "storeNo": "22113"
+    },
+    {
+      "Line_ID": 300000053976798,
+      "invoice_number": "6650902803",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-61.37",
+      "customer_invoice_number": "",
+      "storeNo": "22113"
+    },
+    {
+      "Line_ID": 300000053989378,
+      "invoice_number": "6650903555",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "281.28",
+      "customer_invoice_number": "",
+      "storeNo": "22113"
+    },
+    {
+      "Line_ID": 300000053989379,
+      "invoice_number": "6650903556",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-16.15",
+      "customer_invoice_number": "",
+      "storeNo": "22113"
+    },
+    {
+      "Line_ID": 300000053976799,
+      "invoice_number": "6650903557",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-8.94",
+      "customer_invoice_number": "",
+      "storeNo": "22113"
+    },
+    {
+      "Line_ID": 300000053989380,
+      "invoice_number": "6651003344",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-32.3",
+      "customer_invoice_number": "",
+      "storeNo": "22114"
+    },
+    {
+      "Line_ID": 300000053976800,
+      "invoice_number": "6651003345",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "112.7",
+      "customer_invoice_number": "",
+      "storeNo": "22114"
+    },
+    {
+      "Line_ID": 300000053989381,
+      "invoice_number": "6650803397",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "187.51",
+      "customer_invoice_number": "",
+      "storeNo": "22116"
+    },
+    {
+      "Line_ID": 300000053976801,
+      "invoice_number": "6650803398",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-85.33",
+      "customer_invoice_number": "",
+      "storeNo": "22116"
+    },
+    {
+      "Line_ID": 300000053989382,
+      "invoice_number": "6651003486",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-64.6",
+      "customer_invoice_number": "",
+      "storeNo": "22117"
+    },
+    {
+      "Line_ID": 300000053976802,
+      "invoice_number": "6651003487",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "116.9",
+      "customer_invoice_number": "",
+      "storeNo": "22117"
+    },
+    {
+      "Line_ID": 300000053989383,
+      "invoice_number": "6651003329",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "82.25",
+      "customer_invoice_number": "",
+      "storeNo": "22119"
+    },
+    {
+      "Line_ID": 300000053976803,
+      "invoice_number": "6651003330",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-35.53",
+      "customer_invoice_number": "",
+      "storeNo": "22119"
+    },
+    {
+      "Line_ID": 300000053989384,
+      "invoice_number": "6651003479",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-84.78",
+      "customer_invoice_number": "",
+      "storeNo": "22121"
+    },
+    {
+      "Line_ID": 300000053976804,
+      "invoice_number": "6651003480",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "128.05",
+      "customer_invoice_number": "",
+      "storeNo": "22121"
+    },
+    {
+      "Line_ID": 300000053989385,
+      "invoice_number": "6650803393",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "138.55",
+      "customer_invoice_number": "",
+      "storeNo": "22122"
+    },
+    {
+      "Line_ID": 300000053976805,
+      "invoice_number": "6650803394",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-76.2",
+      "customer_invoice_number": "",
+      "storeNo": "22122"
+    },
+    {
+      "Line_ID": 300000053989386,
+      "invoice_number": "6650803395",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "229.96",
+      "customer_invoice_number": "",
+      "storeNo": "22124"
+    },
+    {
+      "Line_ID": 300000053976806,
+      "invoice_number": "6650803396",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-125.42",
+      "customer_invoice_number": "",
+      "storeNo": "22124"
+    },
+    {
+      "Line_ID": 300000053989387,
+      "invoice_number": "6651003335",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "205.26",
+      "customer_invoice_number": "",
+      "storeNo": "22125"
+    },
+    {
+      "Line_ID": 300000053976807,
+      "invoice_number": "6651003336",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-13.18",
+      "customer_invoice_number": "",
+      "storeNo": "22125"
+    },
+    {
+      "Line_ID": 300000053989388,
+      "invoice_number": "6650902883",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-43.97",
+      "customer_invoice_number": "",
+      "storeNo": "22126"
+    },
+    {
+      "Line_ID": 300000053976808,
+      "invoice_number": "6650902884",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "17.89",
+      "customer_invoice_number": "",
+      "storeNo": "22126"
+    },
+    {
+      "Line_ID": 300000053989389,
+      "invoice_number": "6650903319",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "200.99",
+      "customer_invoice_number": "",
+      "storeNo": "22126"
+    },
+    {
+      "Line_ID": 300000053976809,
+      "invoice_number": "6650903320",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-9.69",
+      "customer_invoice_number": "",
+      "storeNo": "22126"
+    },
+    {
+      "Line_ID": 300000053989390,
+      "invoice_number": "6651003346",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "88.79",
+      "customer_invoice_number": "",
+      "storeNo": "22130"
+    },
+    {
+      "Line_ID": 300000053976810,
+      "invoice_number": "6651003347",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-13.41",
+      "customer_invoice_number": "",
+      "storeNo": "22130"
+    },
+    {
+      "Line_ID": 300000053989391,
+      "invoice_number": "6651003483",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-67.83",
+      "customer_invoice_number": "",
+      "storeNo": "22137"
+    },
+    {
+      "Line_ID": 300000053976811,
+      "invoice_number": "6651003485",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "135.14",
+      "customer_invoice_number": "",
+      "storeNo": "22137"
+    },
+    {
+      "Line_ID": 300000053989392,
+      "invoice_number": "6650902881",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "270.5",
+      "customer_invoice_number": "",
+      "storeNo": "22143"
+    },
+    {
+      "Line_ID": 300000053976812,
+      "invoice_number": "6650902882",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-48.45",
+      "customer_invoice_number": "",
+      "storeNo": "22143"
+    },
+    {
+      "Line_ID": 300000053989393,
+      "invoice_number": "6650903535",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "141.22",
+      "customer_invoice_number": "",
+      "storeNo": "22143"
+    },
+    {
+      "Line_ID": 300000053976813,
+      "invoice_number": "6650903536",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-16.15",
+      "customer_invoice_number": "",
+      "storeNo": "22143"
+    },
+    {
+      "Line_ID": 300000053989394,
+      "invoice_number": "6650903321",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "191.03",
+      "customer_invoice_number": "",
+      "storeNo": "22145"
+    },
+    {
+      "Line_ID": 300000053976814,
+      "invoice_number": "6650903322",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-25.84",
+      "customer_invoice_number": "",
+      "storeNo": "22145"
+    },
+    {
+      "Line_ID": 300000053989395,
+      "invoice_number": "6405703017",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "35.53",
+      "customer_invoice_number": "",
+      "storeNo": "22151"
+    },
+    {
+      "Line_ID": 300000053976815,
+      "invoice_number": "6434703096",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "68.05",
+      "customer_invoice_number": "",
+      "storeNo": "22154"
+    },
+    {
+      "Line_ID": 300000053989396,
+      "invoice_number": "6434703097",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-16.15",
+      "customer_invoice_number": "",
+      "storeNo": "22154"
+    },
+    {
+      "Line_ID": 300000053976816,
+      "invoice_number": "6650803304",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "243.49",
+      "customer_invoice_number": "",
+      "storeNo": "22156"
+    },
+    {
+      "Line_ID": 300000053989397,
+      "invoice_number": "6650803305",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-98.65",
+      "customer_invoice_number": "",
+      "storeNo": "22156"
+    },
+    {
+      "Line_ID": 300000053976817,
+      "invoice_number": "6650803424",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "185.93",
+      "customer_invoice_number": "",
+      "storeNo": "22157"
+    },
+    {
+      "Line_ID": 300000053989398,
+      "invoice_number": "6650803425",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-132.5",
+      "customer_invoice_number": "",
+      "storeNo": "22157"
+    },
+    {
+      "Line_ID": 300000053976818,
+      "invoice_number": "6650802986",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "129.17",
+      "customer_invoice_number": "",
+      "storeNo": "22158"
+    },
+    {
+      "Line_ID": 300000053989399,
+      "invoice_number": "6650802987",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-54.91",
+      "customer_invoice_number": "",
+      "storeNo": "22158"
+    },
+    {
+      "Line_ID": 300000053976819,
+      "invoice_number": "6462102934",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "194.47",
+      "customer_invoice_number": "",
+      "storeNo": "22161"
+    },
+    {
+      "Line_ID": 300000053989400,
+      "invoice_number": "6462102935",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-19.48",
+      "customer_invoice_number": "",
+      "storeNo": "22161"
+    },
+    {
+      "Line_ID": 300000053976820,
+      "invoice_number": "6651003356",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "237",
+      "customer_invoice_number": "",
+      "storeNo": "22162"
+    },
+    {
+      "Line_ID": 300000053989401,
+      "invoice_number": "6651003357",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-47.64",
+      "customer_invoice_number": "",
+      "storeNo": "22162"
+    },
+    {
+      "Line_ID": 300000053976821,
+      "invoice_number": "6434703459",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "109.82",
+      "customer_invoice_number": "",
+      "storeNo": "22165"
+    },
+    {
+      "Line_ID": 300000053989402,
+      "invoice_number": "6650803301",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-35.03",
+      "customer_invoice_number": "",
+      "storeNo": "22166"
+    },
+    {
+      "Line_ID": 300000053976822,
+      "invoice_number": "6650803399",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "247.89",
+      "customer_invoice_number": "",
+      "storeNo": "22166"
+    },
+    {
+      "Line_ID": 300000053989403,
+      "invoice_number": "6650803306",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "143.54",
+      "customer_invoice_number": "",
+      "storeNo": "22168"
+    },
+    {
+      "Line_ID": 300000053976823,
+      "invoice_number": "6650803307",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-48.45",
+      "customer_invoice_number": "",
+      "storeNo": "22168"
+    },
+    {
+      "Line_ID": 300000053989404,
+      "invoice_number": "6452203495",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "107.12",
+      "customer_invoice_number": "",
+      "storeNo": "22171"
+    },
+    {
+      "Line_ID": 300000053976824,
+      "invoice_number": "6403603324",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "45.22",
+      "customer_invoice_number": "",
+      "storeNo": "22173"
+    },
+    {
+      "Line_ID": 300000053989405,
+      "invoice_number": "6403603325",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-37.95",
+      "customer_invoice_number": "",
+      "storeNo": "22173"
+    },
+    {
+      "Line_ID": 300000053976825,
+      "invoice_number": "6403603326",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-13.01",
+      "customer_invoice_number": "",
+      "storeNo": "22173"
+    },
+    {
+      "Line_ID": 300000053989406,
+      "invoice_number": "6434703461",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "78.14",
+      "customer_invoice_number": "",
+      "storeNo": "22174"
+    },
+    {
+      "Line_ID": 300000053976826,
+      "invoice_number": "6434703462",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-20.44",
+      "customer_invoice_number": "",
+      "storeNo": "22174"
+    },
+    {
+      "Line_ID": 300000053989407,
+      "invoice_number": "6462102941",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "107.33",
+      "customer_invoice_number": "",
+      "storeNo": "22176"
+    },
+    {
+      "Line_ID": 300000053976827,
+      "invoice_number": "6462102942",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-54.91",
+      "customer_invoice_number": "",
+      "storeNo": "22176"
+    },
+    {
+      "Line_ID": 300000053989408,
+      "invoice_number": "6434703452",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "73.91",
+      "customer_invoice_number": "",
+      "storeNo": "22177"
+    },
+    {
+      "Line_ID": 300000053976828,
+      "invoice_number": "6434703453",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-9.69",
+      "customer_invoice_number": "",
+      "storeNo": "22177"
+    },
+    {
+      "Line_ID": 300000053989409,
+      "invoice_number": "6651003470",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-76.46",
+      "customer_invoice_number": "",
+      "storeNo": "22178"
+    },
+    {
+      "Line_ID": 300000053976829,
+      "invoice_number": "6651003472",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "200.03",
+      "customer_invoice_number": "",
+      "storeNo": "22178"
+    },
+    {
+      "Line_ID": 300000053989410,
+      "invoice_number": "6651003475",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "157.49",
+      "customer_invoice_number": "",
+      "storeNo": "22180"
+    },
+    {
+      "Line_ID": 300000053976830,
+      "invoice_number": "6651003476",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-88.23",
+      "customer_invoice_number": "",
+      "storeNo": "22180"
+    },
+    {
+      "Line_ID": 300000053989411,
+      "invoice_number": "6650803422",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "87.66",
+      "customer_invoice_number": "",
+      "storeNo": "22181"
+    },
+    {
+      "Line_ID": 300000053976831,
+      "invoice_number": "6650803423",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-25.84",
+      "customer_invoice_number": "",
+      "storeNo": "22181"
+    },
+    {
+      "Line_ID": 300000053989412,
+      "invoice_number": "6650803302",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "141.43",
+      "customer_invoice_number": "",
+      "storeNo": "22185"
+    },
+    {
+      "Line_ID": 300000053976832,
+      "invoice_number": "6650803303",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-48.71",
+      "customer_invoice_number": "",
+      "storeNo": "22185"
+    },
+    {
+      "Line_ID": 300000053989413,
+      "invoice_number": "6651003465",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-82.3",
+      "customer_invoice_number": "",
+      "storeNo": "22186"
+    },
+    {
+      "Line_ID": 300000053976833,
+      "invoice_number": "6651003466",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "138.6",
+      "customer_invoice_number": "",
+      "storeNo": "22186"
+    },
+    {
+      "Line_ID": 300000053989414,
+      "invoice_number": "6651003488",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-61.37",
+      "customer_invoice_number": "",
+      "storeNo": "22187"
+    },
+    {
+      "Line_ID": 300000053976834,
+      "invoice_number": "6651003490",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "195.25",
+      "customer_invoice_number": "",
+      "storeNo": "22187"
+    },
+    {
+      "Line_ID": 300000053989415,
+      "invoice_number": "6650903013",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "442.69",
+      "customer_invoice_number": "",
+      "storeNo": "22188"
+    },
+    {
+      "Line_ID": 300000053976835,
+      "invoice_number": "6650903014",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-95.01",
+      "customer_invoice_number": "",
+      "storeNo": "22188"
+    },
+    {
+      "Line_ID": 300000053989416,
+      "invoice_number": "6462003090",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "424.09",
+      "customer_invoice_number": "",
+      "storeNo": "22191"
+    },
+    {
+      "Line_ID": 300000053976836,
+      "invoice_number": "6462003091",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-12.92",
+      "customer_invoice_number": "",
+      "storeNo": "22191"
+    },
+    {
+      "Line_ID": 300000053989417,
+      "invoice_number": "6462003436",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "554.38",
+      "customer_invoice_number": "",
+      "storeNo": "22191"
+    },
+    {
+      "Line_ID": 300000053989418,
+      "invoice_number": "6434703454",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "59.14",
+      "customer_invoice_number": "",
+      "storeNo": "22193"
+    },
+    {
+      "Line_ID": 300000053976837,
+      "invoice_number": "6434703455",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-12.92",
+      "customer_invoice_number": "",
+      "storeNo": "22193"
+    },
+    {
+      "Line_ID": 300000053989419,
+      "invoice_number": "6650903323",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "351.45",
+      "customer_invoice_number": "",
+      "storeNo": "22195"
+    },
+    {
+      "Line_ID": 300000053976838,
+      "invoice_number": "6650903324",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-41.99",
+      "customer_invoice_number": "",
+      "storeNo": "22195"
+    },
+    {
+      "Line_ID": 300000053976839,
+      "invoice_number": "6434703457",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "134.91",
+      "customer_invoice_number": "",
+      "storeNo": "22196"
+    },
+    {
+      "Line_ID": 300000053989420,
+      "invoice_number": "6434703458",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-3.23",
+      "customer_invoice_number": "",
+      "storeNo": "22196"
+    },
+    {
+      "Line_ID": 300000053976840,
+      "invoice_number": "6650903434",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "35.53",
+      "customer_invoice_number": "",
+      "storeNo": "22199"
+    },
+    {
+      "Line_ID": 300000053976841,
+      "invoice_number": "6650602922",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "269.09",
+      "customer_invoice_number": "",
+      "storeNo": "22505"
+    },
+    {
+      "Line_ID": 300000053976842,
+      "invoice_number": "6650602923",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-10.93",
+      "customer_invoice_number": "",
+      "storeNo": "22505"
+    },
+    {
+      "Line_ID": 300000053976843,
+      "invoice_number": "6650603061",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "180.12",
+      "customer_invoice_number": "",
+      "storeNo": "22512"
+    },
+    {
+      "Line_ID": 300000053976844,
+      "invoice_number": "6650603062",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-22.61",
+      "customer_invoice_number": "",
+      "storeNo": "22512"
+    },
+    {
+      "Line_ID": 300000053989421,
+      "invoice_number": "6650703460",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "108.36",
+      "customer_invoice_number": "",
+      "storeNo": "22523"
+    },
+    {
+      "Line_ID": 300000053976845,
+      "invoice_number": "6650703461",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-45.22",
+      "customer_invoice_number": "",
+      "storeNo": "22523"
+    },
+    {
+      "Line_ID": 300000053989422,
+      "invoice_number": "6650703347",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-9.69",
+      "customer_invoice_number": "",
+      "storeNo": "22525"
+    },
+    {
+      "Line_ID": 300000053976846,
+      "invoice_number": "6650703348",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "95.44",
+      "customer_invoice_number": "",
+      "storeNo": "22525"
+    },
+    {
+      "Line_ID": 300000053989423,
+      "invoice_number": "6650703349",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "12.92",
+      "customer_invoice_number": "",
+      "storeNo": "22525"
+    },
+    {
+      "Line_ID": 300000053976847,
+      "invoice_number": "6650703350",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-51.3",
+      "customer_invoice_number": "",
+      "storeNo": "22525"
+    },
+    {
+      "Line_ID": 300000053989424,
+      "invoice_number": "6650703351",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "51.3",
+      "customer_invoice_number": "",
+      "storeNo": "22525"
+    },
+    {
+      "Line_ID": 300000053976848,
+      "invoice_number": "6650703465",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-25.35",
+      "customer_invoice_number": "",
+      "storeNo": "22530"
+    },
+    {
+      "Line_ID": 300000053976849,
+      "invoice_number": "6650703466",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "139.89",
+      "customer_invoice_number": "",
+      "storeNo": "22530"
+    },
+    {
+      "Line_ID": 300000053976850,
+      "invoice_number": "6650602820",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "189.03",
+      "customer_invoice_number": "",
+      "storeNo": "22531"
+    },
+    {
+      "Line_ID": 300000053989425,
+      "invoice_number": "6650602821",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-48.45",
+      "customer_invoice_number": "",
+      "storeNo": "22531"
+    },
+    {
+      "Line_ID": 300000053976851,
+      "invoice_number": "6650603195",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "199.03",
+      "customer_invoice_number": "",
+      "storeNo": "22544"
+    },
+    {
+      "Line_ID": 300000053976852,
+      "invoice_number": "6650603196",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "-135.66",
+      "customer_invoice_number": "",
+      "storeNo": "22544"
+    },
+    {
+      "Line_ID": 300000053976853,
+      "invoice_number": "6650603197",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "78.05",
+      "customer_invoice_number": "",
+      "storeNo": "22544"
+    },
+    {
+      "Line_ID": 300000053989426,
+      "invoice_number": "6650603555",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "78.14",
+      "customer_invoice_number": "",
+      "storeNo": "22544"
+    },
+    {
+      "Line_ID": 300000053989427,
+      "invoice_number": "6650602941",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "136.43",
+      "customer_invoice_number": "",
+      "storeNo": "22551"
+    },
+    {
+      "Line_ID": 300000053976854,
+      "invoice_number": "6650602942",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "10.84",
+      "customer_invoice_number": "",
+      "storeNo": "22551"
+    },
+    {
+      "Line_ID": 300000053989428,
+      "invoice_number": "6650702888",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-29.07",
+      "customer_invoice_number": "",
+      "storeNo": "22560"
+    },
+    {
+      "Line_ID": 300000053976855,
+      "invoice_number": "6650702889",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "203.75",
+      "customer_invoice_number": "",
+      "storeNo": "22560"
+    },
+    {
+      "Line_ID": 300000053989429,
+      "invoice_number": "6650703594",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-62.05",
+      "customer_invoice_number": "",
+      "storeNo": "22560"
+    },
+    {
+      "Line_ID": 300000053976856,
+      "invoice_number": "6650703595",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "180.04",
+      "customer_invoice_number": "",
+      "storeNo": "22560"
+    },
+    {
+      "Line_ID": 300000053976857,
+      "invoice_number": "6650602806",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "77.52",
+      "customer_invoice_number": "",
+      "storeNo": "22563"
+    },
+    {
+      "Line_ID": 300000053989430,
+      "invoice_number": "6650602807",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-64.6",
+      "customer_invoice_number": "",
+      "storeNo": "22563"
+    },
+    {
+      "Line_ID": 300000053976858,
+      "invoice_number": "6650602947",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "182.07",
+      "customer_invoice_number": "",
+      "storeNo": "22565"
+    },
+    {
+      "Line_ID": 300000053989431,
+      "invoice_number": "6650602948",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-61.37",
+      "customer_invoice_number": "",
+      "storeNo": "22565"
+    },
+    {
+      "Line_ID": 300000053976859,
+      "invoice_number": "6650602949",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "51.3",
+      "customer_invoice_number": "",
+      "storeNo": "22565"
+    },
+    {
+      "Line_ID": 300000053989432,
+      "invoice_number": "6650602950",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "10.84",
+      "customer_invoice_number": "",
+      "storeNo": "22565"
+    },
+    {
+      "Line_ID": 300000053976860,
+      "invoice_number": "6650703352",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "118.2",
+      "customer_invoice_number": "",
+      "storeNo": "22567"
+    },
+    {
+      "Line_ID": 300000053989433,
+      "invoice_number": "6650603198",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "381.97",
+      "customer_invoice_number": "",
+      "storeNo": "22568"
+    },
+    {
+      "Line_ID": 300000053976861,
+      "invoice_number": "6650603199",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "-62.49",
+      "customer_invoice_number": "",
+      "storeNo": "22568"
+    },
+    {
+      "Line_ID": 300000053989434,
+      "invoice_number": "6304203366",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "36.75",
+      "customer_invoice_number": "",
+      "storeNo": "22569"
+    },
+    {
+      "Line_ID": 300000053976862,
+      "invoice_number": "6304203470",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-71.06",
+      "customer_invoice_number": "",
+      "storeNo": "22569"
+    },
+    {
+      "Line_ID": 300000053989435,
+      "invoice_number": "6650602924",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "153.56",
+      "customer_invoice_number": "",
+      "storeNo": "22574"
+    },
+    {
+      "Line_ID": 300000053989436,
+      "invoice_number": "6650602925",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-29.07",
+      "customer_invoice_number": "",
+      "storeNo": "22574"
+    },
+    {
+      "Line_ID": 300000053976863,
+      "invoice_number": "6650603103",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "307.93",
+      "customer_invoice_number": "",
+      "storeNo": "22577"
+    },
+    {
+      "Line_ID": 300000053989437,
+      "invoice_number": "6650603104",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "-22.61",
+      "customer_invoice_number": "",
+      "storeNo": "22577"
+    },
+    {
+      "Line_ID": 300000053989438,
+      "invoice_number": "6650702898",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "78.49",
+      "customer_invoice_number": "",
+      "storeNo": "22579"
+    },
+    {
+      "Line_ID": 300000053976864,
+      "invoice_number": "6650703508",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-96.17",
+      "customer_invoice_number": "",
+      "storeNo": "22579"
+    },
+    {
+      "Line_ID": 300000053989439,
+      "invoice_number": "6650703509",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "232.03",
+      "customer_invoice_number": "",
+      "storeNo": "22579"
+    },
+    {
+      "Line_ID": 300000053989440,
+      "invoice_number": "6650603213",
+      "invoice_date": "2026-02-01",
+      "invoice_amount": "209.25",
+      "customer_invoice_number": "",
+      "storeNo": "22580"
+    },
+    {
+      "Line_ID": 300000053976865,
+      "invoice_number": "6650603214",
+      "invoice_date": "2026-02-01",
+      "invoice_amount": "-32.3",
+      "customer_invoice_number": "",
+      "storeNo": "22580"
+    },
+    {
+      "Line_ID": 300000053989441,
+      "invoice_number": "6650603075",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "77.52",
+      "customer_invoice_number": "",
+      "storeNo": "22581"
+    },
+    {
+      "Line_ID": 300000053989442,
+      "invoice_number": "6650603076",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-20.68",
+      "customer_invoice_number": "",
+      "storeNo": "22581"
+    },
+    {
+      "Line_ID": 300000053976866,
+      "invoice_number": "6339102964",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "54.91",
+      "customer_invoice_number": "",
+      "storeNo": "22584"
+    },
+    {
+      "Line_ID": 300000053989443,
+      "invoice_number": "6339102965",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-19.38",
+      "customer_invoice_number": "",
+      "storeNo": "22584"
+    },
+    {
+      "Line_ID": 300000053976867,
+      "invoice_number": "6339103397",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "135.78",
+      "customer_invoice_number": "",
+      "storeNo": "22584"
+    },
+    {
+      "Line_ID": 300000053989444,
+      "invoice_number": "6339103398",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-25.84",
+      "customer_invoice_number": "",
+      "storeNo": "22584"
+    },
+    {
+      "Line_ID": 300000053976868,
+      "invoice_number": "6650603101",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "282.03",
+      "customer_invoice_number": "",
+      "storeNo": "22585"
+    },
+    {
+      "Line_ID": 300000053989445,
+      "invoice_number": "6650603102",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "-84.56",
+      "customer_invoice_number": "",
+      "storeNo": "22585"
+    },
+    {
+      "Line_ID": 300000053976869,
+      "invoice_number": "6365103194",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "90.44",
+      "customer_invoice_number": "",
+      "storeNo": "22586"
+    },
+    {
+      "Line_ID": 300000053989446,
+      "invoice_number": "6365103197",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "-91.24",
+      "customer_invoice_number": "",
+      "storeNo": "22586"
+    },
+    {
+      "Line_ID": 300000053976870,
+      "invoice_number": "6650602926",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "477.29",
+      "customer_invoice_number": "",
+      "storeNo": "22589"
+    },
+    {
+      "Line_ID": 300000053989447,
+      "invoice_number": "6650602927",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-125.97",
+      "customer_invoice_number": "",
+      "storeNo": "22589"
+    },
+    {
+      "Line_ID": 300000053976871,
+      "invoice_number": "6650602953",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "87.98",
+      "customer_invoice_number": "",
+      "storeNo": "22598"
+    },
+    {
+      "Line_ID": 300000053989448,
+      "invoice_number": "6650602954",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-54.91",
+      "customer_invoice_number": "",
+      "storeNo": "22598"
+    },
+    {
+      "Line_ID": 300000053976872,
+      "invoice_number": "6650703356",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-6.46",
+      "customer_invoice_number": "",
+      "storeNo": "22599"
+    },
+    {
+      "Line_ID": 300000053989449,
+      "invoice_number": "6650703357",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "68.6",
+      "customer_invoice_number": "",
+      "storeNo": "22599"
+    },
+    {
+      "Line_ID": 300000053976873,
+      "invoice_number": "6650703358",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "36.75",
+      "customer_invoice_number": "",
+      "storeNo": "22599"
+    },
+    {
+      "Line_ID": 300000053989450,
+      "invoice_number": "6650602951",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-54.91",
+      "customer_invoice_number": "",
+      "storeNo": "22600"
+    },
+    {
+      "Line_ID": 300000053976874,
+      "invoice_number": "6650602952",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "98.44",
+      "customer_invoice_number": "",
+      "storeNo": "22600"
+    },
+    {
+      "Line_ID": 300000053989451,
+      "invoice_number": "6650603063",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "55.68",
+      "customer_invoice_number": "",
+      "storeNo": "22602"
+    },
+    {
+      "Line_ID": 300000053976875,
+      "invoice_number": "6650603064",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-38.76",
+      "customer_invoice_number": "",
+      "storeNo": "22602"
+    },
+    {
+      "Line_ID": 300000053989452,
+      "invoice_number": "6650602943",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "189.11",
+      "customer_invoice_number": "",
+      "storeNo": "22604"
+    },
+    {
+      "Line_ID": 300000053976876,
+      "invoice_number": "6650602944",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-58.14",
+      "customer_invoice_number": "",
+      "storeNo": "22604"
+    },
+    {
+      "Line_ID": 300000053989453,
+      "invoice_number": "6650602945",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "20.92",
+      "customer_invoice_number": "",
+      "storeNo": "22604"
+    },
+    {
+      "Line_ID": 300000053976877,
+      "invoice_number": "6650703467",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-32.3",
+      "customer_invoice_number": "",
+      "storeNo": "22605"
+    },
+    {
+      "Line_ID": 300000053989454,
+      "invoice_number": "6650703468",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "115.05",
+      "customer_invoice_number": "",
+      "storeNo": "22605"
+    },
+    {
+      "Line_ID": 300000053976878,
+      "invoice_number": "6650703333",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-1.74",
+      "customer_invoice_number": "",
+      "storeNo": "22606"
+    },
+    {
+      "Line_ID": 300000053989455,
+      "invoice_number": "6650703334",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "84.98",
+      "customer_invoice_number": "",
+      "storeNo": "22606"
+    },
+    {
+      "Line_ID": 300000053976879,
+      "invoice_number": "6650703335",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-51.3",
+      "customer_invoice_number": "",
+      "storeNo": "22606"
+    },
+    {
+      "Line_ID": 300000053989456,
+      "invoice_number": "6650703336",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "51.3",
+      "customer_invoice_number": "",
+      "storeNo": "22606"
+    },
+    {
+      "Line_ID": 300000053976880,
+      "invoice_number": "6650702802",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-3.23",
+      "customer_invoice_number": "",
+      "storeNo": "22607"
+    },
+    {
+      "Line_ID": 300000053989457,
+      "invoice_number": "6650702803",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "44.61",
+      "customer_invoice_number": "",
+      "storeNo": "22607"
+    },
+    {
+      "Line_ID": 300000053976881,
+      "invoice_number": "6650703515",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-92.42",
+      "customer_invoice_number": "",
+      "storeNo": "22607"
+    },
+    {
+      "Line_ID": 300000053989458,
+      "invoice_number": "6650703516",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "142.74",
+      "customer_invoice_number": "",
+      "storeNo": "22607"
+    },
+    {
+      "Line_ID": 300000053976882,
+      "invoice_number": "6365002930",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-25.84",
+      "customer_invoice_number": "",
+      "storeNo": "22613"
+    },
+    {
+      "Line_ID": 300000053989459,
+      "invoice_number": "6365002931",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "32.3",
+      "customer_invoice_number": "",
+      "storeNo": "22613"
+    },
+    {
+      "Line_ID": 300000053976883,
+      "invoice_number": "6365003040",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "51.68",
+      "customer_invoice_number": "",
+      "storeNo": "22614"
+    },
+    {
+      "Line_ID": 300000053989460,
+      "invoice_number": "6365003041",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-23.44",
+      "customer_invoice_number": "",
+      "storeNo": "22614"
+    },
+    {
+      "Line_ID": 300000053976884,
+      "invoice_number": "6338902903",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-33.6",
+      "customer_invoice_number": "",
+      "storeNo": "22617"
+    },
+    {
+      "Line_ID": 300000053989461,
+      "invoice_number": "6338903010",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "63.59",
+      "customer_invoice_number": "",
+      "storeNo": "22617"
+    },
+    {
+      "Line_ID": 300000053976885,
+      "invoice_number": "6366002945",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "22.61",
+      "customer_invoice_number": "",
+      "storeNo": "22620"
+    },
+    {
+      "Line_ID": 300000053989462,
+      "invoice_number": "6366002946",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-6.46",
+      "customer_invoice_number": "",
+      "storeNo": "22620"
+    },
+    {
+      "Line_ID": 300000053976886,
+      "invoice_number": "6650702892",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-45.22",
+      "customer_invoice_number": "",
+      "storeNo": "22621"
+    },
+    {
+      "Line_ID": 300000053989463,
+      "invoice_number": "6650702893",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "198.93",
+      "customer_invoice_number": "",
+      "storeNo": "22621"
+    },
+    {
+      "Line_ID": 300000053976887,
+      "invoice_number": "6650703598",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-58.39",
+      "customer_invoice_number": "",
+      "storeNo": "22621"
+    },
+    {
+      "Line_ID": 300000053989464,
+      "invoice_number": "6650703599",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "194.04",
+      "customer_invoice_number": "",
+      "storeNo": "22621"
+    },
+    {
+      "Line_ID": 300000053976888,
+      "invoice_number": "6650702806",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-19.38",
+      "customer_invoice_number": "",
+      "storeNo": "22623"
+    },
+    {
+      "Line_ID": 300000053989465,
+      "invoice_number": "6650702807",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "59.87",
+      "customer_invoice_number": "",
+      "storeNo": "22623"
+    },
+    {
+      "Line_ID": 300000053976889,
+      "invoice_number": "6650703519",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-101.68",
+      "customer_invoice_number": "",
+      "storeNo": "22623"
+    },
+    {
+      "Line_ID": 300000053989466,
+      "invoice_number": "6650703520",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "202.11",
+      "customer_invoice_number": "",
+      "storeNo": "22623"
+    },
+    {
+      "Line_ID": 300000053976890,
+      "invoice_number": "6650603192",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "155.57",
+      "customer_invoice_number": "",
+      "storeNo": "22638"
+    },
+    {
+      "Line_ID": 300000053989467,
+      "invoice_number": "6650603193",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "-106.59",
+      "customer_invoice_number": "",
+      "storeNo": "22638"
+    },
+    {
+      "Line_ID": 300000053976891,
+      "invoice_number": "6650603194",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "153.9",
+      "customer_invoice_number": "",
+      "storeNo": "22638"
+    },
+    {
+      "Line_ID": 300000053989468,
+      "invoice_number": "6650703462",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-45.22",
+      "customer_invoice_number": "",
+      "storeNo": "22640"
+    },
+    {
+      "Line_ID": 300000053976892,
+      "invoice_number": "6650703464",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "103.98",
+      "customer_invoice_number": "",
+      "storeNo": "22640"
+    },
+    {
+      "Line_ID": 300000053989469,
+      "invoice_number": "6306303073",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "140.51",
+      "customer_invoice_number": "",
+      "storeNo": "22642"
+    },
+    {
+      "Line_ID": 300000053976893,
+      "invoice_number": "6306303074",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-12.92",
+      "customer_invoice_number": "",
+      "storeNo": "22642"
+    },
+    {
+      "Line_ID": 300000053976894,
+      "invoice_number": "6306303078",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "282.8",
+      "customer_invoice_number": "",
+      "storeNo": "22643"
+    },
+    {
+      "Line_ID": 300000053976895,
+      "invoice_number": "6306303079",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-51.3",
+      "customer_invoice_number": "",
+      "storeNo": "22643"
+    },
+    {
+      "Line_ID": 300000053976896,
+      "invoice_number": "6306303080",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-15.65",
+      "customer_invoice_number": "",
+      "storeNo": "22643"
+    },
+    {
+      "Line_ID": 300000053976897,
+      "invoice_number": "6365003042",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "45.22",
+      "customer_invoice_number": "",
+      "storeNo": "22644"
+    },
+    {
+      "Line_ID": 300000053976898,
+      "invoice_number": "6365003043",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-50.94",
+      "customer_invoice_number": "",
+      "storeNo": "22644"
+    },
+    {
+      "Line_ID": 300000053989470,
+      "invoice_number": "6650703353",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-3.23",
+      "customer_invoice_number": "",
+      "storeNo": "22646"
+    },
+    {
+      "Line_ID": 300000053989471,
+      "invoice_number": "6650703354",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "68.52",
+      "customer_invoice_number": "",
+      "storeNo": "22646"
+    },
+    {
+      "Line_ID": 300000053989472,
+      "invoice_number": "6650703355",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "51.3",
+      "customer_invoice_number": "",
+      "storeNo": "22646"
+    },
+    {
+      "Line_ID": 300000053989473,
+      "invoice_number": "6317003012",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "444.66",
+      "customer_invoice_number": "",
+      "storeNo": "22648"
+    },
+    {
+      "Line_ID": 300000053989474,
+      "invoice_number": "6302503007",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "113.05",
+      "customer_invoice_number": "",
+      "storeNo": "22650"
+    },
+    {
+      "Line_ID": 300000053976899,
+      "invoice_number": "6302503008",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-71.06",
+      "customer_invoice_number": "",
+      "storeNo": "22650"
+    },
+    {
+      "Line_ID": 300000053976900,
+      "invoice_number": "6650602932",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-65.84",
+      "customer_invoice_number": "",
+      "storeNo": "22657"
+    },
+    {
+      "Line_ID": 300000053976901,
+      "invoice_number": "6650602933",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "403.91",
+      "customer_invoice_number": "",
+      "storeNo": "22657"
+    },
+    {
+      "Line_ID": 300000053976902,
+      "invoice_number": "6650602803",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "133.27",
+      "customer_invoice_number": "",
+      "storeNo": "22658"
+    },
+    {
+      "Line_ID": 300000053976903,
+      "invoice_number": "6650602804",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-70.32",
+      "customer_invoice_number": "",
+      "storeNo": "22658"
+    },
+    {
+      "Line_ID": 300000053976904,
+      "invoice_number": "6650602805",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "27.88",
+      "customer_invoice_number": "",
+      "storeNo": "22658"
+    },
+    {
+      "Line_ID": 300000053989475,
+      "invoice_number": "6306303075",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "156.16",
+      "customer_invoice_number": "",
+      "storeNo": "22660"
+    },
+    {
+      "Line_ID": 300000053976905,
+      "invoice_number": "6306303076",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "171.57",
+      "customer_invoice_number": "",
+      "storeNo": "22663"
+    },
+    {
+      "Line_ID": 300000053976906,
+      "invoice_number": "6306303077",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-19.38",
+      "customer_invoice_number": "",
+      "storeNo": "22663"
+    },
+    {
+      "Line_ID": 300000053976907,
+      "invoice_number": "6650702899",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "68.44",
+      "customer_invoice_number": "",
+      "storeNo": "22664"
+    },
+    {
+      "Line_ID": 300000053989476,
+      "invoice_number": "6650703510",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-89.19",
+      "customer_invoice_number": "",
+      "storeNo": "22664"
+    },
+    {
+      "Line_ID": 300000053989477,
+      "invoice_number": "6650703511",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "94.75",
+      "customer_invoice_number": "",
+      "storeNo": "22664"
+    },
+    {
+      "Line_ID": 300000053989478,
+      "invoice_number": "6650603077",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "226.33",
+      "customer_invoice_number": "",
+      "storeNo": "22668"
+    },
+    {
+      "Line_ID": 300000053976908,
+      "invoice_number": "6650603078",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-45.22",
+      "customer_invoice_number": "",
+      "storeNo": "22668"
+    },
+    {
+      "Line_ID": 300000053976909,
+      "invoice_number": "6365503046",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "96.52",
+      "customer_invoice_number": "",
+      "storeNo": "22669"
+    },
+    {
+      "Line_ID": 300000053976910,
+      "invoice_number": "6365503047",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-16.15",
+      "customer_invoice_number": "",
+      "storeNo": "22669"
+    },
+    {
+      "Line_ID": 300000053989479,
+      "invoice_number": "6650702896",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-41.99",
+      "customer_invoice_number": "",
+      "storeNo": "22685"
+    },
+    {
+      "Line_ID": 300000053976911,
+      "invoice_number": "6650702897",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "97.17",
+      "customer_invoice_number": "",
+      "storeNo": "22685"
+    },
+    {
+      "Line_ID": 300000053976912,
+      "invoice_number": "6650703505",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-75.99",
+      "customer_invoice_number": "",
+      "storeNo": "22685"
+    },
+    {
+      "Line_ID": 300000053989480,
+      "invoice_number": "6650703506",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "256.5",
+      "customer_invoice_number": "",
+      "storeNo": "22685"
+    },
+    {
+      "Line_ID": 300000053976913,
+      "invoice_number": "6650703507",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "10.46",
+      "customer_invoice_number": "",
+      "storeNo": "22685"
+    },
+    {
+      "Line_ID": 300000053976914,
+      "invoice_number": "6650603065",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "189.03",
+      "customer_invoice_number": "",
+      "storeNo": "22691"
+    },
+    {
+      "Line_ID": 300000053989481,
+      "invoice_number": "6650603066",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-33.13",
+      "customer_invoice_number": "",
+      "storeNo": "22691"
+    },
+    {
+      "Line_ID": 300000053976915,
+      "invoice_number": "6365003035",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "29.07",
+      "customer_invoice_number": "",
+      "storeNo": "22692"
+    },
+    {
+      "Line_ID": 300000053989482,
+      "invoice_number": "6365003036",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-3.23",
+      "customer_invoice_number": "",
+      "storeNo": "22692"
+    },
+    {
+      "Line_ID": 300000053976916,
+      "invoice_number": "6434503032",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "252.87",
+      "customer_invoice_number": "",
+      "storeNo": "22693"
+    },
+    {
+      "Line_ID": 300000053989483,
+      "invoice_number": "6434503035",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-58.14",
+      "customer_invoice_number": "",
+      "storeNo": "22693"
+    },
+    {
+      "Line_ID": 300000053976917,
+      "invoice_number": "6650703487",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-3.23",
+      "customer_invoice_number": "",
+      "storeNo": "22694"
+    },
+    {
+      "Line_ID": 300000053989484,
+      "invoice_number": "6650703488",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "108.27",
+      "customer_invoice_number": "",
+      "storeNo": "22694"
+    },
+    {
+      "Line_ID": 300000053976918,
+      "invoice_number": "6365103195",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "71.06",
+      "customer_invoice_number": "",
+      "storeNo": "22695"
+    },
+    {
+      "Line_ID": 300000053989485,
+      "invoice_number": "6365103199",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "-38.76",
+      "customer_invoice_number": "",
+      "storeNo": "22695"
+    },
+    {
+      "Line_ID": 300000053976919,
+      "invoice_number": "6650702890",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-12.92",
+      "customer_invoice_number": "",
+      "storeNo": "22702"
+    },
+    {
+      "Line_ID": 300000053989486,
+      "invoice_number": "6650702891",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "191.71",
+      "customer_invoice_number": "",
+      "storeNo": "22702"
+    },
+    {
+      "Line_ID": 300000053976920,
+      "invoice_number": "6650703596",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-101.21",
+      "customer_invoice_number": "",
+      "storeNo": "22702"
+    },
+    {
+      "Line_ID": 300000053976921,
+      "invoice_number": "6650703597",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "220.88",
+      "customer_invoice_number": "",
+      "storeNo": "22702"
+    },
+    {
+      "Line_ID": 300000053976922,
+      "invoice_number": "6434503034",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "204.8",
+      "customer_invoice_number": "",
+      "storeNo": "22703"
+    },
+    {
+      "Line_ID": 300000053989487,
+      "invoice_number": "6434503036",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-71.81",
+      "customer_invoice_number": "",
+      "storeNo": "22703"
+    },
+    {
+      "Line_ID": 300000053976923,
+      "invoice_number": "6405603033",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "71.06",
+      "customer_invoice_number": "",
+      "storeNo": "22704"
+    },
+    {
+      "Line_ID": 300000053989488,
+      "invoice_number": "6405603034",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-19.38",
+      "customer_invoice_number": "",
+      "storeNo": "22704"
+    },
+    {
+      "Line_ID": 300000053976924,
+      "invoice_number": "6405603144",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "53.68",
+      "customer_invoice_number": "",
+      "storeNo": "22704"
+    },
+    {
+      "Line_ID": 300000053989489,
+      "invoice_number": "6304003462",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "54.91",
+      "customer_invoice_number": "",
+      "storeNo": "22705"
+    },
+    {
+      "Line_ID": 300000053976925,
+      "invoice_number": "6304003463",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-25.84",
+      "customer_invoice_number": "",
+      "storeNo": "22705"
+    },
+    {
+      "Line_ID": 300000053989490,
+      "invoice_number": "6650602808",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "192.26",
+      "customer_invoice_number": "",
+      "storeNo": "22706"
+    },
+    {
+      "Line_ID": 300000053976926,
+      "invoice_number": "6650602809",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-74.29",
+      "customer_invoice_number": "",
+      "storeNo": "22706"
+    },
+    {
+      "Line_ID": 300000053989491,
+      "invoice_number": "6650603055",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "77.52",
+      "customer_invoice_number": "",
+      "storeNo": "22709"
+    },
+    {
+      "Line_ID": 300000053976927,
+      "invoice_number": "6650603056",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "54.37",
+      "customer_invoice_number": "",
+      "storeNo": "22709"
+    },
+    {
+      "Line_ID": 300000053989492,
+      "invoice_number": "6650603057",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-48.45",
+      "customer_invoice_number": "",
+      "storeNo": "22709"
+    },
+    {
+      "Line_ID": 300000053976928,
+      "invoice_number": "6650603067",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "77.52",
+      "customer_invoice_number": "",
+      "storeNo": "22712"
+    },
+    {
+      "Line_ID": 300000053989493,
+      "invoice_number": "6650603068",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-61.37",
+      "customer_invoice_number": "",
+      "storeNo": "22712"
+    },
+    {
+      "Line_ID": 300000053976929,
+      "invoice_number": "6650603069",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "78.14",
+      "customer_invoice_number": "",
+      "storeNo": "22712"
+    },
+    {
+      "Line_ID": 300000053989494,
+      "invoice_number": "6650602937",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "149.74",
+      "customer_invoice_number": "",
+      "storeNo": "22713"
+    },
+    {
+      "Line_ID": 300000053976930,
+      "invoice_number": "6650602938",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-54.91",
+      "customer_invoice_number": "",
+      "storeNo": "22713"
+    },
+    {
+      "Line_ID": 300000053989495,
+      "invoice_number": "6650603443",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "129.44",
+      "customer_invoice_number": "",
+      "storeNo": "22713"
+    },
+    {
+      "Line_ID": 300000053976931,
+      "invoice_number": "6650603553",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-38.76",
+      "customer_invoice_number": "",
+      "storeNo": "22713"
+    },
+    {
+      "Line_ID": 300000053989496,
+      "invoice_number": "6650603554",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-78.14",
+      "customer_invoice_number": "",
+      "storeNo": "22713"
+    },
+    {
+      "Line_ID": 300000053976932,
+      "invoice_number": "6650602934",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "131.89",
+      "customer_invoice_number": "",
+      "storeNo": "22715"
+    },
+    {
+      "Line_ID": 300000053989497,
+      "invoice_number": "6650602935",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-9.69",
+      "customer_invoice_number": "",
+      "storeNo": "22715"
+    },
+    {
+      "Line_ID": 300000053976933,
+      "invoice_number": "6650602936",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "16.15",
+      "customer_invoice_number": "",
+      "storeNo": "22715"
+    },
+    {
+      "Line_ID": 300000053989498,
+      "invoice_number": "6367603080",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "58.14",
+      "customer_invoice_number": "",
+      "storeNo": "22716"
+    },
+    {
+      "Line_ID": 300000053976934,
+      "invoice_number": "6367603081",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-20.87",
+      "customer_invoice_number": "",
+      "storeNo": "22716"
+    },
+    {
+      "Line_ID": 300000053989499,
+      "invoice_number": "6367603078",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "106.21",
+      "customer_invoice_number": "",
+      "storeNo": "22718"
+    },
+    {
+      "Line_ID": 300000053976935,
+      "invoice_number": "6367603079",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-12.92",
+      "customer_invoice_number": "",
+      "storeNo": "22718"
+    },
+    {
+      "Line_ID": 300000053989500,
+      "invoice_number": "6650703480",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-36.21",
+      "customer_invoice_number": "",
+      "storeNo": "22719"
+    },
+    {
+      "Line_ID": 300000053976936,
+      "invoice_number": "6650703481",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "105.44",
+      "customer_invoice_number": "",
+      "storeNo": "22719"
+    },
+    {
+      "Line_ID": 300000053989501,
+      "invoice_number": "6650703482",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "36.75",
+      "customer_invoice_number": "",
+      "storeNo": "22719"
+    },
+    {
+      "Line_ID": 300000053976937,
+      "invoice_number": "6365103196",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "48.45",
+      "customer_invoice_number": "",
+      "storeNo": "22721"
+    },
+    {
+      "Line_ID": 300000053989502,
+      "invoice_number": "6365103198",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "-32.73",
+      "customer_invoice_number": "",
+      "storeNo": "22721"
+    },
+    {
+      "Line_ID": 300000053976938,
+      "invoice_number": "6650603072",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "99.82",
+      "customer_invoice_number": "",
+      "storeNo": "22722"
+    },
+    {
+      "Line_ID": 300000053989503,
+      "invoice_number": "6650603073",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-51.68",
+      "customer_invoice_number": "",
+      "storeNo": "22722"
+    },
+    {
+      "Line_ID": 300000053976939,
+      "invoice_number": "6650703489",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-51.18",
+      "customer_invoice_number": "",
+      "storeNo": "22723"
+    },
+    {
+      "Line_ID": 300000053989504,
+      "invoice_number": "6650703490",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "107.75",
+      "customer_invoice_number": "",
+      "storeNo": "22723"
+    },
+    {
+      "Line_ID": 300000053976940,
+      "invoice_number": "6650702801",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "27.19",
+      "customer_invoice_number": "",
+      "storeNo": "22727"
+    },
+    {
+      "Line_ID": 300000053989505,
+      "invoice_number": "6650703512",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-82.99",
+      "customer_invoice_number": "",
+      "storeNo": "22727"
+    },
+    {
+      "Line_ID": 300000053976941,
+      "invoice_number": "6650703513",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-14.91",
+      "customer_invoice_number": "",
+      "storeNo": "22727"
+    },
+    {
+      "Line_ID": 300000053989506,
+      "invoice_number": "6650703514",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "162.74",
+      "customer_invoice_number": "",
+      "storeNo": "22727"
+    },
+    {
+      "Line_ID": 300000053976942,
+      "invoice_number": "6650703343",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "110.28",
+      "customer_invoice_number": "",
+      "storeNo": "22728"
+    },
+    {
+      "Line_ID": 300000053989507,
+      "invoice_number": "6650703344",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-5.58",
+      "customer_invoice_number": "",
+      "storeNo": "22728"
+    },
+    {
+      "Line_ID": 300000054017943,
+      "invoice_number": "6405603030",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "74.29",
+      "customer_invoice_number": "",
+      "storeNo": "22733"
+    },
+    {
+      "Line_ID": 300000053989508,
+      "invoice_number": "6405603031",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-35.53",
+      "customer_invoice_number": "",
+      "storeNo": "22733"
+    },
+    {
+      "Line_ID": 300000054017944,
+      "invoice_number": "6405603143",
+      "invoice_date": "2026-01-31",
+      "invoice_amount": "163.93",
+      "customer_invoice_number": "",
+      "storeNo": "22733"
+    },
+    {
+      "Line_ID": 300000053989509,
+      "invoice_number": "6650702894",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-3.23",
+      "customer_invoice_number": "",
+      "storeNo": "22734"
+    },
+    {
+      "Line_ID": 300000054017945,
+      "invoice_number": "6650702895",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "109.71",
+      "customer_invoice_number": "",
+      "storeNo": "22734"
+    },
+    {
+      "Line_ID": 300000053989510,
+      "invoice_number": "6650703501",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-29.07",
+      "customer_invoice_number": "",
+      "storeNo": "22734"
+    },
+    {
+      "Line_ID": 300000054017946,
+      "invoice_number": "6650703502",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-20.87",
+      "customer_invoice_number": "",
+      "storeNo": "22734"
+    },
+    {
+      "Line_ID": 300000053989511,
+      "invoice_number": "6650703503",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "75.87",
+      "customer_invoice_number": "",
+      "storeNo": "22734"
+    },
+    {
+      "Line_ID": 300000054017947,
+      "invoice_number": "6651603418",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "46.57",
+      "customer_invoice_number": "",
+      "storeNo": "23330"
+    },
+    {
+      "Line_ID": 300000053989512,
+      "invoice_number": "6651603419",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-9.69",
+      "customer_invoice_number": "",
+      "storeNo": "23330"
+    },
+    {
+      "Line_ID": 300000054017948,
+      "invoice_number": "6651603420",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "33.45",
+      "customer_invoice_number": "",
+      "storeNo": "23330"
+    },
+    {
+      "Line_ID": 300000053989513,
+      "invoice_number": "6651202850",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-12.92",
+      "customer_invoice_number": "",
+      "storeNo": "23333"
+    },
+    {
+      "Line_ID": 300000054017949,
+      "invoice_number": "6651202851",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "74.97",
+      "customer_invoice_number": "",
+      "storeNo": "23333"
+    },
+    {
+      "Line_ID": 300000053989514,
+      "invoice_number": "6651203585",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "66.43",
+      "customer_invoice_number": "",
+      "storeNo": "23333"
+    },
+    {
+      "Line_ID": 300000054017950,
+      "invoice_number": "6651203586",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-27.3",
+      "customer_invoice_number": "",
+      "storeNo": "23333"
+    },
+    {
+      "Line_ID": 300000053989515,
+      "invoice_number": "6651503355",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "63.83",
+      "customer_invoice_number": "",
+      "storeNo": "23334"
+    },
+    {
+      "Line_ID": 300000054017951,
+      "invoice_number": "6651503356",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-6.46",
+      "customer_invoice_number": "",
+      "storeNo": "23334"
+    },
+    {
+      "Line_ID": 300000053989516,
+      "invoice_number": "6651403392",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-48.45",
+      "customer_invoice_number": "",
+      "storeNo": "23345"
+    },
+    {
+      "Line_ID": 300000054017952,
+      "invoice_number": "6651403393",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-36.8",
+      "customer_invoice_number": "",
+      "storeNo": "23345"
+    },
+    {
+      "Line_ID": 300000053989517,
+      "invoice_number": "6651403394",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "224.31",
+      "customer_invoice_number": "",
+      "storeNo": "23345"
+    },
+    {
+      "Line_ID": 300000054017953,
+      "invoice_number": "6651203064",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-44.16",
+      "customer_invoice_number": "",
+      "storeNo": "23364"
+    },
+    {
+      "Line_ID": 300000053989518,
+      "invoice_number": "6651203065",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "56.77",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017954,
+      "invoice_number": "6651603391",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "54.44",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989519,
+      "invoice_number": "6651603392",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-20.25",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017955,
+      "invoice_number": "6651603056",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "169.86",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989520,
+      "invoice_number": "6651603057",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-15.27",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017956,
+      "invoice_number": "6651603527",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "31.56",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989521,
+      "invoice_number": "6651403395",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-68.22",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017957,
+      "invoice_number": "6651403396",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "98.67",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989522,
+      "invoice_number": "6651403397",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-6.46",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017958,
+      "invoice_number": "6701502959",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "32.3",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017959,
+      "invoice_number": "6701503389",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "48.14",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989523,
+      "invoice_number": "6651603069",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "46.96",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017960,
+      "invoice_number": "6651603070",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-43.31",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989524,
+      "invoice_number": "6651603539",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "71.46",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017961,
+      "invoice_number": "6651603540",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-16.15",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989525,
+      "invoice_number": "6651203068",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-22.61",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017962,
+      "invoice_number": "6651203069",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "96.47",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989526,
+      "invoice_number": "6651203066",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-45.22",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017963,
+      "invoice_number": "6651203067",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "81.68",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989527,
+      "invoice_number": "6651603054",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "120.67",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017964,
+      "invoice_number": "6651603055",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-23.48",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989528,
+      "invoice_number": "6651603528",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "75.02",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017965,
+      "invoice_number": "6792303373",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "113.05",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989529,
+      "invoice_number": "6792303374",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-45.22",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017966,
+      "invoice_number": "6792303482",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "234.43",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989530,
+      "invoice_number": "6651202852",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-38.76",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017967,
+      "invoice_number": "6651202853",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "126.78",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989531,
+      "invoice_number": "6651203587",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "55.21",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017968,
+      "invoice_number": "6651203588",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "-42.76",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989532,
+      "invoice_number": "6501803305",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "201.51",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017969,
+      "invoice_number": "6501803306",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-25.84",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989533,
+      "invoice_number": "6690503066",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "96.9",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017970,
+      "invoice_number": "6600002972",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "207.34",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989534,
+      "invoice_number": "6600002991",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-90.44",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017971,
+      "invoice_number": "6600002992",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-32.3",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989535,
+      "invoice_number": "6600002993",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "-13.42",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017972,
+      "invoice_number": "6303803068",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "48.45",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989536,
+      "invoice_number": "6303803069",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "-25.65",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017973,
+      "invoice_number": "6600003366",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "307.23",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989537,
+      "invoice_number": "6600003372",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-36.64",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017974,
+      "invoice_number": "6600003373",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-67.83",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989538,
+      "invoice_number": "6600003491",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-136.28",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017975,
+      "invoice_number": "6600003492",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-12.92",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989539,
+      "invoice_number": "6303803070",
+      "invoice_date": "2026-01-30",
+      "invoice_amount": "287.07",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017976,
+      "invoice_number": "6651102895",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "156.23",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989540,
+      "invoice_number": "6651102896",
+      "invoice_date": "2026-01-28",
+      "invoice_amount": "-64.6",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017977,
+      "invoice_number": "6651103419",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "161.12",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989541,
+      "invoice_number": "6651103421",
+      "invoice_date": "2026-02-03",
+      "invoice_amount": "-33.58",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017978,
+      "invoice_number": "6651103535",
+      "invoice_date": "2026-02-04",
+      "invoice_amount": "97.97",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017979,
+      "invoice_number": "6600002973",
+      "invoice_date": "2026-01-29",
+      "invoice_amount": "78.14",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989542,
+      "invoice_number": "6600003368",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "142.96",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000054017980,
+      "invoice_number": "6501403353",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "54.91",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 300000053989543,
+      "invoice_number": "6501403354",
+      "invoice_date": "2026-02-02",
+      "invoice_amount": "-22.61",
+      "customer_invoice_number": "",
+      "storeNo": ""
+    }
+  ],
+  "total_amount": null
+}
