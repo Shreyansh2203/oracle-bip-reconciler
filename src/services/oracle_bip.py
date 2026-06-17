@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from src.config import get_oracle_url
 from src.constants import (
     BIP_CHUNK_DOWNLOAD_SIZE,
     BIP_MAX_RETRIES,
@@ -18,7 +19,6 @@ from src.constants import (
     BIP_MIN_WAIT_SECONDS,
     BIP_TIMEOUT,
 )
-from src.config import get_oracle_url
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ async def _run_bip_report(
     valid_paths = [p for p in candidate_paths if p and p.strip()]
     base_url = get_oracle_url().rstrip('/')
     soap_url = f"{base_url}/xmlpserver/services/ExternalReportWSSService"
-    
+
     headers = {
         "Content-Type": "application/soap+xml;charset=UTF-8;action=\"\"",
         "User-Agent": "httpx"
@@ -76,7 +76,7 @@ async def _run_bip_report(
         try:
             response = await client.post(soap_url, content=xml_payload, headers=headers, auth=(username, password), timeout=BIP_TIMEOUT)
             response.raise_for_status()
-            
+
             # Parse SOAP response
             try:
                 root = ET.fromstring(response.text)

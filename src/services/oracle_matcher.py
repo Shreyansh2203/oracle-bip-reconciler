@@ -6,9 +6,6 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from src.constants import (
-    ENDPOINT_RECEIVABLES_INVOICES,
-    ENDPOINT_STANDARD_RECEIPTS,
-    FSCM_REST_API_VERSION,
     PHASE_APPLIED,
     PHASE_CLOSED_OR_OTHER,
     PHASE_OPEN,
@@ -19,7 +16,6 @@ from src.constants import (
     STATUS_OTHER,
     STATUS_UNAPPLIED,
 )
-from src.config import get_oracle_url
 from src.utils.date_formatter import format_oracle_date
 
 logger = logging.getLogger(__name__)
@@ -141,7 +137,7 @@ def _apply_receipt_scenario_a(candidates: list[dict[str, Any]], receipt_number: 
     if customer_name and formatted_date:
         results = _filter_receipt_candidates(candidates, None, None, formatted_date, customer_name)
         if len(results) == 1: return _build_receipt_response(results[0], "A5")
-    
+
     return None
 
 def _apply_receipt_scenario_b(candidates: list[dict[str, Any]], amount: float | None, formatted_date: str | None, customer_name: str) -> dict[str, Any] | None:
@@ -235,7 +231,7 @@ def _apply_invoice_rules(candidates: list[dict[str, Any]], invoice_number: str, 
         results = [candidate for candidate in candidates if safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)
                 and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
         if len(results) == 1: return _build_invoice_response(results[0], "Rule 4")
-    
+
     return None
 
 def match_invoice_in_memory(invoice_number: str, invoice_date: str, amount: float | None, document_number: str, customer_name: str, bip_invoices: list[dict[str, Any]]) -> dict[str, Any]:
@@ -260,7 +256,7 @@ def match_invoice_in_memory(invoice_number: str, invoice_date: str, amount: floa
 
         if not candidates:
             continue
-        
+
         match = _apply_invoice_rules(candidates, invoice_number, formatted_date, document_number, customer_name)
         if match: return match
 
@@ -285,95 +281,3 @@ def _build_invoice_response(match: dict[str, Any], rule_name: str) -> dict[str, 
     }
 
 
-# =========================================================================
-# LEGACY NATIVE REST API MATCHING (APPROACH 3)
-# =========================================================================
-
-async def fetch_oracle_candidates_native(client: Any, username: str, password: str, endpoint: str, query: str, limit: int | None = None, fields: str | None = None, semaphore: Any = None) -> list[dict[str, Any]]:
-    base_url = get_oracle_url()
-    url = f"{base_url}/fscmRestApi/resources/{FSCM_REST_API_VERSION}/{endpoint}"
-    params: dict[str, Any] = {"q": query}
-    if limit: params["limit"] = limit
-    if fields: params["fields"] = fields
-
-    async def _do_fetch() -> list[dict[str, Any]]:
-        try:
-            response = await client.get(url, params=params, auth=(username, password))
-            response.raise_for_status()
-            return response.json().get("items", [])
-        except Exception as error:
-            logger.error(f"Native Oracle fetch exception: {error}")
-            raise
-
-    if semaphore:
-        async with semaphore:
-            return await _do_fetch()
-    else:
-        return await _do_fetch()
-
-async def check_receipt_cascading_native(client: Any, username: str, password: str, receipt_number: str, amount: float | None, receipt_date: str, customer_name: str, semaphore: Any = None) -> dict[str, Any]:
-    if amount is not None and not math.isfinite(amount):
-        return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
-
-    formatted_date = format_oracle_date(receipt_date) if receipt_date else None
-    fields = "ReceiptNumber,ReceiptDate,Amount,CustomerName,Status"
-    candidates = []
-
-    try:
-        if receipt_number:
-            query = f"ReceiptNumber='{escape_query_value(receipt_number)}'"
-            candidates = await fetch_oracle_candidates_native(client, username, password, ENDPOINT_STANDARD_RECEIPTS, query, fields=fields, semaphore=semaphore)
-
-        if not candidates and amount is not None and formatted_date:
-            query = f"Amount={float(amount):.2f} and ReceiptDate='{escape_query_value(formatted_date)}'"
-            candidates = await fetch_oracle_candidates_native(client, username, password, ENDPOINT_STANDARD_RECEIPTS, query, fields=fields, semaphore=semaphore)
-    except Exception as error:
-        return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(error)}"}
-
-    if candidates and len(candidates) > 1:
-        return {"matched_in_oracle": False, "error": "Ambiguous match: multiple records found native."}
-    if not candidates:
-        return {"matched_in_oracle": False, "error": "No single match found native."}
-
-    match = candidates[0]
-    return {
-        "matched_in_oracle": True,
-        "fusion_receipt_number": match.get("ReceiptNumber"),
-        "fusion_receipt_date": match.get("ReceiptDate"),
-        "fusion_customer_name": match.get("CustomerName"),
-        "match_phase": get_receipt_phase(match.get("Status", "")),
-        "match_rule": "native_rest_match"
-    }
-
-async def check_invoice_cascading_native(client: Any, username: str, password: str, invoice_number: str, invoice_date: str, amount: float | None, document_number: str, customer_name: str, semaphore: Any = None) -> dict[str, Any]:
-    if amount is not None and not math.isfinite(amount):
-        return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
-
-    formatted_date = format_oracle_date(invoice_date) if invoice_date else None
-    candidates = []
-    invoice_fields = "TransactionNumber,TransactionDate,EnteredAmount,InvoiceStatus,InvoiceBalanceAmount,DocumentNumber,BillToCustomerName"
-
-    try:
-        if invoice_number:
-            query = f"TransactionNumber='{escape_query_value(invoice_number)}'"
-            candidates = await fetch_oracle_candidates_native(client, username, password, ENDPOINT_RECEIVABLES_INVOICES, query, fields=invoice_fields, semaphore=semaphore)
-        if not candidates and customer_name and amount is not None:
-            query = f"BillToCustomerName='{escape_query_value(customer_name)}' and EnteredAmount={float(amount):.2f}"
-            candidates = await fetch_oracle_candidates_native(client, username, password, ENDPOINT_RECEIVABLES_INVOICES, query, fields=invoice_fields, semaphore=semaphore)
-    except Exception as error:
-        return {"matched_in_oracle": False, "error": f"Oracle Fetch Error: {str(error)}"}
-
-    if candidates and len(candidates) > 1:
-        return {"matched_in_oracle": False, "error": "Ambiguous match: multiple records found native."}
-    if not candidates:
-        return {"matched_in_oracle": False, "error": f"No single match found native for {invoice_number}."}
-
-    match = candidates[0]
-    return {
-        "matched_in_oracle": True,
-        "fusion_invoice_number": match.get("TransactionNumber"),
-        "fusion_invoice_date": match.get("TransactionDate"),
-        "fusion_invoice_amount": match.get("EnteredAmount"),
-        "match_phase": get_invoice_phase(match.get("InvoiceStatus", ""), match.get("InvoiceBalanceAmount", 0)),
-        "match_rule": "native_rest_match"
-    }
