@@ -17,15 +17,15 @@ def sanitize_float_val(value: Any) -> float | None:
     """Sanitize float inputs: strip commas, convert 'none' to None, validate finiteness."""
     if isinstance(value, str):
         clean_value = value.strip().replace(",", "")
-        if clean_value.lower() == "none":
+        if clean_value.lower() == "none" or clean_value == "":
             return None
         value = clean_value
     if value is not None:
         try:
             float_value = float(value)
             if not math.isfinite(float_value):
-                raise ValueError("Float value must be a finite number.")
+                return None
             return float_value
         except (ValueError, TypeError):
-            raise ValueError("Float value must be a finite number.") from None
+            return None
     return value
