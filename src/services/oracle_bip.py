@@ -77,7 +77,7 @@ async def _run_bip_report(
 </soap:Envelope>"""
 
         try:
-            response = await client.post(soap_url, content=xml_payload, headers=headers, timeout=BIP_TIMEOUT)
+            response = await client.post(soap_url, content=xml_payload, headers=headers, auth=(username, password), timeout=BIP_TIMEOUT)
             response.raise_for_status()
             
             # Parse SOAP response
