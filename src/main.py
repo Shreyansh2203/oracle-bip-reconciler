@@ -3,20 +3,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-
-from dotenv import load_dotenv
-
-load_dotenv()
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_oracle_url
+from src.constants import DEFAULT_CONCURRENCY, DEFAULT_TIMEOUT, MAX_CONNECTIONS
 from src.models import ReconciliationRequest
 from src.services.oracle_bip import fetch_bip_invoices, fetch_bip_receipts
 from src.services.oracle_matcher import (
@@ -24,7 +22,7 @@ from src.services.oracle_matcher import (
     match_receipt_in_memory,
 )
 
-from src.constants import DEFAULT_CONCURRENCY, DEFAULT_TIMEOUT, MAX_CONNECTIONS
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

@@ -31,13 +31,14 @@ def test_reconcile_endpoint_happy_path(mock_oracle_env):
         ]
     }
 
-    with patch("src.main.run_bip_invoice_match", return_value=[{
+    from unittest.mock import AsyncMock
+    with patch("src.main.fetch_bip_invoices", new_callable=AsyncMock, return_value=[{
              "TRANSACTION_NUMBER": "INV-001",
              "TRANSACTION_DATE": "2023-10-01",
              "TOTAL_AMOUNTS": "50.0",
              "INVOICE_STATUS": "OPEN"
          }]), \
-         patch("src.main.run_bip_receipt_match", return_value=[]):
+         patch("src.main.fetch_bip_receipts", new_callable=AsyncMock, return_value=[]):
 
         with TestClient(app) as test_client:
             response = test_client.post("/v1/reconcile/batch", json=payload)
