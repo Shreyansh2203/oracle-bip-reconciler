@@ -125,13 +125,7 @@ async def _run_bip_report(
 async def fetch_bip_invoices(client: httpx.AsyncClient, username: str, password: str, invoice_number: str | None = None, customer_name: str | None = None) -> list[dict[str, Any]]:
     candidate_paths = [
         os.getenv("ORACLE_BIP_INVOICE_PATH", ""),
-        "/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
-        "Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
-        "/shared/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
-        "/~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
-        "~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
-        "/Shared Folders/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
-        "Shared Folders/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
+        "/Custom/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
     ]
 
     parameters = [
@@ -152,13 +146,7 @@ async def fetch_bip_invoices(client: httpx.AsyncClient, username: str, password:
 async def fetch_bip_receipts(client: httpx.AsyncClient, username: str, password: str, receipt_number: str | None = None, customer_name: str | None = None) -> list[dict[str, Any]]:
     candidate_paths = [
         os.getenv("ORACLE_BIP_RECEIPT_PATH", ""),
-        "/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        "Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        "/shared/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        "/~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        "~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        "/Shared Folders/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
-        "Shared Folders/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
+        "/Custom/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
     ]
 
     parameters = [
