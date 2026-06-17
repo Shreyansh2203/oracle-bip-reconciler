@@ -16,3 +16,5 @@ wheels/
 # Environment files
 .env
 .env.*
+
+.env
