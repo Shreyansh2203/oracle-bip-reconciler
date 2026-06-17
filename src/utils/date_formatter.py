@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
+
 def format_oracle_date(date_string: str) -> str:
     """
     Parses various date formats from the incoming JSON payload and converts them
