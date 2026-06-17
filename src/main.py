@@ -155,8 +155,6 @@ async def reconcile_data_batch(request: Request, payload: ReconciliationRequest)
     start_time = time.time()
 
     customer_name = str(payload.customer_name) if payload.customer_name else ""
-    if not customer_name:
-        raise HTTPException(status_code=400, detail="customer_name is required for batch matching.")
 
     receipt_number = str(payload.payment_reference) if payload.payment_reference else ""
     receipt_amount = payload.total_amount
@@ -186,8 +184,6 @@ async def reconcile_data_native(request: Request, payload: ReconciliationRequest
     oracle_password = os.getenv("ORACLE_PASS", "")
 
     customer_name = str(payload.customer_name) if payload.customer_name else ""
-    if not customer_name:
-        raise HTTPException(status_code=400, detail="customer_name is required for native matching.")
 
     receipt_number = str(payload.payment_reference) if payload.payment_reference else ""
     receipt_amount = payload.total_amount
