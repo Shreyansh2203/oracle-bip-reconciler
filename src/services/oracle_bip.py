@@ -47,9 +47,11 @@ async def _run_bip_report(
     }
 
     last_error = None
-    for report_path in candidate_paths:
-        encoded_path = urllib.parse.quote(report_path, safe='')
-        url = f"{get_oracle_url()}/xmlpserver/services/rest/v1/reports/{encoded_path}/run"
+    valid_paths = [p for p in candidate_paths if p and p.strip()]
+    for report_path in valid_paths:
+        encoded_path = urllib.parse.quote(report_path.strip(), safe='')
+        base_url = get_oracle_url().rstrip('/')
+        url = f"{base_url}/xmlpserver/services/rest/v1/reports/{encoded_path}/run"
 
         try:
             response = await client.post(url, json=payload, auth=(username, password), timeout=BIP_TIMEOUT)
@@ -95,6 +97,9 @@ async def run_bip_invoice_match(client: httpx.AsyncClient, username: str, passwo
     # Paths retrieved from Oracle Catalog UI
     candidate_paths = [
         os.getenv("ORACLE_BIP_INVOICE_PATH", ""),
+        "/users/suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
+        "/Users/suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
+        "~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
         "/Shared Folders/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
         "Shared Folders/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
     ]
@@ -120,6 +125,9 @@ async def run_bip_receipt_match(client: httpx.AsyncClient, username: str, passwo
     # Paths retrieved from Oracle Catalog UI
     candidate_paths = [
         os.getenv("ORACLE_BIP_RECEIPT_PATH", ""),
+        "/users/suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
+        "/Users/suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
+        "~suraj.yadav@pinelabs.com/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
         "/Shared Folders/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
         "Shared Folders/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
     ]
