@@ -174,6 +174,10 @@ def _build_receipt_response(match: dict[str, Any], rule_name: str) -> dict[str, 
         "fusion_receipt_number": match.get("RECEIPT_NUMBER"),
         "fusion_receipt_date": match.get("RECEIPT_DATE"),
         "fusion_customer_name": match.get("BILL_CUSTOMER_NAME"),
+        "fusion_customer_number": match.get("BILL_CUSTOMER_NUMBER"),
+        "fusion_currency": match.get("CURRENCY"),
+        "fusion_receipt_status_code": match.get("RECEIPT_STATUS_CODE"),
+        "fusion_applied_amount": match.get("APPLIED_AMOUNT") if match.get("APPLIED_AMOUNT") else None,
         "match_phase": get_receipt_phase(match.get("RECEIPT_STATUS_CODE", "")),
         "match_rule": rule_name
     }
