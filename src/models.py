@@ -43,6 +43,10 @@ class ReconciliationRequest(BaseModel):
     fusion_receipt_number: str | None = None
     payment_date: str | None = None
     fusion_receipt_date: str | None = None
+    fusion_customer_number: str | None = None
+    fusion_currency: str | None = None
+    fusion_receipt_status_code: str | None = None
+    fusion_applied_amount: float | None = None
     header_id: int | str | None = None
     invoices: list[InvoiceItem] = Field(default_factory=list, max_length=2500)
     total_amount: float | None = None
