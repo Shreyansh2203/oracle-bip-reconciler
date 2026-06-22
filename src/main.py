@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -40,16 +41,18 @@ def _redact(name: str | None) -> str:
 
 # Global HTTP client
 http_client: httpx.AsyncClient | None = None
-
+_http_client_lock = threading.Lock()
 
 def get_http_client() -> httpx.AsyncClient:
     global http_client
     if http_client is None:
-        http_client = httpx.AsyncClient(
-            timeout=DEFAULT_TIMEOUT,
-            limits=httpx.Limits(max_connections=MAX_CONNECTIONS, max_keepalive_connections=MAX_CONNECTIONS),
-        )
-        logger.info("Lazily initialized global HTTP client")
+        with _http_client_lock:
+            if http_client is None:
+                http_client = httpx.AsyncClient(
+                    timeout=DEFAULT_TIMEOUT,
+                    limits=httpx.Limits(max_connections=MAX_CONNECTIONS, max_keepalive_connections=MAX_CONNECTIONS),
+                )
+                logger.info("Lazily initialized global HTTP client")
     return http_client
 
 
@@ -76,6 +79,8 @@ app = FastAPI(
 
 # Setup CORS
 origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+if not origins:
+    logger.warning("CORS_ORIGINS is empty. API will fail closed to browsers.")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins if origins else [],  # Fail closed if no origins provided
@@ -316,15 +321,20 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
         r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
         i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)
 
-        all_invoices_raw = _filter_data_rows(i_raw) if not isinstance(i_raw, Exception) else []
-        all_receipts_raw = _filter_data_rows(r_raw) if not isinstance(r_raw, Exception) else []
+        if isinstance(i_raw, Exception) or isinstance(r_raw, Exception):
+            err = i_raw if isinstance(i_raw, Exception) else r_raw
+            logger.error(f"[{request_id}] Oracle fetch failed during step 2: {err}")
+            raise HTTPException(status_code=502, detail=f"Oracle API error during ledger fetch: {err}")
+
+        all_invoices_raw = _filter_data_rows(i_raw)
+        all_receipts_raw = _filter_data_rows(r_raw)
 
         all_invoices = OracleInvoiceIndex(all_invoices_raw)
         all_receipts = OracleReceiptIndex(all_receipts_raw)
 
         receipt_matched = False
         matched_count = 0
-        unmatched_invoices = list(attempt_payload.invoices) if attempt_payload.invoices else []
+        unmatched_invoices = list(attempt_payload.invoices)
 
         # ── STEP 3: Match Receipt ──
         receipt_result = await asyncio.to_thread(_try_match_receipt, receipt_number, receipt_amount, receipt_date, customer_name, all_receipts)

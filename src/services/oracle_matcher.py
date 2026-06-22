@@ -11,8 +11,10 @@ try:
     from scipy.optimize import linear_sum_assignment
 
     _HAS_LEVENSHTEIN = True
+    _HAS_SCIPY = True
 except ImportError:
     _HAS_LEVENSHTEIN = False
+    _HAS_SCIPY = False
 
 
 from src.constants import (
@@ -99,7 +101,7 @@ def get_invoice_phase(status_code: str, balance: Any) -> str:
     if status_code:
         return status_code.upper()
     try:
-        if float(balance) > 0:
+        if float(balance) != 0:
             return STATUS_OPEN
         return STATUS_CLOSED
     except (ValueError, TypeError):
@@ -535,7 +537,7 @@ def match_invoices_bipartite(
                     score = 60
                     if score > best_score:
                         best_score, best_rule = score, "Rule 4"
-                elif "Levenshtein" in globals():
+                elif _HAS_LEVENSHTEIN:
                     if Levenshtein.distance(o_cust, customer_name.strip().lower()) <= 3:
                         score = 55
                         if score > best_score:
@@ -544,16 +546,19 @@ def match_invoices_bipartite(
             # Date Range Proximity Match
             if inv_amt is not None and fmt_date:
                 ts_o = date_to_timestamp(o_date)
-                if ts_p > 0 and ts_o > 0 and abs(ts_p - ts_o) <= 86400:  # 1 day
-                    score = 50
-                    if score > best_score:
-                        best_score, best_rule = score, "Date Range Proximity Match"
+                if ts_p > 0 and ts_o > 0:
+                    date_p = datetime.fromtimestamp(ts_p).date()
+                    date_o = datetime.fromtimestamp(ts_o).date()
+                    if abs((date_p - date_o).days) <= 1:
+                        score = 50
+                        if score > best_score:
+                            best_score, best_rule = score, "Date Range Proximity Match"
 
             if best_score > 0:
                 cost_matrix[i, j] = -best_score
                 match_rules[(i, j)] = best_rule
 
-    if "linear_sum_assignment" in globals():
+    if _HAS_SCIPY:
         row_ind, col_ind = linear_sum_assignment(cost_matrix)
         results = {}
         for i, j in zip(row_ind, col_ind):  # noqa: B905

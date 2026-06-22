@@ -117,7 +117,7 @@ If `customer_name` is present in the payload, it must match `BILL_CUSTOMER_NAME`
 
 Invoice matching runs in three sub-phases. Sub-phases 1 and 2 use linear rule cascades; Sub-phase 3 uses bipartite optimization for any remaining unmatched invoices.
 
-**Evaluation order:** All three sub-phases are run first against `OPEN` invoices. If any payload invoice remains unmatched after Sub-phase 3, the entire three-sub-phase sequence repeats against `CLOSED` invoices.
+**Evaluation order:** All three sub-phases are run first against `OPEN` invoices. (Note: Invoices with any non-zero balance, including negative balances for Credit Memos, are treated as `OPEN`.) If any payload invoice remains unmatched after Sub-phase 3, the entire three-sub-phase sequence repeats against `CLOSED` invoices.
 
 ---
 
@@ -157,7 +157,7 @@ For any invoices still unmatched after Sub-phases 1 and 2, the engine abandons r
 | :--- | :--- |
 | **Amount** | `TOTAL_AMOUNTS` must match the payload amount exactly. For Credit Memos, the absolute value is used. Any discrepancy blocks the cell entirely (sets cost to infinity). |
 | **Customer Name string distance** | A `Levenshtein` edit distance is calculated between `BILL_CUSTOMER_NAME` and the payload `customer_name`. (The Invoice Numbers themselves are scored using strict heuristics, not Levenshtein). |
-| **Date proximity** | If `TRANSACTION_DATE` and `invoice_date` differ by more than 1 day (86,400 seconds), the proximity score is invalidated for that cell. |
+| **Date proximity** | If `TRANSACTION_DATE` and `invoice_date` differ by more than 1 calendar day, the proximity score is invalidated for that cell. |
 
 **Step 3 — Resolve.** The algorithm minimizes total global cost across all cells, producing the optimal 1-to-1 pairing. This correctly handles cases where both sides contain typos or minor date misalignments.
 
