@@ -4,14 +4,15 @@ import math
 from typing import Any
 
 
-def sanitize_string_val(value: str | int | None) -> str:
+def sanitize_string_val(value: str | int | None) -> str | None:
     """Sanitize string inputs: strip whitespace, convert None and 'none' to empty string."""
     if value is None:
-        return ""
+        return None
     stripped = str(value).strip()
-    if stripped.lower() == "none":
-        return ""
+    if stripped.lower() == "none" or stripped == "":
+        return None
     return stripped
+
 
 def sanitize_float_val(value: Any) -> float | None:
     """Sanitize float inputs: strip commas, convert 'none' to None, validate finiteness."""

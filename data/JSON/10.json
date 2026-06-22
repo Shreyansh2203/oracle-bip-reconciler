@@ -1,62 +1,46 @@
 {
-    "customer_name": "New Horizon Foods",
-    "fusion_customer_name": "New Horizon Foods",
-    "payment_reference": "RECEIPT003",
-    "fusion_receipt_number": "RECEIPT003",
-    "payment_date": "2026/05/10",
-    "fusion_receipt_date": "2026/05/11",
-    "header_id": null,
-    "invoices": [
-        {
-            "Line_ID": null,
-            "invoice_number": "225812831804",
-            "fusion_invoice_number": null,
-            "invoice_date": "2025/11/14",
-            "fusion_invoice_date": null,
-            "invoice_amount": 51.2,
-            "fusion_invoice_amount": null,
-            "description": null,
-            "customer_invoice_number": null,
-            "storeNo": null
-        },
-        {
-            "Line_ID": null,
-            "invoice_number": "2258128318041",
-            "fusion_invoice_number": null,
-            "invoice_date": "2026/05/02",
-            "fusion_invoice_date": null,
-            "invoice_amount": 100,
-            "fusion_invoice_amount": null,
-            "description": null,
-            "customer_invoice_number": null,
-            "storeNo": null
-        },
-        {
-            "Line_ID": null,
-            "invoice_number": "2258128318042",
-            "fusion_invoice_number": null,
-            "invoice_date": "2026/05/01",
-            "fusion_invoice_date": null,
-            "invoice_amount": 200,
-            "fusion_invoice_amount": null,
-            "description": null,
-            "customer_invoice_number": null,
-            "storeNo": null
-        }
-    ],
-    "total_amount": 451.2,
-    "confidence_score": 0.83,
-    "confidence_label": "HIGH",
-    "invoice_count": 1,
-    "_meta": {
-        "file_kind": "native_pdf",
-        "filename": "144.98 W.pdf",
-        "input_tokens": 5662,
-        "output_tokens": 128,
-        "total_tokens": 5790,
-        "api_calls": 2,
-        "response_time_ms": 2488,
-        "num_pages": 1,
-        "warnings": []
+  "customer_name": null,
+  "payment_reference": "EFT000000213679",
+  "payment_date": "2025/08/13",
+  "invoices": [
+    {
+      "invoice_number": "225701420553",
+      "invoice_date": "2025/07/24",
+      "invoice_amount": 34.98,
+      "description": null,
+      "customer_invoice_number": "000000771313",
+      "storeNo": null
+    },
+    {
+      "invoice_number": "225701420905",
+      "invoice_date": "2025/07/28",
+      "invoice_amount": 130.92,
+      "description": null,
+      "customer_invoice_number": "000000771311",
+      "storeNo": null
+    },
+    {
+      "invoice_number": "225701421264",
+      "invoice_date": "2025/07/31",
+      "invoice_amount": 76.56,
+      "description": null,
+      "customer_invoice_number": "000000771312",
+      "storeNo": null
     }
+  ],
+  "total_amount": 242.46,
+  "confidence_score": 0.8,
+  "confidence_label": "HIGH",
+  "invoice_count": 3,
+  "_meta": {
+    "file_kind": "native_pdf",
+    "filename": "242.46 W.pdf",
+    "input_tokens": 5728,
+    "output_tokens": 259,
+    "total_tokens": 5987,
+    "api_calls": 2,
+    "response_time_ms": 2675,
+    "num_pages": 1,
+    "warnings": []
+  }
 }

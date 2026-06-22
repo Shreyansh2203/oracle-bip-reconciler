@@ -21,17 +21,21 @@ def format_oracle_date(date_string: str) -> str:
     except ValueError:
         pass
 
-    date_string = date_string.replace('/', '-')
+    date_string = date_string.replace("/", "-")
 
-    date_string = re.sub(r'\+00:00$', 'Z', date_string)
+    date_string = re.sub(r"\+00:00$", "Z", date_string)
 
     # NOTE on format ordering: DD-MM-YYYY is tried before MM-DD-YYYY because
     # this system integrates with Oracle ERP in an India locale where day-first
     # date formats are the norm. For ambiguous dates where day <= 12
     # (e.g. "06-03-2026"), this will parse as 6th March, not June 3rd.
     date_formats = [
-        "%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ",
-        "%Y-%m-%dT%H:%M:%SZ"
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%m-%d-%Y",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%fZ",
+        "%Y-%m-%dT%H:%M:%SZ",
     ]
 
     for date_format in date_formats:

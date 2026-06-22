@@ -16,9 +16,11 @@ def setup_env():
     os.environ.clear()
     os.environ.update(old_env)
 
+
 @pytest.fixture
 def mock_httpx_client():
     return httpx.AsyncClient()
+
 
 @pytest.fixture
 def sample_payload():
@@ -29,6 +31,6 @@ def sample_payload():
         customer_name="Test Customer",
         invoices=[
             InvoiceItem(invoice_number="INV-001", invoice_amount=50.0),
-            InvoiceItem(invoice_number="INV-002", invoice_amount=50.0)
-        ]
+            InvoiceItem(invoice_number="INV-002", invoice_amount=50.0),
+        ],
     )
