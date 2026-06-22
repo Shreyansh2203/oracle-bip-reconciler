@@ -2,8 +2,18 @@ from __future__ import annotations
 
 import logging
 import math
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
+
+try:
+    import Levenshtein
+    from scipy.optimize import linear_sum_assignment
+
+    _HAS_LEVENSHTEIN = True
+except ImportError:
+    _HAS_LEVENSHTEIN = False
+
 
 from src.constants import (
     PHASE_APPLIED,
@@ -20,7 +30,8 @@ from src.utils.date_formatter import format_oracle_date
 
 logger = logging.getLogger(__name__)
 
-def safe_float_match(value1: Any, value2: Any) -> bool:
+
+def safe_float_match(value1: Any, value2: Any, allow_abs: bool = True) -> bool:
     try:
         if value1 is None or value2 is None:
             return False
@@ -28,37 +39,38 @@ def safe_float_match(value1: Any, value2: Any) -> bool:
         v2_str = str(value2).replace(",", "").strip()
         if not v1_str or not v2_str:
             return False
-        d1 = Decimal(v1_str).quantize(Decimal('0.01'))
-        d2 = Decimal(v2_str).quantize(Decimal('0.01'))
-        return d1 == d2
+        d1 = Decimal(v1_str).quantize(Decimal("0.01"))
+        d2 = Decimal(v2_str).quantize(Decimal("0.01"))
+        if d1 == d2:
+            return True
+        if allow_abs and abs(d1) == abs(d2):
+            return True
+        return False
     except (InvalidOperation, ValueError, TypeError):
         return False
+
 
 def safe_str_match(value1: Any, value2: Any) -> bool:
     if value1 is None or value2 is None:
         return False
     return str(value1).strip().lower() == str(value2).strip().lower()
 
-def safe_substring_match(value1: Any, value2: Any) -> bool:
-    if not value1 or not value2:
-        return False
-    v1_str = str(value1).strip().lower()
-    v2_str = str(value2).strip().lower()
-    return v1_str in v2_str or v2_str in v1_str
+
+
 
 def safe_starts_with(full_value: Any, prefix_value: Any) -> bool:
     if full_value is None or prefix_value is None:
         return False
     return str(full_value).strip().lower().startswith(str(prefix_value).strip().lower())
 
+
 def safe_receipt_number_match(value1: Any, value2: Any) -> bool:
     if not value1 or not value2:
         return False
     v1_str = str(value1).strip().lower()
     v2_str = str(value2).strip().lower()
-    if len(v1_str) < 4 or len(v2_str) < 4:
-        return v1_str == v2_str
-    return v1_str in v2_str or v2_str in v1_str
+    return v1_str == v2_str
+
 
 def safe_customer_name_match(value1: Any, value2: Any) -> bool:
     if not value1 or not value2:
@@ -67,23 +79,21 @@ def safe_customer_name_match(value1: Any, value2: Any) -> bool:
     v2_str = str(value2).strip().lower()
     if v1_str == v2_str:
         return True
-    if len(v1_str) >= 4 and v1_str in v2_str:
+    if len(v1_str) >= 10 and v1_str in v2_str:
         return True
-    if len(v2_str) >= 4 and v2_str in v1_str:
+    if len(v2_str) >= 10 and v2_str in v1_str:
         return True
     return False
 
-def escape_query_value(value: Any) -> str:
-    """Escapes single quotes for Oracle REST query strings."""
-    if value is None:
-        return ""
-    return str(value).replace("'", "''")
+
+
 
 def get_receipt_phase(status_code: str) -> str:
     unapplied_codes = ["UNAPP", "UNID", "UNAPPLIED", "UNIDENTIFIED"]
     if status_code and status_code.upper() in unapplied_codes:
         return STATUS_UNAPPLIED
     return STATUS_APPLIED
+
 
 def get_invoice_phase(status_code: str, balance: Any) -> str:
     if status_code:
@@ -95,9 +105,61 @@ def get_invoice_phase(status_code: str, balance: Any) -> str:
     except (ValueError, TypeError):
         return STATUS_OTHER
 
+
+def date_to_timestamp(date_str: str) -> float:
+    formatted = format_oracle_date(date_str)
+    if formatted:
+        try:
+            return datetime.strptime(formatted, "%Y-%m-%d").timestamp()
+        except ValueError:
+            pass
+    return 0.0
+
+
+def safe_parse_amount(amount_str: Any) -> float:
+    if amount_str is None:
+        return 0.0
+    try:
+        s = str(amount_str).replace(",", "").strip()
+        if not s:
+            return 0.0
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def get_invoice_amount(candidate: dict[str, Any]) -> float:
+    return safe_parse_amount(candidate.get("AMOUNT_DUE_REMAINING"))
+
+
 # =========================================================================
-# IN-MEMORY BATCH MATCHING (APPROACH 1)
+# ADVANCED DATA STRUCTURES
 # =========================================================================
+
+
+
+
+
+
+# =========================================================================
+# INDEX CLASSES
+# =========================================================================
+
+
+class OracleInvoiceIndex:
+    def __init__(self, bip_invoices: list[dict[str, Any]]):
+        self.bip_invoices = bip_invoices
+
+
+class OracleReceiptIndex:
+    def __init__(self, bip_receipts: list[dict[str, Any]]):
+        self.bip_receipts = bip_receipts
+
+
+# =========================================================================
+# RECEIPT MATCHING
+# =========================================================================
+
 
 def _filter_receipt_candidates(
     candidates: list[dict[str, Any]],
@@ -105,82 +167,105 @@ def _filter_receipt_candidates(
     amount: float | None = None,
     formatted_date: str | None = None,
     customer_name: str | None = None,
-    exact_receipt: bool = False
+    exact_receipt: bool = False,
 ) -> list[dict[str, Any]]:
-    return [
-        candidate for candidate in candidates
-        if (not receipt_number or (safe_str_match(candidate.get("RECEIPT_NUMBER"), receipt_number) if exact_receipt else safe_receipt_number_match(candidate.get("RECEIPT_NUMBER"), receipt_number)))
+    # If receipt number is explicitly matched, bypass the customer name check
+    bypass_customer = receipt_number is not None
+
+    filtered = [
+        candidate
+        for candidate in candidates
+        if (
+            not receipt_number
+            or (
+                safe_str_match(candidate.get("RECEIPT_NUMBER"), receipt_number)
+                if exact_receipt
+                else safe_receipt_number_match(candidate.get("RECEIPT_NUMBER"), receipt_number)
+            )
+        )
         and (amount is None or safe_float_match(candidate.get("RECEIPT_AMOUNT"), amount))
         and (not formatted_date or safe_str_match(candidate.get("RECEIPT_DATE"), formatted_date))
-        and (not customer_name or safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name))
+        and (
+            bypass_customer
+            or not customer_name
+            or safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)
+        )
     ]
 
-def _apply_receipt_scenario_a(candidates: list[dict[str, Any]], receipt_number: str, amount: float | None, formatted_date: str | None, customer_name: str) -> dict[str, Any] | None:
-    # A1: Substring Num, Amount, [Customer]
+    # Deduplicate by RECEIPT_NUMBER so multiple lines (APP, REV) for the same receipt don't cause ambiguous match failures
+    seen = set()
+    deduped = []
+    for c in filtered:
+        rec_num = str(c.get("RECEIPT_NUMBER", "")).strip().upper()
+        if rec_num not in seen:
+            seen.add(rec_num)
+            deduped.append(c)
+
+    return deduped
+
+
+def _apply_receipt_scenario_a(
+    candidates: list[dict[str, Any]],
+    receipt_number: str,
+    amount: float | None,
+    formatted_date: str | None,
+    customer_name: str,
+) -> dict[str, Any] | None:
+    # A1
     results = _filter_receipt_candidates(candidates, receipt_number, amount, None, customer_name)
     if len(results) == 1:
         return _build_receipt_response(results[0], "A1")
 
-    # A2: Substring Num, [Customer]
+    # A2
     results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name, exact_receipt=True)
     if len(results) == 1:
         return _build_receipt_response(results[0], "A2")
 
-    # A3: Substring Num, Amount, Date, [Customer]
+    # A3
     results = _filter_receipt_candidates(candidates, receipt_number, amount, formatted_date, customer_name)
     if len(results) == 1:
         return _build_receipt_response(results[0], "A3")
 
-    # A4: Customer, Amount
+    # A4
     if customer_name and amount is not None:
         results = _filter_receipt_candidates(candidates, None, amount, None, customer_name)
         if len(results) == 1:
             return _build_receipt_response(results[0], "A4")
 
-    # A5: Customer, Date
-    if customer_name and formatted_date:
-        results = _filter_receipt_candidates(candidates, None, None, formatted_date, customer_name)
-        if len(results) == 1:
-            return _build_receipt_response(results[0], "A5")
-
     return None
 
-def _apply_receipt_scenario_b(candidates: list[dict[str, Any]], amount: float | None, formatted_date: str | None, customer_name: str) -> dict[str, Any] | None:
-    # B1: Amount, Date, [Customer]
+
+def _apply_receipt_scenario_b(
+    candidates: list[dict[str, Any]], amount: float | None, formatted_date: str | None, customer_name: str
+) -> dict[str, Any] | None:
     if amount is not None and formatted_date:
         results = _filter_receipt_candidates(candidates, None, amount, formatted_date, customer_name)
         if len(results) == 1:
             return _build_receipt_response(results[0], "B1")
 
-    # B2: Customer, Amount
     if customer_name and amount is not None:
         results = _filter_receipt_candidates(candidates, None, amount, None, customer_name)
         if len(results) == 1:
             return _build_receipt_response(results[0], "B2")
 
-    # B3: Customer, Date
-    if customer_name and formatted_date:
-        results = _filter_receipt_candidates(candidates, None, None, formatted_date, customer_name)
-        if len(results) == 1:
-            return _build_receipt_response(results[0], "B3")
-
     return None
 
-def match_receipt_in_memory(receipt_number: str, amount: float | None, receipt_date: str, customer_name: str, bip_receipts: list[dict[str, Any]]) -> dict[str, Any]:
+
+def match_receipt_in_memory(
+    receipt_number: str, amount: float | None, receipt_date: str, customer_name: str, index: OracleReceiptIndex
+) -> dict[str, Any]:
     if amount is not None and not math.isfinite(amount):
         return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
 
-    if not bip_receipts:
+    if not index.bip_receipts:
         return {"matched_in_oracle": False, "error": "No receipt matches returned from Oracle Batch."}
 
     formatted_date = format_oracle_date(receipt_date) if receipt_date else None
 
-    # Phase 1: Unapplied/Unidentified, Phase 2: Applied
     for phase_num in [PHASE_UNAPPLIED, PHASE_APPLIED]:
         target_status = STATUS_UNAPPLIED if phase_num == PHASE_UNAPPLIED else STATUS_APPLIED
         candidates = [
-            candidate for candidate in bip_receipts
-            if get_receipt_phase(candidate.get("RECEIPT_STATUS_CODE", "")) == target_status
+            c for c in index.bip_receipts if get_receipt_phase(c.get("RECEIPT_STATUS_CODE", "")) == target_status
         ]
 
         if not candidates:
@@ -197,6 +282,7 @@ def match_receipt_in_memory(receipt_number: str, amount: float | None, receipt_d
 
     return {"matched_in_oracle": False, "error": "No single match found after cascading rules"}
 
+
 def _build_receipt_response(match: dict[str, Any], rule_name: str) -> dict[str, Any]:
     return {
         "matched_in_oracle": True,
@@ -206,84 +292,150 @@ def _build_receipt_response(match: dict[str, Any], rule_name: str) -> dict[str, 
         "fusion_customer_number": match.get("BILL_CUSTOMER_NUMBER"),
         "fusion_currency": match.get("CURRENCY"),
         "fusion_receipt_status_code": match.get("RECEIPT_STATUS_CODE"),
-        "fusion_applied_amount": match.get("APPLIED_AMOUNT") if match.get("APPLIED_AMOUNT") else None,
+        "fusion_applied_amount": safe_parse_amount(match.get("APPLIED_AMOUNT")) if match.get("APPLIED_AMOUNT") is not None else None,
         "match_phase": get_receipt_phase(match.get("RECEIPT_STATUS_CODE", "")),
-        "match_rule": rule_name
+        "match_rule": rule_name,
     }
 
 
-def _apply_invoice_rules(candidates: list[dict[str, Any]], invoice_number: str, formatted_date: str | None, document_number: str, customer_name: str) -> dict[str, Any] | None:
+# =========================================================================
+# INVOICE MATCHING
+# =========================================================================
+
+
+def _apply_invoice_rules(
+    candidates: list[dict[str, Any]],
+    invoice_number: str,
+    formatted_date: str | None,
+    document_number: str,
+    customer_name: str,
+) -> dict[str, Any] | None:
     # Rule 1a: Num + Date
     if invoice_number and formatted_date:
-        results = [candidate for candidate in candidates if safe_str_match(candidate.get("TRANSACTION_NUMBER"), invoice_number)
-                and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
-        if len(results) == 1:
-            return _build_invoice_response(results[0], "Rule 1a")
+        results = [
+            candidate
+            for candidate in candidates
+            if safe_str_match(candidate.get("TRANSACTION_NUMBER"), invoice_number)
+            and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)
+        ]
+        unique_results = list({c.get("TRANSACTION_NUMBER"): c for c in results}.values())
+        if len(unique_results) == 1:
+            return _build_invoice_response(unique_results[0], "Rule 1a")
 
     # Rule 1b: Exact Num
     if invoice_number:
-        results = [candidate for candidate in candidates if safe_str_match(candidate.get("TRANSACTION_NUMBER"), invoice_number)]
-        if len(results) == 1:
-            return _build_invoice_response(results[0], "Rule 1b")
+        results = [
+            candidate for candidate in candidates if safe_str_match(candidate.get("TRANSACTION_NUMBER"), invoice_number)
+        ]
+        unique_results = list({c.get("TRANSACTION_NUMBER"): c for c in results}.values())
+        if len(unique_results) == 1:
+            return _build_invoice_response(unique_results[0], "Rule 1b")
 
     # Rule 2: Doc Num + Date
     if document_number and formatted_date:
-        results = [candidate for candidate in candidates if safe_str_match(candidate.get("DOCUMENT_NUMBER"), document_number)
-                and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
-        if len(results) == 1:
-            return _build_invoice_response(results[0], "Rule 2")
+        results = [
+            candidate
+            for candidate in candidates
+            if safe_str_match(candidate.get("DOCUMENT_NUMBER"), document_number)
+            and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)
+        ]
+        unique_results = list({c.get("TRANSACTION_NUMBER"): c for c in results}.values())
+        if len(unique_results) == 1:
+            return _build_invoice_response(unique_results[0], "Rule 2")
 
     # Rule 3: Prefix Match + Date
     if invoice_number and formatted_date:
-        results = [candidate for candidate in candidates if safe_starts_with(candidate.get("TRANSACTION_NUMBER"), invoice_number)
-                and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
-        if len(results) == 1:
-            return _build_invoice_response(results[0], "Rule 3")
+        results = [
+            candidate
+            for candidate in candidates
+            if safe_starts_with(candidate.get("TRANSACTION_NUMBER"), invoice_number)
+            and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)
+        ]
+        unique_results = list({c.get("TRANSACTION_NUMBER"): c for c in results}.values())
+        if len(unique_results) == 1:
+            return _build_invoice_response(unique_results[0], "Rule 3")
 
     # Rule 4: Customer + Date
     if customer_name and formatted_date:
-        results = [candidate for candidate in candidates if safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)
-                and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)]
-        if len(results) == 1:
-            return _build_invoice_response(results[0], "Rule 4")
+        results = [
+            candidate
+            for candidate in candidates
+            if safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)
+            and safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date)
+        ]
+        unique_results = list({c.get("TRANSACTION_NUMBER"): c for c in results}.values())
+        if len(unique_results) == 1:
+            return _build_invoice_response(unique_results[0], "Rule 4")
 
     return None
 
-def match_invoice_in_memory(invoice_number: str, invoice_date: str, amount: float | None, document_number: str, customer_name: str, bip_invoices: list[dict[str, Any]]) -> dict[str, Any]:
-    if amount is not None and not math.isfinite(amount):
-        return {"matched_in_oracle": False, "error": f"Invalid amount: {amount} (must be a finite number)"}
 
-    if not bip_invoices:
-        return {"matched_in_oracle": False, "error": "No customer invoices returned from Oracle Batch."}
+
+def match_invoice_by_customer(
+    invoice_number: str,
+    invoice_date: str,
+    amount: float | None,
+    document_number: str,
+    customer_name: str,
+    index: OracleInvoiceIndex,
+) -> dict[str, Any]:
+    if not customer_name or not index.bip_invoices:
+        return {"matched_in_oracle": False, "error": "No customer name provided or no data for customer search."}
 
     formatted_date = format_oracle_date(invoice_date) if invoice_date else None
 
-    # Filter base candidates by amount constraint up front (implicit constraint)
-    base_candidates = [candidate for candidate in bip_invoices if amount is None or safe_float_match(candidate.get("TOTAL_AMOUNTS"), amount)]
+    # Filter to records matching this customer name (broad match)
+    customer_candidates = [
+        c for c in index.bip_invoices if safe_customer_name_match(c.get("BILL_CUSTOMER_NAME"), customer_name)
+    ]
 
-    # Phase 1: OPEN, Phase 2: CLOSED/OTHER
+    if not customer_candidates:
+        return {"matched_in_oracle": False, "error": f"No records found for customer '{customer_name}'."}
+
     for phase_num in [PHASE_OPEN, PHASE_CLOSED_OR_OTHER]:
         candidates = [
-            candidate for candidate in base_candidates
-            if (phase_num == PHASE_OPEN and get_invoice_phase(candidate.get("INVOICE_STATUS"), 0) == STATUS_OPEN) or
-               (phase_num == PHASE_CLOSED_OR_OTHER and get_invoice_phase(candidate.get("INVOICE_STATUS"), 0) != STATUS_OPEN)
+            c
+            for c in customer_candidates
+            if (phase_num == PHASE_OPEN and get_invoice_phase(c.get("INVOICE_STATUS"), get_invoice_amount(c)) == STATUS_OPEN)
+            or (phase_num == PHASE_CLOSED_OR_OTHER and get_invoice_phase(c.get("INVOICE_STATUS"), get_invoice_amount(c)) != STATUS_OPEN)
         ]
-
         if not candidates:
             continue
 
+        # Standard rules without amount
         match = _apply_invoice_rules(candidates, invoice_number, formatted_date, document_number, customer_name)
         if match:
+            match["match_rule"] = f"Cust+{match['match_rule']}"
             return match
 
-    return {"matched_in_oracle": False, "error": "No single match found after cascading rules"}
+        # Relaxed: Amt + Date
+        if amount is not None and formatted_date:
+            results = [
+                c
+                for c in candidates
+                if safe_float_match(get_invoice_amount(c), amount)
+                and safe_str_match(c.get("TRANSACTION_DATE"), formatted_date)
+            ]
+            unique_results = list({c.get("TRANSACTION_NUMBER"): c for c in results}.values())
+            if len(unique_results) == 1:
+                return _build_invoice_response(unique_results[0], "Cust+AmtDate")
+
+        # Relaxed: Amt only
+        if amount is not None:
+            results = [c for c in candidates if safe_float_match(get_invoice_amount(c), amount)]
+            unique_results = list({c.get("TRANSACTION_NUMBER"): c for c in results}.values())
+            if len(unique_results) == 1:
+                return _build_invoice_response(unique_results[0], "Cust+Amt")
+
+    return {"matched_in_oracle": False, "error": "No single match found after customer name search."}
 
 def _build_invoice_response(match: dict[str, Any], rule_name: str) -> dict[str, Any]:
-    amount_string = match.get("TOTAL_AMOUNTS", "")
+    amount_string = match.get("AMOUNT_DUE_REMAINING", "")
+
     parsed_amount = None
     if amount_string:
         try:
-            parsed_amount = float(amount_string.replace(",", ""))
+            parsed_amount = float(str(amount_string).replace(",", ""))
         except ValueError:
             pass
 
@@ -292,8 +444,120 @@ def _build_invoice_response(match: dict[str, Any], rule_name: str) -> dict[str, 
         "fusion_invoice_number": match.get("TRANSACTION_NUMBER"),
         "fusion_invoice_date": match.get("TRANSACTION_DATE"),
         "fusion_invoice_amount": parsed_amount,
-        "match_phase": get_invoice_phase(match.get("INVOICE_STATUS", STATUS_OTHER), 0),
+        "match_phase": get_invoice_phase(match.get("INVOICE_STATUS", STATUS_OTHER), parsed_amount),
         "match_rule": rule_name
     }
 
 
+
+
+def match_invoices_bipartite(
+    payload_invoices: list[Any], customer_name: str, index: OracleInvoiceIndex, phase: int = PHASE_OPEN
+) -> dict[int, dict[str, Any]]:
+    """Uses the Hungarian Algorithm to find the optimal assignment of payload invoices to Oracle invoices."""
+    if not payload_invoices or not index.bip_invoices:
+        return {}
+
+    try:
+        import numpy as np
+    except ImportError:
+        return {}  # If scipy/numpy missing, fallback gracefully
+
+    candidates = []
+    for c in index.bip_invoices:
+        c_phase = get_invoice_phase(c.get("INVOICE_STATUS"), get_invoice_amount(c))
+        if phase == PHASE_OPEN and c_phase == STATUS_OPEN:
+            candidates.append(c)
+        elif phase == PHASE_CLOSED_OR_OTHER and c_phase != STATUS_OPEN:
+            candidates.append(c)
+
+    if not candidates:
+        return {}
+
+    n_payload = len(payload_invoices)
+    n_oracle = len(candidates)
+
+    cost_matrix = np.full((n_payload, n_oracle), 1000000.0)
+    match_rules = {}
+
+    for i, p_inv in enumerate(payload_invoices):
+        inv_num = str(p_inv.invoice_number) if p_inv.invoice_number else ""
+        inv_date = str(p_inv.invoice_date) if p_inv.invoice_date else ""
+        inv_amt = p_inv.invoice_amount
+        doc_num = str(p_inv.customer_invoice_number) if p_inv.customer_invoice_number else ""
+
+        fmt_date = format_oracle_date(inv_date) if inv_date else None
+        ts_p = date_to_timestamp(inv_date)
+
+        for j, o_inv in enumerate(candidates):
+            o_num = str(o_inv.get("TRANSACTION_NUMBER", "")).strip().lower()
+            o_doc = str(o_inv.get("DOCUMENT_NUMBER", "")).strip().lower()
+            o_date = str(o_inv.get("TRANSACTION_DATE", "")).strip().lower()
+            o_cust = str(o_inv.get("BILL_CUSTOMER_NAME", "")).strip().lower()
+            o_amt = get_invoice_amount(o_inv)
+
+            best_score = 0
+            best_rule = None
+
+            # Amount tolerance checks (allowing absolute value matches for Credit Memos)
+            amt_match = (inv_amt is None) or safe_float_match(o_amt, inv_amt, allow_abs=True)
+
+            if not amt_match:
+                continue
+
+            # Rule 1a: Exact Num + Date
+            if inv_num and fmt_date and safe_str_match(o_num, inv_num) and safe_str_match(o_date, fmt_date):
+                score = 100
+                if score > best_score:
+                    best_score, best_rule = score, "Rule 1a"
+
+            # Rule 1b: Exact Num
+            if inv_num and safe_str_match(o_num, inv_num):
+                score = 90
+                if score > best_score:
+                    best_score, best_rule = score, "Rule 1b"
+
+            # Rule 2: Doc Num + Date
+            if doc_num and fmt_date and safe_str_match(o_doc, doc_num) and safe_str_match(o_date, fmt_date):
+                score = 85
+                if score > best_score:
+                    best_score, best_rule = score, "Rule 2"
+
+            # Rule 3: Prefix Match + Date
+            if inv_num and fmt_date and safe_starts_with(o_num, inv_num) and safe_str_match(o_date, fmt_date):
+                score = 70
+                if score > best_score:
+                    best_score, best_rule = score, "Rule 3"
+
+            # Rule 4: Customer + Date (using fuzzy string matching tolerance)
+            if customer_name and fmt_date and safe_str_match(o_date, fmt_date):
+                if safe_customer_name_match(o_cust, customer_name):
+                    score = 60
+                    if score > best_score:
+                        best_score, best_rule = score, "Rule 4"
+                elif "Levenshtein" in globals():
+                    if Levenshtein.distance(o_cust, customer_name.strip().lower()) <= 3:
+                        score = 55
+                        if score > best_score:
+                            best_score, best_rule = score, "Rule 4 (Fuzzy)"
+
+            # Date Range Proximity Match
+            if inv_amt is not None and fmt_date:
+                ts_o = date_to_timestamp(o_date)
+                if ts_p > 0 and ts_o > 0 and abs(ts_p - ts_o) <= 86400:  # 1 day
+                    score = 50
+                    if score > best_score:
+                        best_score, best_rule = score, "Date Range Proximity Match"
+
+            if best_score > 0:
+                cost_matrix[i, j] = -best_score
+                match_rules[(i, j)] = best_rule
+
+    if "linear_sum_assignment" in globals():
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        results = {}
+        for i, j in zip(row_ind, col_ind):  # noqa: B905
+            if cost_matrix[i, j] < 0:
+                results[i] = _build_invoice_response(candidates[j], match_rules[(i, j)])
+        return results
+    return {}

@@ -1,77 +1,75 @@
 import asyncio
+import glob
 import json
 import os
+import time
 
-import httpx
+from dotenv import load_dotenv
 
+from src.main import reconcile_data_batch
+from src.models import ReconciliationRequest
+
+load_dotenv()
 
 async def test_jsons():
-    # Use relative path from the project root
-    json_dir = 'data/JSON'
-    url = 'http://localhost:8000/v1/reconcile/batch'
+    json_dir = os.path.join("data", "JSON")
 
     if not os.path.exists(json_dir):
         print(f"Error: {json_dir} directory not found.")
         return
 
-    files = [f for f in os.listdir(json_dir) if f.endswith('.json')]
+    files = glob.glob(os.path.join(json_dir, "*.json"))
+    print(f"Found {len(files)} JSON files. Testing...\n")
 
-    total_files = len(files)
-    successful_requests = 0
-    failed_requests = 0
-    total_invoices_evaluated = 0
-    total_invoices_matched = 0
+    results = []
 
-    file_results = []
+    for i, file in enumerate(files):
+        print(f"[{i+1}/{len(files)}] Processing {os.path.basename(file)}...")
+        try:
+            with open(file, encoding='utf-8') as f:
+                data = json.load(f)
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        for file in files:
-            file_path = os.path.join(json_dir, file)
-            try:
-                with open(file_path, encoding='utf-8') as f:
-                    payload = json.load(f)
-            except Exception as e:
-                file_results.append((file, f"Error reading file: {e}"))
+            req = ReconciliationRequest(**data)
+
+            start = time.time()
+            res = await reconcile_data_batch(req)
+            dur = time.time() - start
+
+            if res is None:
+                print(f"  -> No matches found | Time: {dur:.2f}s")
+                results.append((os.path.basename(file), 0, len(req.invoices or []), 0, dur))
                 continue
 
-            try:
-                response = await client.post(url, json=payload)
-                if response.status_code != 200:
-                    failed_requests += 1
-                    file_results.append((file, f"Failed HTTP {response.status_code}: {response.text[:100]}"))
-                    continue
+            # Count matches
+            inv_total = len(res.invoices or [])
+            inv_matched = sum(1 for inv in (res.invoices or []) if inv.fusion_invoice_number)
 
-                successful_requests += 1
-                data = response.json()
+            # Receipt match
+            receipt_matched = 1 if res.fusion_receipt_number else 0
 
-                receipt_matched = bool(data.get('fusion_receipt_number'))
-                invoices = data.get('invoices', [])
-                matched_invoices = [inv for inv in invoices if inv.get('fusion_invoice_number')]
 
-                total_invoices_evaluated += len(invoices)
-                total_invoices_matched += len(matched_invoices)
+            res_str = f"Invoices: {inv_matched}/{inv_total} | Receipt Matched: {receipt_matched} | Time: {dur:.2f}s"
+            print(f"  -> {res_str}")
 
-                warnings = data.get('meta_data', {}).get('warnings', []) if data.get('meta_data') else []
+            results.append((os.path.basename(file), inv_matched, inv_total, receipt_matched, dur))
 
-                result_str = f"Receipt Matched: {'YES' if receipt_matched else 'NO'}. Invoices: {len(matched_invoices)}/{len(invoices)} matched."
-                if warnings:
-                    result_str += f" Warnings: {warnings[0]}..."
+        except Exception as e:
+            print(f"  -> ERROR: {e}")
+            results.append((os.path.basename(file), "ERROR", str(e), "", 0))
 
-                file_results.append((file, result_str))
+    print("\n" + "="*70)
+    print("SUMMARY")
+    print("="*70)
+    for name, m, t, r, d in results:
+        if m == "ERROR":
+            print(f"{name:50} -> ERROR")
+        else:
+            print(f"{name:50} -> Invoices: {m:>3}/{t:<3} | Receipt: {r} | {d:.1f}s")
 
-            except Exception as e:
-                failed_requests += 1
-                file_results.append((file, f"Request exception: {e}"))
+    # Calculate totals
+    success_count = sum(1 for n, m, t, r, d in results if m != "ERROR" and (m > 0 or r > 0))
+    print("="*70)
+    print(f"TOTAL: {success_count}/{len(results)} files had at least 1 successful match.")
 
-    print("=== FINAL SUMMARY ===")
-    print(f"Total Files Tested: {total_files}")
-    print(f"Successful Requests (HTTP 200): {successful_requests}")
-    print(f"Failed Requests (HTTP 400/500): {failed_requests}")
-    print(f"Total Invoices Evaluated: {total_invoices_evaluated}")
-    print(f"Total Invoices Matched: {total_invoices_matched}")
-    print("=====================")
-    for f, res in file_results:
-        print(f"{f}: {res}")
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(test_jsons())

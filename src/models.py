@@ -33,10 +33,14 @@ class InvoiceItem(BaseModel):
     def sanitize_floats(cls, v: Any) -> Any:
         return sanitize_float_val(v)
 
+
 class MetaDataModel(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
+
 class ReconciliationRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     customer_name: str | None = None
     fusion_customer_name: str | None = None
     payment_reference: str | int | None = None
@@ -54,6 +58,7 @@ class ReconciliationRequest(BaseModel):
     confidence_label: str | None = None
     invoice_count: int | None = None
     meta_data: MetaDataModel | None = None
+    meta_extra: Any = Field(default=None, alias="_meta")
     match_phase: str | None = None
     match_rule: str | None = None
 

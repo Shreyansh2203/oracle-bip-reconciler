@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import os
+
 # Networking Constants
 DEFAULT_TIMEOUT = 15.0
 MAX_CONNECTIONS = 200
 DEFAULT_CONCURRENCY = 50
 
 # BIP Constants
-BIP_TIMEOUT = 60.0
+BIP_TIMEOUT = 180.0
 BIP_CHUNK_DOWNLOAD_SIZE = -1
 BIP_MAX_RETRIES = 3
 BIP_MIN_WAIT_SECONDS = 1
 BIP_MAX_WAIT_SECONDS = 10
+_ttl_str = os.getenv("BIP_CACHE_TTL_SECONDS", "60").strip()
+BIP_CACHE_TTL_SECONDS = int(_ttl_str) if _ttl_str else 60
 
 # Oracle Matching Phases
 PHASE_UNAPPLIED = 1
@@ -24,5 +28,3 @@ STATUS_APPLIED = "APPLIED"
 STATUS_OPEN = "OPEN"
 STATUS_CLOSED = "CLOSED"
 STATUS_OTHER = "OTHER"
-
-
