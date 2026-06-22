@@ -1,6 +1,7 @@
 @echo off
 setlocal
 color 0B
+set UV_LINK_MODE=copy
 
 echo ===================================================
 echo      ORACLE RECONCILIATION API - STARTUP

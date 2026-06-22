@@ -8,6 +8,7 @@ import logging
 import os
 import time
 import xml.etree.ElementTree as ET
+from collections import OrderedDict
 from typing import Any
 
 import httpx
@@ -26,7 +27,8 @@ from src.utils.date_formatter import format_bip_date
 
 logger = logging.getLogger(__name__)
 
-_bip_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+BIP_MAX_CACHE_ENTRIES = 1000
+_bip_cache: OrderedDict[str, tuple[float, list[dict[str, Any]]]] = OrderedDict()
 _bip_locks: dict[str, asyncio.Lock] = {}
 
 def _get_cache_key(report_type: str, parameters: list[dict[str, Any]]) -> str:
@@ -39,7 +41,13 @@ def _cleanup_bip_cache() -> None:
     expired_keys = [k for k, (ts, _) in _bip_cache.items() if now - ts >= BIP_CACHE_TTL_SECONDS]
     for k in expired_keys:
         _bip_cache.pop(k, None)
-        _bip_locks.pop(k, None)
+
+    # Enforce maximum cache size by removing oldest elements (LRU-ish)
+    while len(_bip_cache) > BIP_MAX_CACHE_ENTRIES:
+        _bip_cache.popitem(last=False)
+
+    # We deliberately DO NOT pop from _bip_locks here to prevent an async race condition
+    # where a new request creates a lock just as it gets deleted by cleanup.
 
 def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
     root = ET.fromstring(response_text)
@@ -104,6 +112,8 @@ async def _run_bip_report(
     async with _bip_locks[cache_key]:
         if cache_key in _bip_cache:
             timestamp, cached_data = _bip_cache[cache_key]
+            # Move to end to mark as recently used (LRU)
+            _bip_cache.move_to_end(cache_key)
             if time.time() - timestamp < BIP_CACHE_TTL_SECONDS:
                 return cached_data
 
@@ -114,7 +124,11 @@ async def _run_bip_report(
 
         headers = {"Content-Type": 'application/soap+xml;charset=UTF-8;action=""', "User-Agent": "httpx"}
 
+        safe_username = escape(username, {'"': "&quot;", "'": "&apos;"})
+        safe_password = escape(password, {'"': "&quot;", "'": "&apos;"})
+
         for report_path in valid_paths:
+            safe_path = escape(report_path.strip(), {'"': "&quot;", "'": "&apos;"})
             param_block = f"<pub:parameterNameValues>{param_xml}</pub:parameterNameValues>" if param_xml else ""
             xml_payload = f"""<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
    <soap:Header/>
@@ -123,11 +137,11 @@ async def _run_bip_report(
          <pub:reportRequest>
             <pub:attributeFormat>csv</pub:attributeFormat>
             {param_block}
-            <pub:reportAbsolutePath>{report_path.strip()}</pub:reportAbsolutePath>
+            <pub:reportAbsolutePath>{safe_path}</pub:reportAbsolutePath>
             <pub:sizeOfDataChunkDownload>{BIP_CHUNK_DOWNLOAD_SIZE}</pub:sizeOfDataChunkDownload>
          </pub:reportRequest>
-         <pub:userID>{username}</pub:userID>
-         <pub:password>{password}</pub:password>
+         <pub:userID>{safe_username}</pub:userID>
+         <pub:password>{safe_password}</pub:password>
       </pub:runReport>
    </soap:Body>
 </soap:Envelope>"""
