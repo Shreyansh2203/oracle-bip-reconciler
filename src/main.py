@@ -184,53 +184,65 @@ async def _discover_potential_customers(
     # Priority 1: payment_reference ONLY
     if r_num:
         logger.info("Priority 1: Searching by payment_reference ONLY")
-        r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
-        receipts_raw = _filter_data_rows(r_res)
-        if len(receipts_raw) == 1:
-            discovered_name = receipts_raw[0].get("BILL_CUSTOMER_NAME", "")
-            if discovered_name:
-                logger.info(f"Priority 1 matched uniquely: '{discovered_name}'")
-                return [discovered_name]
+        try:
+            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
+            receipts_raw = _filter_data_rows(r_res)
+            if len(receipts_raw) == 1:
+                discovered_name = receipts_raw[0].get("BILL_CUSTOMER_NAME", "")
+                if discovered_name:
+                    logger.info(f"Priority 1 matched uniquely: '{discovered_name}'")
+                    return [discovered_name]
+        except Exception as e:
+            logger.warning(f"Priority 1 failed: {e}")
 
     # Priority 2: customer_name ONLY
     if c_name:
         logger.info("Priority 2: Searching by customer_name ONLY")
-        r_res = await fetch_bip_receipts(client, user, pwd, customer_name=c_name)
-        receipts_raw = _filter_data_rows(r_res)
-        if receipts_raw:
-            logger.info(f"Priority 2 matched: '{c_name}'")
-            return [c_name]
+        try:
+            r_res = await fetch_bip_receipts(client, user, pwd, customer_name=c_name)
+            receipts_raw = _filter_data_rows(r_res)
+            if receipts_raw:
+                logger.info(f"Priority 2 matched: '{c_name}'")
+                return [c_name]
+        except Exception as e:
+            logger.warning(f"Priority 2 failed: {e}")
 
     # Priority 3: payment_reference + total_amount + payment_date
     if r_num and r_amt is not None and r_date:
         logger.info("Priority 3: Searching by reference + amount + date")
-        r_res = await fetch_bip_receipts(
-            client, user, pwd,
-            receipt_number=r_num,
-            receipt_amount=r_amt,
-            receipt_date=r_date
-        )
-        receipts_raw = _filter_data_rows(r_res)
-        if receipts_raw:
-            customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in receipts_raw if r.get("BILL_CUSTOMER_NAME", "")})
-            if customers:
-                logger.info(f"Priority 3 matched multiple/single customers: {customers}")
-                return customers
+        try:
+            r_res = await fetch_bip_receipts(
+                client, user, pwd,
+                receipt_number=r_num,
+                receipt_amount=r_amt,
+                receipt_date=r_date
+            )
+            receipts_raw = _filter_data_rows(r_res)
+            if receipts_raw:
+                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in receipts_raw if r.get("BILL_CUSTOMER_NAME", "")})
+                if customers:
+                    logger.info(f"Priority 3 matched multiple/single customers: {customers}")
+                    return customers
+        except Exception as e:
+            logger.warning(f"Priority 3 failed: {e}")
 
     # Priority 4: payment_date + total_amount
     if r_date and r_amt is not None:
         logger.info("Priority 4: Searching by date + amount ONLY")
-        r_res = await fetch_bip_receipts(
-            client, user, pwd,
-            receipt_date=r_date,
-            receipt_amount=r_amt
-        )
-        receipts_raw = _filter_data_rows(r_res)
-        if len(receipts_raw) == 1:
-            discovered_name = receipts_raw[0].get("BILL_CUSTOMER_NAME", "")
-            if discovered_name:
-                logger.info(f"Priority 4 matched uniquely: '{discovered_name}'")
-                return [discovered_name]
+        try:
+            r_res = await fetch_bip_receipts(
+                client, user, pwd,
+                receipt_date=r_date,
+                receipt_amount=r_amt
+            )
+            receipts_raw = _filter_data_rows(r_res)
+            if len(receipts_raw) == 1:
+                discovered_name = receipts_raw[0].get("BILL_CUSTOMER_NAME", "")
+                if discovered_name:
+                    logger.info(f"Priority 4 matched uniquely: '{discovered_name}'")
+                    return [discovered_name]
+        except Exception as e:
+            logger.warning(f"Priority 4 failed: {e}")
 
     # Priority 5: Strict Invoice Search Fallback (Concurrent)
     p5_queries = []
