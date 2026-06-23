@@ -7,10 +7,10 @@ import io
 import logging
 import os
 import time
-import defusedxml.ElementTree as ET
 from collections import OrderedDict
 from typing import Any
 
+import defusedxml.ElementTree as ET
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -31,10 +31,12 @@ BIP_MAX_CACHE_ENTRIES = 1000
 _bip_cache: OrderedDict[str, tuple[float, list[dict[str, Any]]]] = OrderedDict()
 _bip_locks: dict[str, asyncio.Lock] = {}
 
+
 def _get_cache_key(report_type: str, parameters: list[dict[str, Any]]) -> str:
     sorted_params = sorted(parameters, key=lambda x: x["name"])
     param_str = "|".join([f"{p['name']}={p['values'][0]}" for p in sorted_params])
     return f"{report_type}::{param_str}"
+
 
 def _cleanup_bip_cache() -> None:
     now = time.time()
@@ -54,11 +56,10 @@ def _cleanup_bip_cache() -> None:
     for k in keys_to_remove:
         _bip_locks.pop(k, None)
 
+
 def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
     root = ET.fromstring(response_text)
-    report_bytes_elem = next(
-        root.iter("{http://xmlns.oracle.com/oxp/service/PublicReportService}reportBytes"), None
-    )
+    report_bytes_elem = next(root.iter("{http://xmlns.oracle.com/oxp/service/PublicReportService}reportBytes"), None)
     if report_bytes_elem is None or not report_bytes_elem.text:
         return []
     report_bytes = base64.b64decode(report_bytes_elem.text)
@@ -67,9 +68,7 @@ def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
     results = []
     reader = csv.DictReader(io.StringIO(csv_text))
     for row in reader:
-        clean_row = {
-            key.strip().upper().replace(" ", ""): (value or "").strip() for key, value in row.items() if key
-        }
+        clean_row = {key.strip().upper().replace(" ", ""): (value or "").strip() for key, value in row.items() if key}
         if clean_row:
             results.append(clean_row)
     return results
@@ -170,7 +169,10 @@ async def _run_bip_report(
                     last_error = error
                     continue
                 if error.response.status_code in [429, 500, 502, 503, 504]:
-                    if "Report definition not found" in error.response.text or "not found" in error.response.text.lower():
+                    if (
+                        "Report definition not found" in error.response.text
+                        or "not found" in error.response.text.lower()
+                    ):
                         last_error = error
                         continue
                     raise OracleBIPTransientError(f"Transient BIP error {error}") from error
@@ -210,7 +212,10 @@ async def fetch_bip_invoices(
     parameters = [
         {"name": "P_CUSTOMER_NAME", "values": [customer_name if customer_name else " "]},
         {"name": "P_INVOICE_NUM", "values": [invoice_number if invoice_number else " "]},
-        {"name": "P_INVOICE_AMOUNT", "values": [str(invoice_amount) if invoice_amount is not None and str(invoice_amount).strip() else " "]},
+        {
+            "name": "P_INVOICE_AMOUNT",
+            "values": [str(invoice_amount) if invoice_amount is not None and str(invoice_amount).strip() else " "],
+        },
         {"name": "P_INVOICE_DATE", "values": [fmt_date if fmt_date else " "]},
     ]
 
@@ -243,4 +248,3 @@ async def fetch_bip_receipts(
     ]
 
     return await _run_bip_report(client, username, password, candidate_paths, parameters, "receipt")
-

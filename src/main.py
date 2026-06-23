@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import os
+import re
 import threading
 import time
 import uuid
@@ -46,6 +46,7 @@ def _redact(name: str | None) -> str:
 http_client: httpx.AsyncClient | None = None
 _http_client_lock = threading.Lock()
 
+
 def get_http_client() -> httpx.AsyncClient:
     global http_client
     if http_client is None:
@@ -57,9 +58,6 @@ def get_http_client() -> httpx.AsyncClient:
                 )
                 logger.info("Lazily initialized global HTTP client")
     return http_client
-
-
-
 
 
 @asynccontextmanager
@@ -145,7 +143,6 @@ def _filter_data_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [r for r in rows if _is_data_row(r)]
 
 
-
 async def _discover_potential_customers(
     client: httpx.AsyncClient, user: str, pwd: str, payload: ReconciliationRequest
 ) -> list[str]:
@@ -164,7 +161,7 @@ async def _discover_potential_customers(
     async def _search_invoices_concurrently(inv_queries: list[dict[str, Any]]) -> list[str]:
         chunk_size = DEFAULT_CONCURRENCY
         for i in range(0, len(inv_queries), chunk_size):
-            chunk = inv_queries[i:i+chunk_size]
+            chunk = inv_queries[i : i + chunk_size]
             logger.info(f"Priority 5: Searching {len(chunk)} invoices concurrently...")
             tasks = [fetch_bip_invoices(client, user, pwd, **kwargs) for kwargs in chunk]
             pending = [asyncio.create_task(t) for t in tasks]
@@ -191,10 +188,10 @@ async def _discover_potential_customers(
     r_num = str(payload.payment_reference).strip() if payload.payment_reference else None
     r_date = str(payload.payment_date).strip() if payload.payment_date else None
     r_amt = payload.total_amount
-    
+
     stripped_r_num = None
     if r_num:
-        stripped_r_num = re.sub(r'[^a-zA-Z0-9]', '', r_num).lstrip('0').lower()
+        stripped_r_num = re.sub(r"[^a-zA-Z0-9]", "", r_num).lstrip("0").lower()
         if len(stripped_r_num) < 6 or stripped_r_num == r_num.lower():
             stripped_r_num = None
 
@@ -245,7 +242,8 @@ async def _discover_potential_customers(
             r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
             receipts_raw = _filter_data_rows(r_res)
             filtered = [
-                r for r in receipts_raw 
+                r
+                for r in receipts_raw
                 if safe_float_match(r.get("RECEIPT_AMOUNT"), r_amt) and safe_str_match(r.get("RECEIPT_DATE"), r_date)
             ]
             if filtered:
@@ -258,12 +256,15 @@ async def _discover_potential_customers(
 
     # Priority 3b: Stripped payment_reference + total_amount + payment_date
     if stripped_r_num and r_amt is not None and r_date:
-        logger.info(f"Priority 3b: Searching by stripped reference ({stripped_r_num}) (locally filtering by amount + date)")
+        logger.info(
+            f"Priority 3b: Searching by stripped reference ({stripped_r_num}) (locally filtering by amount + date)"
+        )
         try:
             r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=stripped_r_num)
             receipts_raw = _filter_data_rows(r_res)
             filtered = [
-                r for r in receipts_raw 
+                r
+                for r in receipts_raw
                 if safe_float_match(r.get("RECEIPT_AMOUNT"), r_amt) and safe_str_match(r.get("RECEIPT_DATE"), r_date)
             ]
             if filtered:
@@ -343,12 +344,13 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
     except Exception as e:
         logger.error(f"[{request_id}] Oracle fetch failed: {e}")
         raise HTTPException(
-            status_code=502,
-            detail=f"Oracle API returned an error or timed out while fetching records: {e}"
+            status_code=502, detail=f"Oracle API returned an error or timed out while fetching records: {e}"
         ) from e
 
     if not potential_customers:
-        logger.warning(f"[{request_id}] Unable to safely determine customer name from available identifiers. Returning null.")
+        logger.warning(
+            f"[{request_id}] Unable to safely determine customer name from available identifiers. Returning null."
+        )
         return None
 
     # Loop over all potential customers. First one to yield a successful match wins.
@@ -379,7 +381,9 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
         unmatched_invoices = list(attempt_payload.invoices)
 
         # ── STEP 3: Match Receipt ──
-        receipt_result = await asyncio.to_thread(_try_match_receipt, receipt_number, receipt_amount, receipt_date, customer_name, all_receipts)
+        receipt_result = await asyncio.to_thread(
+            _try_match_receipt, receipt_number, receipt_amount, receipt_date, customer_name, all_receipts
+        )
         if receipt_result:
             _apply_receipt_match_result(attempt_payload, receipt_result)
             receipt_matched = True
@@ -394,7 +398,12 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
 
             result = await asyncio.to_thread(
                 match_invoice_by_customer,
-                invoice_num_str, invoice_date_str, invoice_amt_float, document_num_str, customer_name, all_invoices
+                invoice_num_str,
+                invoice_date_str,
+                invoice_amt_float,
+                document_num_str,
+                customer_name,
+                all_invoices,
             )
             if result.get("matched_in_oracle"):
                 _apply_invoice_match_result(invoice, result)
@@ -406,8 +415,7 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
         # ── STEP 5: Match Invoices (Fuzzy Bipartite Fallback) ──
         if unmatched_invoices and all_invoices_raw:
             bipartite_results = await asyncio.to_thread(
-                match_invoices_bipartite,
-                unmatched_invoices, customer_name, all_invoices, phase=PHASE_CLOSED_OR_OTHER
+                match_invoices_bipartite, unmatched_invoices, customer_name, all_invoices, phase=PHASE_CLOSED_OR_OTHER
             )
             still_unmatched = []
             for i, invoice in enumerate(unmatched_invoices):
@@ -434,7 +442,9 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
             )
             return attempt_payload
 
-        logger.info(f"[{request_id}] Ledger for '{customer_name}' yielded zero matches. Moving to next potential customer.")
+        logger.info(
+            f"[{request_id}] Ledger for '{customer_name}' yielded zero matches. Moving to next potential customer."
+        )
 
     # ── FINAL FAILURE ──
     logger.info(f"[{request_id}] No matching records found across any potential customers. Returning null.")

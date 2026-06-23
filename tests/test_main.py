@@ -22,6 +22,7 @@ def test_root_endpoint():
 
 def test_apply_receipt_match_result():
     from src.models import ReconciliationRequest
+
     req = ReconciliationRequest()
     result = {
         "fusion_receipt_number": "R123",
@@ -32,7 +33,7 @@ def test_apply_receipt_match_result():
         "fusion_receipt_status_code": "UNAPP",
         "fusion_applied_amount": 100.50,
         "match_phase": "UNAPPLIED",
-        "match_rule": "A1"
+        "match_rule": "A1",
     }
     _apply_receipt_match_result(req, result)
 

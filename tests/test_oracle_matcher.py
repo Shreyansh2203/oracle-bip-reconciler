@@ -1,10 +1,8 @@
-import math
-
 from src.services.oracle_matcher import (
     OracleReceiptIndex,
     _build_receipt_response,
-    parse_oracle_date,
     match_receipt_in_memory,
+    parse_oracle_date,
 )
 
 
@@ -36,27 +34,15 @@ def test_parse_oracle_date_nan():
 
 def test_build_receipt_response_preserves_zero():
     # If APPLIED_AMOUNT is zero, it should be kept, not dropped to None
-    match = {
-        "RECEIPT_NUMBER": "123",
-        "APPLIED_AMOUNT": 0.0,
-        "RECEIPT_STATUS_CODE": "UNAPP"
-    }
+    match = {"RECEIPT_NUMBER": "123", "APPLIED_AMOUNT": 0.0, "RECEIPT_STATUS_CODE": "UNAPP"}
     resp = _build_receipt_response(match, "Rule 1")
     assert resp["fusion_applied_amount"] == 0.0
 
-    match_str_zero = {
-        "RECEIPT_NUMBER": "123",
-        "APPLIED_AMOUNT": "0.00",
-        "RECEIPT_STATUS_CODE": "UNAPP"
-    }
+    match_str_zero = {"RECEIPT_NUMBER": "123", "APPLIED_AMOUNT": "0.00", "RECEIPT_STATUS_CODE": "UNAPP"}
     resp_str = _build_receipt_response(match_str_zero, "Rule 2")
     assert resp_str["fusion_applied_amount"] == 0.0
 
-    match_none = {
-        "RECEIPT_NUMBER": "123",
-        "APPLIED_AMOUNT": None,
-        "RECEIPT_STATUS_CODE": "UNAPP"
-    }
+    match_none = {"RECEIPT_NUMBER": "123", "APPLIED_AMOUNT": None, "RECEIPT_STATUS_CODE": "UNAPP"}
     resp_none = _build_receipt_response(match_none, "Rule 3")
     assert resp_none["fusion_applied_amount"] is None
 
@@ -72,12 +58,12 @@ def test_fuzzy_reference_gates():
         }
     ]
     index = OracleReceiptIndex(bip_receipts)
-    
+
     # 1. Fuzzy match succeeds when amount matches (Rule A1_FUZZY)
     res1 = match_receipt_in_memory("WT-000000324185", 100.0, "2025-08-12", "Acme Corp", index)
     assert res1["matched_in_oracle"] is True
     assert res1["match_rule"] == "A1_FUZZY"
-    
+
     # 2. Fuzzy match FAILS when amount is wrong (Rule A2 refuses to fuzzy match)
     res2 = match_receipt_in_memory("WT-000000324185", 999.0, "2025-08-12", "Acme Corp", index)
     assert res2["matched_in_oracle"] is False

@@ -25,7 +25,7 @@ def format_oracle_date(date_string: str) -> str:
 
     date_string = re.sub(r"\+00:00$", "Z", date_string)
 
-    # NOTE on format ordering: MM-DD-YYYY is tried before DD-MM-YYYY to 
+    # NOTE on format ordering: MM-DD-YYYY is tried before DD-MM-YYYY to
     # conform to standard US locales, preventing ambiguous dates where day <= 12
     # (e.g. "06-03-2026") from incorrectly parsing as 6th March.
     date_formats = [

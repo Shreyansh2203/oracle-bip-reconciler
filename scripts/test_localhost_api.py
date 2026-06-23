@@ -16,9 +16,9 @@ async def test_localhost_jsons():
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         for i, file in enumerate(files):
-            print(f"[{i+1}/{len(files)}] Processing {os.path.basename(file)}...")
+            print(f"[{i + 1}/{len(files)}] Processing {os.path.basename(file)}...")
             try:
-                with open(file, encoding='utf-8') as f:
+                with open(file, encoding="utf-8") as f:
                     data = json.load(f)
 
                 start = time.time()
@@ -40,7 +40,9 @@ async def test_localhost_jsons():
                     # Receipt match
                     receipt_matched = 1 if res.get("fusion_receipt_number") else 0
 
-                    res_str = f"Invoices: {inv_matched}/{inv_total} | Receipt Matched: {receipt_matched} | Time: {dur:.2f}s"
+                    res_str = (
+                        f"Invoices: {inv_matched}/{inv_total} | Receipt Matched: {receipt_matched} | Time: {dur:.2f}s"
+                    )
                     print(f"  -> {res_str}")
                     results.append((os.path.basename(file), inv_matched, inv_total, receipt_matched, dur))
                 else:
@@ -51,9 +53,9 @@ async def test_localhost_jsons():
                 print(f"  -> ERROR: {e}")
                 results.append((os.path.basename(file), "ERROR", str(e), "", 0))
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("SUMMARY")
-    print("="*70)
+    print("=" * 70)
     for name, m, t, r, d in results:
         if m == "ERROR":
             print(f"{name:50} -> ERROR")
@@ -61,8 +63,9 @@ async def test_localhost_jsons():
             print(f"{name:50} -> Invoices: {m:>3}/{t:<3} | Receipt: {r} | {d:.1f}s")
 
     success_count = sum(1 for n, m, t, r, d in results if m != "ERROR" and (m > 0 or r > 0))
-    print("="*70)
+    print("=" * 70)
     print(f"TOTAL: {success_count}/{len(results)} files had at least 1 successful match.")
+
 
 if __name__ == "__main__":
     asyncio.run(test_localhost_jsons())
