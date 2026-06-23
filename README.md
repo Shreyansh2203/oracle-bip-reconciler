@@ -32,6 +32,9 @@ To guarantee strict matching and avoid pulling irrelevant data, the API will **o
 
 If an invoice line possesses all three, they are sent to Oracle concurrently. If Oracle finds that specific invoice, the API extracts the `BILL_CUSTOMER_NAME` from it and uses it to locate the missing receipt.
 
+## Asynchronous Architecture
+This engine is built on **FastAPI** and is 100% asynchronous. All heavy CPU-bound mathematical operations (e.g., Levenshtein distance calculations, SciPy's Hungarian algorithm for bipartite mapping) are automatically offloaded to a background thread pool via `asyncio.to_thread()`. This guarantees that the main event loop never blocks, allowing the server to handle thousands of concurrent reconciliation payloads simultaneously without freezing.
+
 ## Setup and Running
 
 1. `uv sync`

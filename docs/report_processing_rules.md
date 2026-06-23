@@ -5,7 +5,7 @@
 ## 1. Core Architecture
 The engine operates in two distinct phases:
 - **Phase 1: Network Layer (Targeted Bulk-Fetch)** -> Executes Oracle BIP queries to discover the customer and download their ledger.
-- **Phase 2 & 3: RAM Layer (In-Memory)** -> Executes deterministic rule cascades against the downloaded ledger.
+- **Phase 2 & 3: RAM Layer (In-Memory)** -> Executes deterministic rule cascades against the downloaded ledger. *Note: All heavy CPU-bound matching algorithms (Levenshtein, SciPy Hungarian bipartite mapping) are wrapped in `asyncio.to_thread()` to guarantee the FastAPI event loop remains 100% non-blocking and highly concurrent.*
 
 ## 2. Phase 1: Network Layer (Discovery Waterfall)
 The engine queries Oracle in a strict sequence to discover `BILL_CUSTOMER_NAME`. It stops at the first successful priority level.
