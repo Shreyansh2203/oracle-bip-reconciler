@@ -12,3 +12,7 @@ wheels/
 # Environment files
 .env
 .env.*
+
+# PII and Live Data
+Customers.txt
+Real Test Cases/

@@ -146,7 +146,14 @@ def _filter_data_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 async def _discover_potential_customers(
     client: httpx.AsyncClient, user: str, pwd: str, payload: ReconciliationRequest
 ) -> list[str]:
-    """Smart targeted fetch returning a list of potential customer names."""
+    """
+    Smart targeted fetch returning a list of potential customer names using a 5-tier waterfall approach:
+    1. Exact payment_reference search.
+    2. Exact customer_name search.
+    3. Reference + Date + Amount combined search.
+    4. Date + Amount ONLY combined search.
+    5. Strict Invoice Fallback (Invoice Number + Date + Amount).
+    """
 
     from src.constants import DEFAULT_CONCURRENCY
 

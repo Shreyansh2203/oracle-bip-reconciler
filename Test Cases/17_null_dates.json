@@ -1,0 +1,18 @@
+{
+  "customer_name": "Edelweiss Custodial Services",
+  "payment_reference": "REF-17",
+  "payment_date": null,
+  "header_id": 267688921489007,
+  "invoices": [
+    {
+      "Line_ID": 371445541845775,
+      "invoice_number": "INV-NODATE-1",
+      "invoice_date": null,
+      "invoice_amount": 100.0,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    }
+  ],
+  "total_amount": 100.0,
+  "confidence_score": 81.04
+}

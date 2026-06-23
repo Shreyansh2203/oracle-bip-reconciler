@@ -1,0 +1,18 @@
+{
+  "customer_name": "AI RIYADH",
+  "payment_reference": "REF-14",
+  "payment_date": "2026-03-01",
+  "header_id": 817597658206271,
+  "invoices": [
+    {
+      "Line_ID": 331172378860038,
+      "invoice_number": "INV-TINY-1",
+      "invoice_date": "2026-02-01",
+      "invoice_amount": 0.0001,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    }
+  ],
+  "total_amount": 0.0001,
+  "confidence_score": 78.21
+}

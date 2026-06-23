@@ -1,0 +1,18 @@
+{
+  "customer_name": "'; DROP TABLE USERS; --",
+  "payment_reference": "<script>alert(1)</script>",
+  "payment_date": "2026-03-01",
+  "header_id": 370023844831597,
+  "invoices": [
+    {
+      "Line_ID": 767637720362645,
+      "invoice_number": "1=1",
+      "invoice_date": "2026-02-01",
+      "invoice_amount": 100.0,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    }
+  ],
+  "total_amount": 100.0,
+  "confidence_score": 61.39
+}

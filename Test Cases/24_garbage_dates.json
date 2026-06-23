@@ -1,0 +1,26 @@
+{
+  "customer_name": "Qwackers Media & Advertising",
+  "payment_reference": "REF-24",
+  "payment_date": "9999-99-99",
+  "header_id": 683266224039351,
+  "invoices": [
+    {
+      "Line_ID": 225862374160284,
+      "invoice_number": "INV-24A",
+      "invoice_date": "0000-00-00",
+      "invoice_amount": 50.0,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 259307700882343,
+      "invoice_number": "INV-24B",
+      "invoice_date": "Not-A-Date",
+      "invoice_amount": 50.0,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    }
+  ],
+  "total_amount": 100.0,
+  "confidence_score": 63.87
+}

@@ -1,0 +1,26 @@
+{
+  "customer_name": "Bitcipher Labs LLP Ltd",
+  "payment_reference": "REF-19",
+  "payment_date": "2026-03-01",
+  "header_id": 824864188653711,
+  "invoices": [
+    {
+      "Line_ID": 584524246927195,
+      "invoice_number": "INV-SAME",
+      "invoice_date": "2026-02-01",
+      "invoice_amount": 100.0,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 717067046752042,
+      "invoice_number": "INV-SAME",
+      "invoice_date": "2026-02-15",
+      "invoice_amount": 100.0,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    }
+  ],
+  "total_amount": 200.0,
+  "confidence_score": 63.78
+}

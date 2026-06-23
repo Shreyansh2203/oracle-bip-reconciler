@@ -1,0 +1,18 @@
+{
+  "customer_name": null,
+  "payment_reference": null,
+  "payment_date": "2026-03-02",
+  "header_id": 294702530771794,
+  "invoices": [
+    {
+      "Line_ID": 636672734231628,
+      "invoice_number": "26691902484",
+      "invoice_date": "2026-01-24",
+      "invoice_amount": 353.53,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    }
+  ],
+  "total_amount": 1731.61,
+  "confidence_score": 64.51
+}
