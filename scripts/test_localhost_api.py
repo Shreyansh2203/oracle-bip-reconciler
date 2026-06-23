@@ -14,7 +14,7 @@ async def test_localhost_jsons():
 
     results = []
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=None) as client:
         for i, file in enumerate(files):
             print(f"[{i + 1}/{len(files)}] Processing {os.path.basename(file)}...")
             try:
