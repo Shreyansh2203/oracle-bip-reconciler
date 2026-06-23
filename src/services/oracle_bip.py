@@ -234,17 +234,23 @@ async def fetch_bip_receipts(
     password: str,
     receipt_number: str | None = None,
     customer_name: str | None = None,
+    receipt_date: str | None = None,
+    receipt_amount: str | float | None = None,
 ) -> list[dict[str, Any]]:
     candidate_paths = [
         os.getenv("ORACLE_BIP_RECEIPT_PATH", ""),
         "/Custom/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
     ]
 
-    # Only pass parameters that actually exist in the Oracle Receipt BIP Report data model.
-    # Passing non-existent parameters like P_RECEIPT_AMOUNT causes Oracle to throw 500 errors.
+    # Use standard Oracle format (YYYY-MM-DD) instead of BIP format (MM-DD-YYYY) to prevent ORA-01861 500 errors
+    from src.utils.date_formatter import format_oracle_date
+    fmt_date = format_oracle_date(receipt_date) if receipt_date else ""
+
     parameters = [
         {"name": "P_CUSTOMER_NAME", "values": [customer_name if customer_name else " "]},
         {"name": "P_RECEIPT_NUMBER", "values": [receipt_number if receipt_number else " "]},
+        {"name": "P_RECEIPT_AMOUNT", "values": [str(receipt_amount) if receipt_amount is not None and str(receipt_amount).strip() else " "]},
+        {"name": "P_RECEIPT_DATE", "values": [fmt_date if fmt_date else " "]},
     ]
 
     return await _run_bip_report(client, username, password, candidate_paths, parameters, "receipt")

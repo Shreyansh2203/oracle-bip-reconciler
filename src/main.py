@@ -237,17 +237,17 @@ async def _discover_potential_customers(
 
     # Priority 3: payment_reference + total_amount + payment_date
     if r_num and r_amt is not None and r_date:
-        logger.info("Priority 3: Searching by reference (locally filtering by amount + date)")
+        logger.info("Priority 3: Searching by reference + amount + date")
         try:
-            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
+            r_res = await fetch_bip_receipts(
+                client, user, pwd, 
+                receipt_number=r_num,
+                receipt_amount=r_amt,
+                receipt_date=r_date
+            )
             receipts_raw = _filter_data_rows(r_res)
-            filtered = [
-                r
-                for r in receipts_raw
-                if safe_float_match(r.get("RECEIPT_AMOUNT"), r_amt) and safe_str_match(r.get("RECEIPT_DATE"), r_date)
-            ]
-            if filtered:
-                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in filtered if r.get("BILL_CUSTOMER_NAME", "")})
+            if receipts_raw:
+                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in receipts_raw if r.get("BILL_CUSTOMER_NAME", "")})
                 if customers:
                     logger.info(f"Priority 3 matched multiple/single customers: {customers}")
                     return customers
@@ -256,19 +256,17 @@ async def _discover_potential_customers(
 
     # Priority 3b: Stripped payment_reference + total_amount + payment_date
     if stripped_r_num and r_amt is not None and r_date:
-        logger.info(
-            f"Priority 3b: Searching by stripped reference ({stripped_r_num}) (locally filtering by amount + date)"
-        )
+        logger.info(f"Priority 3b: Searching by stripped reference ({stripped_r_num}) + amount + date")
         try:
-            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=stripped_r_num)
+            r_res = await fetch_bip_receipts(
+                client, user, pwd, 
+                receipt_number=stripped_r_num,
+                receipt_amount=r_amt,
+                receipt_date=r_date
+            )
             receipts_raw = _filter_data_rows(r_res)
-            filtered = [
-                r
-                for r in receipts_raw
-                if safe_float_match(r.get("RECEIPT_AMOUNT"), r_amt) and safe_str_match(r.get("RECEIPT_DATE"), r_date)
-            ]
-            if filtered:
-                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in filtered if r.get("BILL_CUSTOMER_NAME", "")})
+            if receipts_raw:
+                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in receipts_raw if r.get("BILL_CUSTOMER_NAME", "")})
                 if customers:
                     logger.info(f"Priority 3b matched multiple/single customers: {customers}")
                     return customers
