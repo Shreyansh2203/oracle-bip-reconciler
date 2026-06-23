@@ -25,6 +25,8 @@ from src.services.oracle_matcher import (
     match_invoice_by_customer,
     match_invoices_bipartite,
     match_receipt_in_memory,
+    safe_float_match,
+    safe_str_match,
 )
 
 load_dotenv()
@@ -152,9 +154,9 @@ async def _discover_potential_customers(
     1. Exact payment_reference search.
        (1b) Stripped alphanumeric payment_reference search.
     2. Exact customer_name search.
-    3. Reference + Date + Amount combined search.
-       (3b) Stripped reference + Date + Amount combined search.
-    4. Date + Amount ONLY combined search.
+    3. Reference (locally filtering by Date + Amount) search.
+       (3b) Stripped reference (locally filtering by Date + Amount) search.
+    4. [DISABLED] Date + Amount ONLY combined search.
     5. Strict Invoice Fallback (Invoice Number + Date + Amount).
     """
 
@@ -239,17 +241,16 @@ async def _discover_potential_customers(
 
     # Priority 3: payment_reference + total_amount + payment_date
     if r_num and r_amt is not None and r_date:
-        logger.info("Priority 3: Searching by reference + amount + date")
+        logger.info("Priority 3: Searching by reference (locally filtering by amount + date)")
         try:
-            r_res = await fetch_bip_receipts(
-                client, user, pwd,
-                receipt_number=r_num,
-                receipt_amount=r_amt,
-                receipt_date=r_date
-            )
+            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
             receipts_raw = _filter_data_rows(r_res)
-            if receipts_raw:
-                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in receipts_raw if r.get("BILL_CUSTOMER_NAME", "")})
+            filtered = [
+                r for r in receipts_raw 
+                if safe_float_match(r.get("RECEIPT_AMOUNT"), r_amt) and safe_str_match(r.get("RECEIPT_DATE"), r_date)
+            ]
+            if filtered:
+                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in filtered if r.get("BILL_CUSTOMER_NAME", "")})
                 if customers:
                     logger.info(f"Priority 3 matched multiple/single customers: {customers}")
                     return customers
@@ -258,17 +259,16 @@ async def _discover_potential_customers(
 
     # Priority 3b: Stripped payment_reference + total_amount + payment_date
     if stripped_r_num and r_amt is not None and r_date:
-        logger.info(f"Priority 3b: Searching by stripped reference ({stripped_r_num}) + amount + date")
+        logger.info(f"Priority 3b: Searching by stripped reference ({stripped_r_num}) (locally filtering by amount + date)")
         try:
-            r_res = await fetch_bip_receipts(
-                client, user, pwd,
-                receipt_number=stripped_r_num,
-                receipt_amount=r_amt,
-                receipt_date=r_date
-            )
+            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=stripped_r_num)
             receipts_raw = _filter_data_rows(r_res)
-            if receipts_raw:
-                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in receipts_raw if r.get("BILL_CUSTOMER_NAME", "")})
+            filtered = [
+                r for r in receipts_raw 
+                if safe_float_match(r.get("RECEIPT_AMOUNT"), r_amt) and safe_str_match(r.get("RECEIPT_DATE"), r_date)
+            ]
+            if filtered:
+                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in filtered if r.get("BILL_CUSTOMER_NAME", "")})
                 if customers:
                     logger.info(f"Priority 3b matched multiple/single customers: {customers}")
                     return customers
@@ -277,21 +277,7 @@ async def _discover_potential_customers(
 
     # Priority 4: payment_date + total_amount
     if r_date and r_amt is not None:
-        logger.info("Priority 4: Searching by date + amount ONLY")
-        try:
-            r_res = await fetch_bip_receipts(
-                client, user, pwd,
-                receipt_date=r_date,
-                receipt_amount=r_amt
-            )
-            receipts_raw = _filter_data_rows(r_res)
-            if len(receipts_raw) == 1:
-                discovered_name = receipts_raw[0].get("BILL_CUSTOMER_NAME", "")
-                if discovered_name:
-                    logger.info(f"Priority 4 matched uniquely: '{discovered_name}'")
-                    return [discovered_name]
-        except Exception as e:
-            logger.warning(f"Priority 4 failed: {e}")
+        logger.warning("Priority 4 skipped: Oracle BIP Receipt Report does not support Date/Amount parameters, so Date/Amount-ONLY search is impossible.")
 
     # Priority 5: Strict Invoice Search Fallback (Concurrent)
     p5_queries = []

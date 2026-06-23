@@ -12,9 +12,9 @@ The engine queries Oracle in a strict sequence to discover `BILL_CUSTOMER_NAME`.
 - **Priority 1**: `payment_reference` ONLY (Must yield EXACTLY 1 match).
 - **Priority 1b**: Stripped `payment_reference` ONLY (Strips non-alphanumeric/leading zeros, must be >= 6 chars, yields EXACTLY 1 match).
 - **Priority 2**: `customer_name` ONLY (Extracts exact string).
-- **Priority 3**: `payment_reference` + `total_amount` + `payment_date` (Yields ALL unique customer names).
-- **Priority 3b**: Stripped `payment_reference` + `total_amount` + `payment_date`.
-- **Priority 4**: `payment_date` + `total_amount` ONLY (Must yield EXACTLY 1 match).
+- **Priority 3**: `payment_reference` (Fetches by reference, then locally filters by `total_amount` + `payment_date` to yield unique customer names).
+- **Priority 3b**: Stripped `payment_reference` (Fetches by stripped reference, then locally filters by `total_amount` + `payment_date`).
+- **Priority 4**: **[DISABLED]** `payment_date` + `total_amount` ONLY. *(Oracle Receipt Report does not support Date/Amount parameters natively, making this bulk search impossible).*
 - **Priority 5**: `invoice_number` + `invoice_date` + `invoice_amount` (Strict concurrent 3-way search. Payload invoices missing ANY of these 3 fields are completely ignored).
 
 *Multi-Customer Testing Loop*: If multiple potential customers are discovered (e.g., via P3), the engine tests Phase 2 and Phase 3 against each customer's ledger sequentially. The first customer ledger that successfully matches the payload is securely locked in.
