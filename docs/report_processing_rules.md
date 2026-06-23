@@ -18,48 +18,31 @@ The engine queries Oracle in a strict sequence to discover `BILL_CUSTOMER_NAME`.
 
 *Multi-Customer Testing Loop*: If multiple potential customers are discovered (e.g., via P3), the engine tests Phase 2 and Phase 3 against each customer's ledger sequentially. The first customer ledger that successfully matches the payload is securely locked in.
 
-## 3. Global Field Validation Constraints
-These constraints apply strictly to all in-memory matching (Phases 2 & 3).
-- `payment_reference` == `RECEIPT_NUMBER`: Exact case-insensitive match by default. **Fuzzy Stripping** (removing non-alphanumeric characters and leading zeros) is ONLY allowed if explicitly gated by a strict `total_amount` match.
-- `total_amount` == `RECEIPT_AMOUNT`: Float match within ±0.01 tolerance (rounded to 2 decimal places to prevent float noise).
-- `payment_date` == `RECEIPT_DATE`: Exact string match.
-- `customer_name` == `BILL_CUSTOMER_NAME`: Bidirectional substring match with a minimum of 10 characters. (E.g., `A in B OR B in A`).
+## 3. Strict Cross-Validation Gate Philosophy
+The entire matching engine operates on a mathematically pure **Strict Cross-Validation Philosophy**. 
+
+If a piece of data is present in the JSON payload, it MUST match the corresponding data in Oracle exactly. If any field mismatches, the Oracle candidate is rejected. If a field is omitted (`null` or `""`) in the JSON, it is skipped during validation.
 
 ## 4. Phase 2: Receipt Reconciliation Rules
 Evaluates the payload against `UNAPPLIED/UNID` receipts first. If no match is found, repeats against `APPLIED` receipts.
-*Rule Cascade Mechanic*: If a rule yields 0 matches or >1 matches, the engine advances to the next rule. If it yields exactly 1 match, it returns it. If the final applicable rule yields >1 match, it returns NULL to prevent misallocation.
 
-### Scenario A: `payment_reference` provided in payload
-*(If `customer_name` is provided, it must also pass the global substring constraint for every rule below).*
-1. **Rule A1**: `RECEIPT_NUMBER` + `RECEIPT_AMOUNT`. (Attempts Strict match, falls back to Fuzzy Reference Match).
-2. **Rule A2**: `RECEIPT_NUMBER` ONLY. (STRICT MATCH ONLY. Fuzzy references are permanently disabled here to prevent falsely applying money to random collisions).
-3. **Rule A3**: `RECEIPT_NUMBER` + `RECEIPT_AMOUNT` + `RECEIPT_DATE`. (Attempts Strict match, falls back to Fuzzy Reference Match).
-4. **Rule A4**: `RECEIPT_AMOUNT` + `BILL_CUSTOMER_NAME` (`customer_name` is mandatory for this fallback)
+Instead of complex fallback scenarios, every receipt candidate is passed through the Strict Cross-Validation Gate:
+1. **`payment_reference`**: If provided, must strictly match or fuzzy match `RECEIPT_NUMBER`.
+2. **`total_amount`**: If provided, must strictly match `RECEIPT_AMOUNT` (no variances allowed).
+3. **`payment_date`**: If provided, must strictly match `RECEIPT_DATE` (no variances allowed).
+4. **`customer_name`**: If provided, must bidirectionally substring match `BILL_CUSTOMER_NAME` (min 10 chars).
 
-### Scenario B: `payment_reference` missing from payload
-*(If `customer_name` is provided, it must also pass the global substring constraint for every rule below).*
-1. **Rule B1**: `RECEIPT_AMOUNT` + `RECEIPT_DATE`
-2. **Rule B2**: `RECEIPT_AMOUNT` + `BILL_CUSTOMER_NAME` (`customer_name` is mandatory)
+If multiple receipts pass the gate, they are deduplicated by `RECEIPT_NUMBER`. If exactly 1 unique receipt remains, it is matched. If >1 remains, it is considered ambiguous and fails.
 
 ## 5. Phase 3: Invoice Reconciliation Rules
 Evaluates the payload against `OPEN` invoices first (including Credit Memos). If any payload invoice remains unmatched, repeats against `CLOSED` invoices.
 
-### Sub-Phase 1: Exact Rules (Linear Cascade)
-1. **Rule 1a**: `TRANSACTION_NUMBER` + `TRANSACTION_DATE`
-2. **Rule 1b**: `TRANSACTION_NUMBER`
-3. **Rule 2**: `DOCUMENT_NUMBER` + `TRANSACTION_DATE`
-4. **Rule 3**: `TRANSACTION_NUMBER` Prefix Match (Oracle number starts with payload value) + `TRANSACTION_DATE`
+Instead of cascaded linear rules, every invoice candidate is passed through the Strict Cross-Validation Gate via the SciPy Hungarian Bipartite Assignment algorithm (`match_invoices_bipartite`) or via direct customer matching (`match_invoice_by_customer`):
+1. **`invoice_number`**: If provided, must strictly match `TRANSACTION_NUMBER`.
+2. **`invoice_date`**: If provided, must strictly match `TRANSACTION_DATE` (no variances allowed).
+3. **`invoice_amount`**: If provided, must strictly match `AMOUNT_DUE_REMAINING` (no absolute value fuzzy matching for credit memos; must be exact mathematical equivalency).
 
-### Sub-Phase 2: Relaxed Rules (Linear Cascade)
-Runs only for payload invoices unmatched by Sub-Phase 1.
-1. **Rule Cust+AmtDate**: `BILL_CUSTOMER_NAME` + `TOTAL_AMOUNTS` + `TRANSACTION_DATE`
-2. **Rule Cust+Amt**: `BILL_CUSTOMER_NAME` + `TOTAL_AMOUNTS`
-
-### Sub-Phase 3: Bipartite Optimization (Hungarian Algorithm)
-For any invoices STILL unmatched, computes the globally optimal 1-to-1 assignment.
-- **Constraint 1 (Amount)**: `TOTAL_AMOUNTS` must exactly equal payload amount (absolute value used for Credit Memos). Discrepancy = Infinite Cost (Block).
-- **Constraint 2 (Date)**: Date difference > 1 day = Infinite Cost (Block).
-- **Cost Minimization**: Computes optimal pairing using Levenshtein edit distance on Customer Name.
+Any candidate that fails validation is assigned an infinite cost in the distance matrix.
 
 ## 6. Output Contract
 - **Success**: `receipt` populated, `invoices` array populated.
