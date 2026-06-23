@@ -59,3 +59,25 @@ def test_build_receipt_response_preserves_zero():
     }
     resp_none = _build_receipt_response(match_none, "Rule 3")
     assert resp_none["fusion_applied_amount"] is None
+
+
+def test_fuzzy_reference_gates():
+    bip_receipts = [
+        {
+            "RECEIPT_NUMBER": "324185",
+            "RECEIPT_AMOUNT": "100.00",
+            "RECEIPT_DATE": "2025-08-12",
+            "RECEIPT_STATUS_CODE": "UNAPP",
+            "BILL_CUSTOMER_NAME": "Acme Corp",
+        }
+    ]
+    index = OracleReceiptIndex(bip_receipts)
+    
+    # 1. Fuzzy match succeeds when amount matches (Rule A1_FUZZY)
+    res1 = match_receipt_in_memory("WT-000000324185", 100.0, "2025-08-12", "Acme Corp", index)
+    assert res1["matched_in_oracle"] is True
+    assert res1["match_rule"] == "A1_FUZZY"
+    
+    # 2. Fuzzy match FAILS when amount is wrong (Rule A2 refuses to fuzzy match)
+    res2 = match_receipt_in_memory("WT-000000324185", 999.0, "2025-08-12", "Acme Corp", index)
+    assert res2["matched_in_oracle"] is False

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import os
 import threading
 import time
@@ -149,8 +150,10 @@ async def _discover_potential_customers(
     """
     Smart targeted fetch returning a list of potential customer names using a 5-tier waterfall approach:
     1. Exact payment_reference search.
+       (1b) Stripped alphanumeric payment_reference search.
     2. Exact customer_name search.
     3. Reference + Date + Amount combined search.
+       (3b) Stripped reference + Date + Amount combined search.
     4. Date + Amount ONLY combined search.
     5. Strict Invoice Fallback (Invoice Number + Date + Amount).
     """
@@ -187,6 +190,12 @@ async def _discover_potential_customers(
     r_num = str(payload.payment_reference).strip() if payload.payment_reference else None
     r_date = str(payload.payment_date).strip() if payload.payment_date else None
     r_amt = payload.total_amount
+    
+    stripped_r_num = None
+    if r_num:
+        stripped_r_num = re.sub(r'[^a-zA-Z0-9]', '', r_num).lstrip('0').lower()
+        if len(stripped_r_num) < 6 or stripped_r_num == r_num.lower():
+            stripped_r_num = None
 
     # Priority 1: payment_reference ONLY
     if r_num:
@@ -201,6 +210,20 @@ async def _discover_potential_customers(
                     return [discovered_name]
         except Exception as e:
             logger.warning(f"Priority 1 failed: {e}")
+
+    # Priority 1b: Stripped payment_reference ONLY
+    if stripped_r_num:
+        logger.info(f"Priority 1b: Searching by stripped payment_reference ONLY ({stripped_r_num})")
+        try:
+            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=stripped_r_num)
+            receipts_raw = _filter_data_rows(r_res)
+            if len(receipts_raw) == 1:
+                discovered_name = receipts_raw[0].get("BILL_CUSTOMER_NAME", "")
+                if discovered_name:
+                    logger.info(f"Priority 1b matched uniquely: '{discovered_name}'")
+                    return [discovered_name]
+        except Exception as e:
+            logger.warning(f"Priority 1b failed: {e}")
 
     # Priority 2: customer_name ONLY
     if c_name:
@@ -232,6 +255,25 @@ async def _discover_potential_customers(
                     return customers
         except Exception as e:
             logger.warning(f"Priority 3 failed: {e}")
+
+    # Priority 3b: Stripped payment_reference + total_amount + payment_date
+    if stripped_r_num and r_amt is not None and r_date:
+        logger.info(f"Priority 3b: Searching by stripped reference ({stripped_r_num}) + amount + date")
+        try:
+            r_res = await fetch_bip_receipts(
+                client, user, pwd,
+                receipt_number=stripped_r_num,
+                receipt_amount=r_amt,
+                receipt_date=r_date
+            )
+            receipts_raw = _filter_data_rows(r_res)
+            if receipts_raw:
+                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in receipts_raw if r.get("BILL_CUSTOMER_NAME", "")})
+                if customers:
+                    logger.info(f"Priority 3b matched multiple/single customers: {customers}")
+                    return customers
+        except Exception as e:
+            logger.warning(f"Priority 3b failed: {e}")
 
     # Priority 4: payment_date + total_amount
     if r_date and r_amt is not None:

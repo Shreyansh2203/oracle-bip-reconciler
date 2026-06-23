@@ -5,6 +5,7 @@ import math
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
+import re
 
 try:
     import Levenshtein
@@ -63,6 +64,21 @@ def safe_str_match(value1: Any, value2: Any) -> bool:
     if value1 is None or value2 is None:
         return False
     return str(value1).strip().lower() == str(value2).strip().lower()
+
+
+def safe_fuzzy_reference_match(value1: Any, value2: Any) -> bool:
+    if value1 is None or value2 is None:
+        return False
+    v1_stripped = re.sub(r'[^a-zA-Z0-9]', '', str(value1)).lower().lstrip('0')
+    v2_stripped = re.sub(r'[^a-zA-Z0-9]', '', str(value2)).lower().lstrip('0')
+    if not v1_stripped or not v2_stripped:
+        return False
+        
+    # Minimum 5 character entropy to prevent '12' matching '12345'
+    if len(v1_stripped) < 5 and len(v2_stripped) < 5:
+        return False
+        
+    return v1_stripped in v2_stripped or v2_stripped in v1_stripped
 
 
 
@@ -171,15 +187,25 @@ def _filter_receipt_candidates(
     amount: float | None = None,
     formatted_date: str | None = None,
     customer_name: str | None = None,
+    allow_fuzzy_ref: bool = False,
 ) -> list[dict[str, Any]]:
-    filtered = [
-        candidate
-        for candidate in candidates
-        if (not receipt_number or safe_str_match(candidate.get("RECEIPT_NUMBER"), receipt_number))
-        and (amount is None or safe_float_match(candidate.get("RECEIPT_AMOUNT"), amount))
-        and (not formatted_date or safe_str_match(candidate.get("RECEIPT_DATE"), formatted_date))
-        and (not customer_name or safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name))
-    ]
+    filtered = []
+    for candidate in candidates:
+        cand_num = candidate.get("RECEIPT_NUMBER")
+        num_matches = False
+        if not receipt_number:
+            num_matches = True
+        else:
+            if safe_str_match(cand_num, receipt_number):
+                num_matches = True
+            elif allow_fuzzy_ref and safe_fuzzy_reference_match(cand_num, receipt_number):
+                num_matches = True
+                
+        if num_matches \
+           and (amount is None or safe_float_match(candidate.get("RECEIPT_AMOUNT"), amount)) \
+           and (not formatted_date or safe_str_match(candidate.get("RECEIPT_DATE"), formatted_date)) \
+           and (not customer_name or safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)):
+            filtered.append(candidate)
 
     # Deduplicate by RECEIPT_NUMBER so multiple lines (APP, REV) for the same receipt don't cause ambiguous match failures
     seen = set()
@@ -200,20 +226,30 @@ def _apply_receipt_scenario_a(
     formatted_date: str | None,
     customer_name: str,
 ) -> dict[str, Any] | None:
-    # A1
-    results = _filter_receipt_candidates(candidates, receipt_number, amount, None, customer_name)
+    # A1 (Strict)
+    results = _filter_receipt_candidates(candidates, receipt_number, amount, None, customer_name, allow_fuzzy_ref=False)
     if len(results) == 1:
         return _build_receipt_response(results[0], "A1")
+    # A1 (Fuzzy Fallback - Safe because amount is strictly checked)
+    if amount is not None:
+        results = _filter_receipt_candidates(candidates, receipt_number, amount, None, customer_name, allow_fuzzy_ref=True)
+        if len(results) == 1:
+            return _build_receipt_response(results[0], "A1_FUZZY")
 
-    # A2
-    results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name)
+    # A2 (STRICT ONLY. We never allow fuzzy reference checking on Rule A2 because it does not verify amount)
+    results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name, allow_fuzzy_ref=False)
     if len(results) == 1:
         return _build_receipt_response(results[0], "A2")
 
-    # A3
-    results = _filter_receipt_candidates(candidates, receipt_number, amount, formatted_date, customer_name)
+    # A3 (Strict)
+    results = _filter_receipt_candidates(candidates, receipt_number, amount, formatted_date, customer_name, allow_fuzzy_ref=False)
     if len(results) == 1:
         return _build_receipt_response(results[0], "A3")
+    # A3 (Fuzzy Fallback - Safe because amount and date are strictly checked)
+    if amount is not None and formatted_date is not None:
+        results = _filter_receipt_candidates(candidates, receipt_number, amount, formatted_date, customer_name, allow_fuzzy_ref=True)
+        if len(results) == 1:
+            return _build_receipt_response(results[0], "A3_FUZZY")
 
     # A4
     if customer_name and amount is not None:

@@ -10,8 +10,10 @@ The engine operates in two distinct phases:
 ## 2. Phase 1: Network Layer (Discovery Waterfall)
 The engine queries Oracle in a strict sequence to discover `BILL_CUSTOMER_NAME`. It stops at the first successful priority level.
 - **Priority 1**: `payment_reference` ONLY (Must yield EXACTLY 1 match).
+- **Priority 1b**: Stripped `payment_reference` ONLY (Strips non-alphanumeric/leading zeros, must be >= 6 chars, yields EXACTLY 1 match).
 - **Priority 2**: `customer_name` ONLY (Extracts exact string).
 - **Priority 3**: `payment_reference` + `total_amount` + `payment_date` (Yields ALL unique customer names).
+- **Priority 3b**: Stripped `payment_reference` + `total_amount` + `payment_date`.
 - **Priority 4**: `payment_date` + `total_amount` ONLY (Must yield EXACTLY 1 match).
 - **Priority 5**: `invoice_number` + `invoice_date` + `invoice_amount` (Strict concurrent 3-way search. Payload invoices missing ANY of these 3 fields are completely ignored).
 
@@ -19,7 +21,7 @@ The engine queries Oracle in a strict sequence to discover `BILL_CUSTOMER_NAME`.
 
 ## 3. Global Field Validation Constraints
 These constraints apply strictly to all in-memory matching (Phases 2 & 3).
-- `payment_reference` == `RECEIPT_NUMBER`: Exact case-insensitive match. Substring matching is prohibited.
+- `payment_reference` == `RECEIPT_NUMBER`: Exact case-insensitive match by default. **Fuzzy Stripping** (removing non-alphanumeric characters and leading zeros) is ONLY allowed if explicitly gated by a strict `total_amount` match.
 - `total_amount` == `RECEIPT_AMOUNT`: Float match within ±0.01 tolerance (rounded to 2 decimal places to prevent float noise).
 - `payment_date` == `RECEIPT_DATE`: Exact string match.
 - `customer_name` == `BILL_CUSTOMER_NAME`: Bidirectional substring match with a minimum of 10 characters. (E.g., `A in B OR B in A`).
@@ -30,9 +32,9 @@ Evaluates the payload against `UNAPPLIED/UNID` receipts first. If no match is fo
 
 ### Scenario A: `payment_reference` provided in payload
 *(If `customer_name` is provided, it must also pass the global substring constraint for every rule below).*
-1. **Rule A1**: `RECEIPT_NUMBER` + `RECEIPT_AMOUNT`
-2. **Rule A2**: `RECEIPT_NUMBER`
-3. **Rule A3**: `RECEIPT_NUMBER` + `RECEIPT_AMOUNT` + `RECEIPT_DATE`
+1. **Rule A1**: `RECEIPT_NUMBER` + `RECEIPT_AMOUNT`. (Attempts Strict match, falls back to Fuzzy Reference Match).
+2. **Rule A2**: `RECEIPT_NUMBER` ONLY. (STRICT MATCH ONLY. Fuzzy references are permanently disabled here to prevent falsely applying money to random collisions).
+3. **Rule A3**: `RECEIPT_NUMBER` + `RECEIPT_AMOUNT` + `RECEIPT_DATE`. (Attempts Strict match, falls back to Fuzzy Reference Match).
 4. **Rule A4**: `RECEIPT_AMOUNT` + `BILL_CUSTOMER_NAME` (`customer_name` is mandatory for this fallback)
 
 ### Scenario B: `payment_reference` missing from payload
