@@ -1,7 +1,8 @@
 import asyncio
+import glob
 import json
 import os
-import glob
+
 import httpx
 from httpx import ReadTimeout
 
@@ -9,10 +10,11 @@ API_URL = "http://127.0.0.1:8000/v1/reconcile/batch"
 TEST_DIR = "Real Test Cases"
 RESULTS_FILE = os.path.join(TEST_DIR, "test_results.txt")
 
+
 async def test_file(client: httpx.AsyncClient, filepath: str) -> str:
     filename = os.path.basename(filepath)
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             payload = json.load(f)
     except Exception as e:
         return f"{filename} - ERROR reading file: {e}"
@@ -21,7 +23,7 @@ async def test_file(client: httpx.AsyncClient, filepath: str) -> str:
         # Some edge cases like 10k invoices might take quite some time
         response = await client.post(API_URL, json=payload, timeout=300.0)
         status = response.status_code
-        
+
         if status == 200:
             res_json = response.json()
             if res_json is None:
@@ -38,6 +40,7 @@ async def test_file(client: httpx.AsyncClient, filepath: str) -> str:
     except Exception as e:
         return f"{filename} - FAIL - Exception: {e}"
 
+
 async def main():
     json_files = sorted(glob.glob(os.path.join(TEST_DIR, "*.json")))
     if not json_files:
@@ -45,7 +48,7 @@ async def main():
         return
 
     print(f"Found {len(json_files)} test cases. Starting tests...")
-    
+
     results = []
     # Using a long timeout for the overall client just in case
     async with httpx.AsyncClient(timeout=300.0) as client:
@@ -59,11 +62,12 @@ async def main():
 
     with open(RESULTS_FILE, "w", encoding="utf-8") as f:
         f.write("Edge Case Test Results:\n")
-        f.write("="*50 + "\n")
+        f.write("=" * 50 + "\n")
         for res in results:
             f.write(res + "\n")
-            
+
     print(f"Finished testing all edge cases. Results saved to {RESULTS_FILE}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

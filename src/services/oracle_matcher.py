@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
-import re
 
 try:
     import Levenshtein
@@ -69,27 +69,22 @@ def safe_str_match(value1: Any, value2: Any) -> bool:
 def safe_fuzzy_reference_match(value1: Any, value2: Any) -> bool:
     if value1 is None or value2 is None:
         return False
-    v1_stripped = re.sub(r'[^a-zA-Z0-9]', '', str(value1)).lower().lstrip('0')
-    v2_stripped = re.sub(r'[^a-zA-Z0-9]', '', str(value2)).lower().lstrip('0')
+    v1_stripped = re.sub(r"[^a-zA-Z0-9]", "", str(value1)).lower().lstrip("0")
+    v2_stripped = re.sub(r"[^a-zA-Z0-9]", "", str(value2)).lower().lstrip("0")
     if not v1_stripped or not v2_stripped:
         return False
-        
+
     # Minimum 5 character entropy to prevent '12' matching '12345'
     if len(v1_stripped) < 5 and len(v2_stripped) < 5:
         return False
-        
+
     return v1_stripped in v2_stripped or v2_stripped in v1_stripped
-
-
 
 
 def safe_starts_with(full_value: Any, prefix_value: Any) -> bool:
     if full_value is None or prefix_value is None:
         return False
     return str(full_value).strip().lower().startswith(str(prefix_value).strip().lower())
-
-
-
 
 
 def safe_customer_name_match(value1: Any, value2: Any) -> bool:
@@ -104,8 +99,6 @@ def safe_customer_name_match(value1: Any, value2: Any) -> bool:
     if len(v2_str) >= 10 and v2_str in v1_str:
         return True
     return False
-
-
 
 
 def get_receipt_phase(status_code: str) -> str:
@@ -157,10 +150,6 @@ def get_invoice_amount(candidate: dict[str, Any]) -> float:
 # =========================================================================
 
 
-
-
-
-
 # =========================================================================
 # INDEX CLASSES
 # =========================================================================
@@ -200,11 +189,13 @@ def _filter_receipt_candidates(
                 num_matches = True
             elif allow_fuzzy_ref and safe_fuzzy_reference_match(cand_num, receipt_number):
                 num_matches = True
-                
-        if num_matches \
-           and (amount is None or safe_float_match(candidate.get("RECEIPT_AMOUNT"), amount)) \
-           and (not formatted_date or safe_str_match(candidate.get("RECEIPT_DATE"), formatted_date)) \
-           and (not customer_name or safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)):
+
+        if (
+            num_matches
+            and (amount is None or safe_float_match(candidate.get("RECEIPT_AMOUNT"), amount))
+            and (not formatted_date or safe_str_match(candidate.get("RECEIPT_DATE"), formatted_date))
+            and (not customer_name or safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name))
+        ):
             filtered.append(candidate)
 
     # Deduplicate by RECEIPT_NUMBER so multiple lines (APP, REV) for the same receipt don't cause ambiguous match failures
@@ -232,7 +223,9 @@ def _apply_receipt_scenario_a(
         return _build_receipt_response(results[0], "A1")
     # A1 (Fuzzy Fallback - Safe because amount is strictly checked)
     if amount is not None:
-        results = _filter_receipt_candidates(candidates, receipt_number, amount, None, customer_name, allow_fuzzy_ref=True)
+        results = _filter_receipt_candidates(
+            candidates, receipt_number, amount, None, customer_name, allow_fuzzy_ref=True
+        )
         if len(results) == 1:
             return _build_receipt_response(results[0], "A1_FUZZY")
 
@@ -242,12 +235,16 @@ def _apply_receipt_scenario_a(
         return _build_receipt_response(results[0], "A2")
 
     # A3 (Strict)
-    results = _filter_receipt_candidates(candidates, receipt_number, amount, formatted_date, customer_name, allow_fuzzy_ref=False)
+    results = _filter_receipt_candidates(
+        candidates, receipt_number, amount, formatted_date, customer_name, allow_fuzzy_ref=False
+    )
     if len(results) == 1:
         return _build_receipt_response(results[0], "A3")
     # A3 (Fuzzy Fallback - Safe because amount and date are strictly checked)
     if amount is not None and formatted_date is not None:
-        results = _filter_receipt_candidates(candidates, receipt_number, amount, formatted_date, customer_name, allow_fuzzy_ref=True)
+        results = _filter_receipt_candidates(
+            candidates, receipt_number, amount, formatted_date, customer_name, allow_fuzzy_ref=True
+        )
         if len(results) == 1:
             return _build_receipt_response(results[0], "A3_FUZZY")
 
@@ -317,7 +314,9 @@ def _build_receipt_response(match: dict[str, Any], rule_name: str) -> dict[str, 
         "fusion_customer_number": match.get("BILL_CUSTOMER_NUMBER"),
         "fusion_currency": match.get("CURRENCY"),
         "fusion_receipt_status_code": match.get("RECEIPT_STATUS_CODE"),
-        "fusion_applied_amount": safe_parse_amount(match.get("APPLIED_AMOUNT")) if match.get("APPLIED_AMOUNT") is not None else None,
+        "fusion_applied_amount": safe_parse_amount(match.get("APPLIED_AMOUNT"))
+        if match.get("APPLIED_AMOUNT") is not None
+        else None,
         "match_phase": get_receipt_phase(match.get("RECEIPT_STATUS_CODE", "")),
         "match_rule": rule_name,
     }
@@ -395,7 +394,6 @@ def _apply_invoice_rules(
     return None
 
 
-
 def match_invoice_by_customer(
     invoice_number: str,
     invoice_date: str,
@@ -421,8 +419,14 @@ def match_invoice_by_customer(
         candidates = [
             c
             for c in customer_candidates
-            if (phase_num == PHASE_OPEN and get_invoice_phase(c.get("INVOICE_STATUS"), get_invoice_amount(c)) == STATUS_OPEN)
-            or (phase_num == PHASE_CLOSED_OR_OTHER and get_invoice_phase(c.get("INVOICE_STATUS"), get_invoice_amount(c)) != STATUS_OPEN)
+            if (
+                phase_num == PHASE_OPEN
+                and get_invoice_phase(c.get("INVOICE_STATUS"), get_invoice_amount(c)) == STATUS_OPEN
+            )
+            or (
+                phase_num == PHASE_CLOSED_OR_OTHER
+                and get_invoice_phase(c.get("INVOICE_STATUS"), get_invoice_amount(c)) != STATUS_OPEN
+            )
         ]
         if not candidates:
             continue
@@ -454,6 +458,7 @@ def match_invoice_by_customer(
 
     return {"matched_in_oracle": False, "error": "No single match found after customer name search."}
 
+
 def _build_invoice_response(match: dict[str, Any], rule_name: str) -> dict[str, Any]:
     amount_string = match.get("AMOUNT_DUE_REMAINING", "")
 
@@ -470,10 +475,8 @@ def _build_invoice_response(match: dict[str, Any], rule_name: str) -> dict[str, 
         "fusion_invoice_date": match.get("TRANSACTION_DATE"),
         "fusion_invoice_amount": parsed_amount,
         "match_phase": get_invoice_phase(match.get("INVOICE_STATUS", STATUS_OTHER), parsed_amount),
-        "match_rule": rule_name
+        "match_rule": rule_name,
     }
-
-
 
 
 def match_invoices_bipartite(
@@ -562,7 +565,9 @@ def match_invoices_bipartite(
                         best_score, best_rule = score, "Rule 4"
                 elif _HAS_LEVENSHTEIN:
                     cust_len = len(customer_name.strip())
-                    if cust_len > 3 and Levenshtein.distance(o_cust, customer_name.strip().lower()) <= min(3, max(1, cust_len // 4)):
+                    if cust_len > 3 and Levenshtein.distance(o_cust, customer_name.strip().lower()) <= min(
+                        3, max(1, cust_len // 4)
+                    ):
                         score = 55
                         if score > best_score:
                             best_score, best_rule = score, "Rule 4 (Fuzzy)"
