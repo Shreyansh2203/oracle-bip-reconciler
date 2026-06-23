@@ -1,0 +1,18 @@
+{
+  "customer_name": "Alif Cell",
+  "payment_reference": "REF-13",
+  "payment_date": "2026-03-01",
+  "header_id": 193118889157640,
+  "invoices": [
+    {
+      "Line_ID": 551615552172026,
+      "invoice_number": "INV-HUGE-1",
+      "invoice_date": "2026-02-01",
+      "invoice_amount": 9999999999.99,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    }
+  ],
+  "total_amount": 9999999999.99,
+  "confidence_score": 54.04
+}

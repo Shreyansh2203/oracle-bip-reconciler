@@ -1,0 +1,26 @@
+{
+  "customer_name": "TechExcel Software Solutions Pvt. Ltd.",
+  "payment_reference": "REF-12",
+  "payment_date": "2026-03-01",
+  "header_id": 738675303036365,
+  "invoices": [
+    {
+      "Line_ID": 467200572008970,
+      "invoice_number": "INV-DUP-1",
+      "invoice_date": "2026-02-01",
+      "invoice_amount": 50.0,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    },
+    {
+      "Line_ID": 467200572008970,
+      "invoice_number": "INV-DUP-1",
+      "invoice_date": "2026-02-01",
+      "invoice_amount": 50.0,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    }
+  ],
+  "total_amount": 100.0,
+  "confidence_score": 60.19
+}

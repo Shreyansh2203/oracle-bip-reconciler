@@ -1,0 +1,28 @@
+Edge Case Test Results:
+==================================================
+01_happy_path.json - PASS (Status: 200) - Result: null (No matches found)
+02_longest_name.json - PASS (Status: 200) - Result: null (No matches found)
+03_special_characters.json - PASS (Status: 200) - Result: null (No matches found)
+04_missing_customer_name.json - PASS (Status: 200) - Result: null (No matches found)
+05_missing_payment_ref.json - PASS (Status: 200) - Match Phase: APPLIED
+06_missing_both_name_and_ref.json - PASS (Status: 200) - Result: null (No matches found)
+07_massive_500_invoices.json - PASS (Status: 200) - Match Phase: None
+08_decimal_and_negative_amounts.json - PASS (Status: 200) - Result: null (No matches found)
+09_missing_invoice_data.json - PASS (Status: 200) - Result: null (No matches found)
+10_zero_amount_payload.json - PASS (Status: 200) - Result: null (No matches found)
+11_empty_invoices.json - PASS (Status: 200) - Result: null (No matches found)
+12_duplicated_invoices.json - PASS (Status: 200) - Result: null (No matches found)
+13_very_large_numbers.json - PASS (Status: 200) - Result: null (No matches found)
+14_tiny_fractional_numbers.json - PASS (Status: 200) - Result: null (No matches found)
+15_sql_injection_attempt.json - PASS (Status: 200) - Result: null (No matches found)
+16_unicode_and_emojis.json - PASS (Status: 200) - Result: null (No matches found)
+17_null_dates.json - PASS (Status: 200) - Result: null (No matches found)
+18_empty_strings.json - PASS (Status: 200) - Result: null (No matches found)
+19_same_invoice_diff_dates.json - PASS (Status: 200) - Result: null (No matches found)
+20_extreme_stress_10000_invoices.json - PASS (Status: 422) - Validation Error (Expected for schema violations)
+21_extra_unexpected_fields.json - PASS (Status: 200) - Result: null (No matches found)
+22_strict_type_mismatches.json - PASS (Status: 200) - Result: null (No matches found)
+23_iso_timestamp_dates.json - PASS (Status: 200) - Result: null (No matches found)
+24_garbage_dates.json - PASS (Status: 200) - Result: null (No matches found)
+25_logical_sum_mismatch.json - PASS (Status: 200) - Result: null (No matches found)
+26_megabyte_string_payload.json - PASS (Status: 200) - Result: null (No matches found)

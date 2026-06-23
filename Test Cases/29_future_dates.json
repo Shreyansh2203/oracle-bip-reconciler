@@ -1,0 +1,18 @@
+{
+  "customer_name": "Qwackers Media & Advertising",
+  "payment_reference": "REF-29",
+  "payment_date": "2099-12-31",
+  "header_id": 376799155402317,
+  "invoices": [
+    {
+      "Line_ID": 211108324028677,
+      "invoice_number": "INV-29",
+      "invoice_date": "2099-01-01",
+      "invoice_amount": 100.0,
+      "customer_invoice_number": "",
+      "storeNo": ""
+    }
+  ],
+  "total_amount": 100.0,
+  "confidence_score": 80.3
+}
