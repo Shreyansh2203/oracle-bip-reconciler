@@ -10,7 +10,7 @@ import httpx
 async def test_localhost_jsons():
     json_dir = os.path.join("data", "JSON")
     files = glob.glob(os.path.join(json_dir, "*.json"))
-    print(f"Found {len(files)} JSON files. Testing against http://127.0.0.1:8000/v1/reconcile/batch...\n")
+    print(f"Found {len(files)} JSON files. Testing against http://127.0.0.1:8001/v1/reconcile/batch...\n")
 
     results = []
 
@@ -22,7 +22,7 @@ async def test_localhost_jsons():
                     data = json.load(f)
 
                 start = time.time()
-                response = await client.post("http://127.0.0.1:8000/v1/reconcile/batch", json=data)
+                response = await client.post("http://127.0.0.1:8001/v1/reconcile/batch", json=data)
                 dur = time.time() - start
 
                 if response.status_code == 200:
