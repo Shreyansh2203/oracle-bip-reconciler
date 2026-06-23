@@ -11,11 +11,17 @@ If one priority fails to find a match, it gracefully falls back to the next, gua
 ### Priority 1: Exact Payment Reference
 The API queries Oracle for the exact `payment_reference`. If exactly one receipt is found, it extracts the customer name associated with that receipt.
 
+### Priority 1b: Stripped Payment Reference
+If the exact match fails, the API strips all non-alphanumeric characters and leading zeros from the reference. If the resulting string is at least 6 characters long, it queries Oracle again. This safely recovers payments where banks prepend codes (e.g. `WT-000000324185` -> `324185`).
+
 ### Priority 2: Exact Customer Name
 If the reference fails, it queries Oracle for the `customer_name` string provided in the payload.
 
 ### Priority 3: Reference + Amount + Date
 If both single-parameter searches fail, the API queries Oracle using the exact combination of the `payment_reference`, `total_amount`, and `payment_date`. This handles cases where the customer name is entirely mangled.
+
+### Priority 3b: Stripped Reference + Amount + Date
+Similar to Priority 1b, if the exact 3-way match fails, it queries Oracle again using the stripped numeric reference alongside the exact amount and date.
 
 ### Priority 4: Date + Amount ONLY
 If the payment reference is completely missing or incorrect, it searches Oracle for *any* receipt on the specific `payment_date` for the exact `total_amount`. If a unique receipt is found, the customer is identified.
