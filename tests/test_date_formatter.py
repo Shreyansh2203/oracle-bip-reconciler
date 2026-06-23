@@ -9,10 +9,10 @@ def test_format_oracle_date_valid():
 
     # Slash formats
     assert format_oracle_date("2026/05/10") == "2026-05-10"
-    assert format_oracle_date("10/05/2026") == "2026-05-10"
+    assert format_oracle_date("10/05/2026") == "2026-10-05"
 
     # Hyphen formats
-    assert format_oracle_date("10-05-2026") == "2026-05-10"
+    assert format_oracle_date("10-05-2026") == "2026-10-05"
 
 
 def test_format_oracle_date_invalid():

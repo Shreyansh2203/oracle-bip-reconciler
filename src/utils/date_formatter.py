@@ -25,14 +25,13 @@ def format_oracle_date(date_string: str) -> str:
 
     date_string = re.sub(r"\+00:00$", "Z", date_string)
 
-    # NOTE on format ordering: DD-MM-YYYY is tried before MM-DD-YYYY because
-    # this system integrates with Oracle ERP in an India locale where day-first
-    # date formats are the norm. For ambiguous dates where day <= 12
-    # (e.g. "06-03-2026"), this will parse as 6th March, not June 3rd.
+    # NOTE on format ordering: MM-DD-YYYY is tried before DD-MM-YYYY to 
+    # conform to standard US locales, preventing ambiguous dates where day <= 12
+    # (e.g. "06-03-2026") from incorrectly parsing as 6th March.
     date_formats = [
         "%Y-%m-%d",
-        "%d-%m-%Y",
         "%m-%d-%Y",
+        "%d-%m-%Y",
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%dT%H:%M:%S.%fZ",
         "%Y-%m-%dT%H:%M:%SZ",
@@ -51,7 +50,7 @@ def format_oracle_date(date_string: str) -> str:
 
 def format_bip_date(date_string: str) -> str:
     """
-    Converts a date string to DD-MM-YYYY format required by Oracle BIP report parameters.
+    Converts a date string to MM-DD-YYYY format required by Oracle BIP report parameters.
     Uses format_oracle_date internally for normalization, then reformats.
     """
     normalized = format_oracle_date(date_string)
@@ -59,6 +58,6 @@ def format_bip_date(date_string: str) -> str:
         return ""
     try:
         parsed_date = datetime.strptime(normalized, "%Y-%m-%d")
-        return parsed_date.strftime("%d-%m-%Y")
+        return parsed_date.strftime("%m-%d-%Y")
     except ValueError:
         return ""

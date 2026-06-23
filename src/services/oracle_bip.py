@@ -7,7 +7,7 @@ import io
 import logging
 import os
 import time
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from collections import OrderedDict
 from typing import Any
 
@@ -46,8 +46,13 @@ def _cleanup_bip_cache() -> None:
     while len(_bip_cache) > BIP_MAX_CACHE_ENTRIES:
         _bip_cache.popitem(last=False)
 
-    # We deliberately DO NOT pop from _bip_locks here to prevent an async race condition
-    # where a new request creates a lock just as it gets deleted by cleanup.
+    # Safely clean up locks to prevent infinite memory leak
+    keys_to_remove = []
+    for k, lock in list(_bip_locks.items()):
+        if not lock.locked() and k not in _bip_cache:
+            keys_to_remove.append(k)
+    for k in keys_to_remove:
+        _bip_locks.pop(k, None)
 
 def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
     root = ET.fromstring(response_text)

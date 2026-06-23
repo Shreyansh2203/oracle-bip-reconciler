@@ -3,7 +3,7 @@ import math
 from src.services.oracle_matcher import (
     OracleReceiptIndex,
     _build_receipt_response,
-    date_to_timestamp,
+    parse_oracle_date,
     match_receipt_in_memory,
 )
 
@@ -23,15 +23,15 @@ def test_match_receipt_in_memory_success():
     assert result["fusion_receipt_number"] == "REC-123"
 
 
-def test_date_to_timestamp_nan():
-    # If invalid date is passed, it should return 0.0
-    val = date_to_timestamp("not-a-date")
-    assert val == 0.0
+def test_parse_oracle_date_nan():
+    # If invalid date is passed, it should return None
+    val = parse_oracle_date("not-a-date")
+    assert val is None
 
     # Valid date
-    ts = date_to_timestamp("2026-05-10")
-    assert not math.isnan(ts)
-    assert ts > 0
+    dt = parse_oracle_date("2026-05-10")
+    assert dt is not None
+    assert dt.year == 2026
 
 
 def test_build_receipt_response_preserves_zero():

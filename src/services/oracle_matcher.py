@@ -34,21 +34,28 @@ logger = logging.getLogger(__name__)
 
 
 def safe_float_match(value1: Any, value2: Any, allow_abs: bool = True) -> bool:
+    if value1 is None or value2 is None:
+        return False
     try:
-        if value1 is None or value2 is None:
-            return False
         v1_str = str(value1).replace(",", "").strip()
         v2_str = str(value2).replace(",", "").strip()
         if not v1_str or not v2_str:
             return False
-        d1 = Decimal(v1_str).quantize(Decimal("0.01"))
-        d2 = Decimal(v2_str).quantize(Decimal("0.01"))
-        if d1 == d2:
-            return True
-        if allow_abs and abs(d1) == abs(d2):
-            return True
+        try:
+            d1 = Decimal(v1_str).quantize(Decimal("0.01"))
+            d2 = Decimal(v2_str).quantize(Decimal("0.01"))
+            if d1 == d2:
+                return True
+            if allow_abs and abs(d1) == abs(d2):
+                return True
+        except InvalidOperation:
+            f1, f2 = float(v1_str), float(v2_str)
+            if abs(f1 - f2) < 0.015:
+                return True
+            if allow_abs and abs(abs(f1) - abs(f2)) < 0.015:
+                return True
         return False
-    except (InvalidOperation, ValueError, TypeError):
+    except (ValueError, TypeError):
         return False
 
 
@@ -66,12 +73,7 @@ def safe_starts_with(full_value: Any, prefix_value: Any) -> bool:
     return str(full_value).strip().lower().startswith(str(prefix_value).strip().lower())
 
 
-def safe_receipt_number_match(value1: Any, value2: Any) -> bool:
-    if not value1 or not value2:
-        return False
-    v1_str = str(value1).strip().lower()
-    v2_str = str(value2).strip().lower()
-    return v1_str == v2_str
+
 
 
 def safe_customer_name_match(value1: Any, value2: Any) -> bool:
@@ -108,14 +110,14 @@ def get_invoice_phase(status_code: str, balance: Any) -> str:
         return STATUS_OTHER
 
 
-def date_to_timestamp(date_str: str) -> float:
+def parse_oracle_date(date_str: str) -> datetime.date | None:
     formatted = format_oracle_date(date_str)
     if formatted:
         try:
-            return datetime.strptime(formatted, "%Y-%m-%d").timestamp()
+            return datetime.strptime(formatted, "%Y-%m-%d").date()
         except ValueError:
             pass
-    return 0.0
+    return None
 
 
 def safe_parse_amount(amount_str: Any) -> float:
@@ -169,29 +171,14 @@ def _filter_receipt_candidates(
     amount: float | None = None,
     formatted_date: str | None = None,
     customer_name: str | None = None,
-    exact_receipt: bool = False,
 ) -> list[dict[str, Any]]:
-    # If receipt number is explicitly matched, bypass the customer name check
-    bypass_customer = receipt_number is not None
-
     filtered = [
         candidate
         for candidate in candidates
-        if (
-            not receipt_number
-            or (
-                safe_str_match(candidate.get("RECEIPT_NUMBER"), receipt_number)
-                if exact_receipt
-                else safe_receipt_number_match(candidate.get("RECEIPT_NUMBER"), receipt_number)
-            )
-        )
+        if (not receipt_number or safe_str_match(candidate.get("RECEIPT_NUMBER"), receipt_number))
         and (amount is None or safe_float_match(candidate.get("RECEIPT_AMOUNT"), amount))
         and (not formatted_date or safe_str_match(candidate.get("RECEIPT_DATE"), formatted_date))
-        and (
-            bypass_customer
-            or not customer_name
-            or safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name)
-        )
+        and (not customer_name or safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name))
     ]
 
     # Deduplicate by RECEIPT_NUMBER so multiple lines (APP, REV) for the same receipt don't cause ambiguous match failures
@@ -219,7 +206,7 @@ def _apply_receipt_scenario_a(
         return _build_receipt_response(results[0], "A1")
 
     # A2
-    results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name, exact_receipt=True)
+    results = _filter_receipt_candidates(candidates, receipt_number, None, None, customer_name)
     if len(results) == 1:
         return _build_receipt_response(results[0], "A2")
 
@@ -489,7 +476,7 @@ def match_invoices_bipartite(
         doc_num = str(p_inv.customer_invoice_number) if p_inv.customer_invoice_number else ""
 
         fmt_date = format_oracle_date(inv_date) if inv_date else None
-        ts_p = date_to_timestamp(inv_date)
+        date_p = parse_oracle_date(inv_date)
 
         for j, o_inv in enumerate(candidates):
             o_num = str(o_inv.get("TRANSACTION_NUMBER", "")).strip().lower()
@@ -538,17 +525,16 @@ def match_invoices_bipartite(
                     if score > best_score:
                         best_score, best_rule = score, "Rule 4"
                 elif _HAS_LEVENSHTEIN:
-                    if Levenshtein.distance(o_cust, customer_name.strip().lower()) <= 3:
+                    cust_len = len(customer_name.strip())
+                    if cust_len > 3 and Levenshtein.distance(o_cust, customer_name.strip().lower()) <= min(3, max(1, cust_len // 4)):
                         score = 55
                         if score > best_score:
                             best_score, best_rule = score, "Rule 4 (Fuzzy)"
 
             # Date Range Proximity Match
             if inv_amt is not None and fmt_date:
-                ts_o = date_to_timestamp(o_date)
-                if ts_p > 0 and ts_o > 0:
-                    date_p = datetime.fromtimestamp(ts_p).date()
-                    date_o = datetime.fromtimestamp(ts_o).date()
+                date_o = parse_oracle_date(o_date)
+                if date_p and date_o:
                     if abs((date_p - date_o).days) <= 1:
                         score = 50
                         if score > best_score:
