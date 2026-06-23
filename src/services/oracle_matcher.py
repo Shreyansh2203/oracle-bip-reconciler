@@ -141,8 +141,12 @@ def safe_parse_amount(amount_str: Any) -> float:
         return 0.0
 
 
-def get_invoice_amount(candidate: dict[str, Any]) -> float:
+def get_amount_due_remaining(candidate: dict[str, Any]) -> float:
     return safe_parse_amount(candidate.get("AMOUNT_DUE_REMAINING"))
+
+
+def get_transaction_total(candidate: dict[str, Any]) -> float:
+    return safe_parse_amount(candidate.get("TRANSACTION_TOTAL"))
 
 
 # =========================================================================
@@ -173,32 +177,49 @@ from typing import Any
 import math
 
 
-def validate_receipt_candidate(
+from datetime import datetime, timedelta
+
+def score_receipt_candidate(
     candidate: dict[str, Any],
     receipt_number: str | None,
     amount: float | None,
     formatted_date: str | None,
-    customer_name: str | None,
-) -> bool:
+) -> int:
+    score = 0
+    
+    # 1. Reference Matching (Primary Identifier)
     if receipt_number:
         cand_num = candidate.get("RECEIPT_NUMBER")
-        if not safe_str_match(cand_num, receipt_number) and not safe_fuzzy_reference_match(cand_num, receipt_number):
-            return False
-
+        if safe_str_match(cand_num, receipt_number) or safe_fuzzy_reference_match(cand_num, receipt_number):
+            score += 50
+            
+    # 2. Amount Matching
     if amount is not None:
-        if not safe_float_match(candidate.get("RECEIPT_AMOUNT"), amount):
-            return False
+        cand_amt = safe_parse_amount(candidate.get("RECEIPT_AMOUNT"))
+        if safe_float_match(cand_amt, amount):
+            score += 30
+        else:
+            # Check for standard bank fees ($25 or 1%)
+            diff = abs(cand_amt - amount)
+            if diff <= 25.00 or diff <= (amount * 0.01):
+                score += 15
 
+    # 3. Date Matching
     if formatted_date:
-        if not safe_str_match(candidate.get("RECEIPT_DATE"), formatted_date):
-            return False
-
-    if customer_name:
-        if not safe_customer_name_match(candidate.get("BILL_CUSTOMER_NAME"), customer_name):
-            return False
-
-    return True
-
+        cand_date_str = str(candidate.get("RECEIPT_DATE") or "").strip()
+        if safe_str_match(cand_date_str, formatted_date):
+            score += 20
+        else:
+            # Check for +/- 3 days ACH delay
+            try:
+                cand_dt = datetime.strptime(cand_date_str, "%Y-%m-%d")
+                target_dt = datetime.strptime(formatted_date, "%Y-%m-%d")
+                if abs((cand_dt - target_dt).days) <= 3:
+                    score += 10
+            except ValueError:
+                pass
+                
+    return score
 
 def match_receipt_in_memory(
     receipt_number: str, amount: float | None, receipt_date: str, customer_name: str, index: OracleReceiptIndex
@@ -211,34 +232,29 @@ def match_receipt_in_memory(
 
     formatted_date = format_oracle_date(receipt_date) if receipt_date else None
 
+    best_match = None
+    best_score = -1
+
     for phase_num in [PHASE_UNAPPLIED, PHASE_APPLIED]:
         target_status = STATUS_UNAPPLIED if phase_num == PHASE_UNAPPLIED else STATUS_APPLIED
         candidates = [
             c for c in index.bip_receipts if get_receipt_phase(c.get("RECEIPT_STATUS_CODE", "")) == target_status
         ]
 
-        if not candidates:
-            continue
+        for c in candidates:
+            # We already know these belong to the correct customer because they are from the customer's ledger
+            # Just score them based on reference, amount, and date fit
+            score = score_receipt_candidate(c, receipt_number, amount, formatted_date)
+            
+            # Minimum confidence threshold (must match reference OR perfectly match date+amount)
+            if score >= 50 and score > best_score:
+                best_score = score
+                best_match = c
 
-        valid_candidates = [
-            c
-            for c in candidates
-            if validate_receipt_candidate(c, receipt_number, amount, formatted_date, customer_name)
-        ]
+        if best_match:
+            return _build_receipt_response(best_match, f"Best-Fit Scoring ({best_score} pts)")
 
-        # Deduplicate by RECEIPT_NUMBER
-        seen = set()
-        unique_matches = []
-        for c in valid_candidates:
-            rec_num = str(c.get("RECEIPT_NUMBER", "")).strip().upper()
-            if rec_num not in seen:
-                seen.add(rec_num)
-                unique_matches.append(c)
-
-        if len(unique_matches) == 1:
-            return _build_receipt_response(unique_matches[0], "Strict Cross-Validation")
-
-    return {"matched_in_oracle": False, "error": "No single match found passing strict cross-validation."}
+    return {"matched_in_oracle": False, "error": "No receipt met the minimum Best-Fit score threshold (50 pts)."}
 
 
 def _build_receipt_response(match: dict[str, Any], rule_name: str) -> dict[str, Any]:
@@ -263,26 +279,53 @@ def _build_receipt_response(match: dict[str, Any], rule_name: str) -> dict[str, 
 # =========================================================================
 
 
-def validate_invoice_candidate(
+def calculate_invoice_cost(
     candidate: dict[str, Any],
     invoice_number: str | None,
     invoice_date: str | None,
     invoice_amount: float | None,
-) -> bool:
-    if invoice_number:
-        if not safe_str_match(candidate.get("TRANSACTION_NUMBER"), invoice_number):
-            return False
+) -> float:
+    cost = 0.0
 
+    # 1. Number Matching
+    if invoice_number:
+        cand_num = str(candidate.get("TRANSACTION_NUMBER") or "").strip()
+        if safe_str_match(cand_num, invoice_number):
+            cost += 0.0
+        elif invoice_number in cand_num or cand_num in invoice_number:
+            cost += 50.0
+        else:
+            cost += 10000.0
+
+    # 2. Date Matching
     if invoice_date:
         formatted_date = format_oracle_date(invoice_date)
-        if formatted_date and not safe_str_match(candidate.get("TRANSACTION_DATE"), formatted_date):
-            return False
+        if formatted_date:
+            cand_date_str = str(candidate.get("TRANSACTION_DATE") or "").strip()
+            if not safe_str_match(cand_date_str, formatted_date):
+                try:
+                    cand_dt = datetime.strptime(cand_date_str, "%Y-%m-%d")
+                    target_dt = datetime.strptime(formatted_date, "%Y-%m-%d")
+                    days_diff = abs((cand_dt - target_dt).days)
+                    cost += days_diff * 10.0
+                except ValueError:
+                    cost += 500.0
 
+    # 3. Amount Matching
     if invoice_amount is not None:
-        if not safe_float_match(get_invoice_amount(candidate), invoice_amount, allow_abs=False):
-            return False
+        amount_due = get_amount_due_remaining(candidate)
+        trans_total = get_transaction_total(candidate)
+        diff_due = abs(amount_due - invoice_amount)
+        diff_total = abs(trans_total - invoice_amount)
+        best_diff = min(diff_due, diff_total)
+        
+        # If amount matches perfectly, huge reward (negative cost)
+        if best_diff == 0:
+            cost -= 100.0
+        else:
+            cost += best_diff
 
-    return True
+    return cost
 
 
 def match_invoice_by_customer(
@@ -310,34 +353,54 @@ def match_invoice_by_customer(
             for c in customer_candidates
             if (
                 phase_num == PHASE_OPEN
-                and get_invoice_phase(c.get("INVOICE_STATUS"), get_invoice_amount(c)) == STATUS_OPEN
+                and get_invoice_phase(c.get("INVOICE_STATUS"), get_amount_due_remaining(c)) == STATUS_OPEN
             )
             or (
                 phase_num == PHASE_CLOSED_OR_OTHER
-                and get_invoice_phase(c.get("INVOICE_STATUS"), get_invoice_amount(c)) != STATUS_OPEN
+                and get_invoice_phase(c.get("INVOICE_STATUS"), get_amount_due_remaining(c)) != STATUS_OPEN
             )
         ]
         if not candidates:
             continue
 
-        valid_candidates = [
-            c for c in candidates if validate_invoice_candidate(c, invoice_number, invoice_date, amount)
-        ]
-        unique_results = list({c.get("TRANSACTION_NUMBER"): c for c in valid_candidates}.values())
+        valid_candidates = []
+        for c in candidates:
+            cost = calculate_invoice_cost(c, invoice_number, invoice_date, amount)
+            if cost < 5000.0:  # Threshold for acceptability
+                valid_candidates.append((cost, c))
+                
+        valid_candidates.sort(key=lambda x: x[0])
+        unique_results = []
+        seen = set()
+        for cost, c in valid_candidates:
+            tnum = c.get("TRANSACTION_NUMBER")
+            if tnum not in seen:
+                seen.add(tnum)
+                unique_results.append((cost, c))
 
-        if len(unique_results) == 1:
-            return _build_invoice_response(unique_results[0], "Strict Cross-Validation")
+        if len(unique_results) >= 1:
+            best_cost, best_match = unique_results[0]
+            # Only return single match if it is distinctively better than others, or if it's the only one
+            if len(unique_results) == 1 or unique_results[1][0] - best_cost > 10.0:
+                return _build_invoice_response(best_match, f"Best-Fit Cost Matrix (Cost: {best_cost:.2f})")
 
     return {"matched_in_oracle": False, "error": "No single match found after strict cross-validation."}
 
 
 def _build_invoice_response(match: dict[str, Any], rule_name: str) -> dict[str, Any]:
-    amount_string = match.get("AMOUNT_DUE_REMAINING", "")
-
-    parsed_amount = None
-    if amount_string:
+    trans_total = match.get("TRANSACTION_TOTAL", "")
+    parsed_total = None
+    if trans_total:
         try:
-            parsed_amount = float(str(amount_string).replace(",", ""))
+            parsed_total = float(str(trans_total).replace(",", ""))
+        except ValueError:
+            pass
+
+    amount_due = match.get("AMOUNT_DUE_REMAINING", "")
+    parsed_due = None
+    if amount_due:
+        try:
+            parsed_due = float(str(amount_due).replace(",", ""))
         except ValueError:
             pass
 
@@ -345,8 +408,8 @@ def _build_invoice_response(match: dict[str, Any], rule_name: str) -> dict[str, 
         "matched_in_oracle": True,
         "fusion_invoice_number": match.get("TRANSACTION_NUMBER"),
         "fusion_invoice_date": match.get("TRANSACTION_DATE"),
-        "fusion_invoice_amount": parsed_amount,
-        "match_phase": get_invoice_phase(match.get("INVOICE_STATUS", STATUS_OTHER), parsed_amount),
+        "fusion_invoice_amount": parsed_total,
+        "match_phase": get_invoice_phase(match.get("INVOICE_STATUS", STATUS_OTHER), parsed_due),
         "match_rule": rule_name,
     }
 
@@ -365,7 +428,7 @@ def match_invoices_bipartite(
 
     candidates = []
     for c in index.bip_invoices:
-        c_phase = get_invoice_phase(c.get("INVOICE_STATUS"), get_invoice_amount(c))
+        c_phase = get_invoice_phase(c.get("INVOICE_STATUS"), get_amount_due_remaining(c))
         if phase == PHASE_OPEN and c_phase == STATUS_OPEN:
             candidates.append(c)
         elif phase == PHASE_CLOSED_OR_OTHER and c_phase != STATUS_OPEN:
@@ -385,8 +448,7 @@ def match_invoices_bipartite(
         inv_amt = p_inv.invoice_amount
 
         for j, o_inv in enumerate(candidates):
-            if validate_invoice_candidate(o_inv, inv_num, inv_date, inv_amt):
-                cost_matrix[i, j] = -100
+            cost_matrix[i, j] = calculate_invoice_cost(o_inv, inv_num, inv_date, inv_amt)
 
     if _HAS_SCIPY:
         from scipy.optimize import linear_sum_assignment
@@ -394,7 +456,7 @@ def match_invoices_bipartite(
         row_ind, col_ind = linear_sum_assignment(cost_matrix)
         results = {}
         for i, j in zip(row_ind, col_ind):
-            if cost_matrix[i, j] < 0:
-                results[i] = _build_invoice_response(candidates[j], "Strict Cross-Validation")
+            if cost_matrix[i, j] < 5000.0:
+                results[i] = _build_invoice_response(candidates[j], f"Best-Fit Bipartite (Cost: {cost_matrix[i, j]:.2f})")
         return results
     return {}

@@ -18,31 +18,30 @@ The engine queries Oracle in a strict sequence to discover `BILL_CUSTOMER_NAME`.
 
 *Multi-Customer Testing Loop*: If multiple potential customers are discovered (e.g., via P3), the engine tests Phase 2 and Phase 3 against each customer's ledger sequentially. The first customer ledger that successfully matches the payload is securely locked in.
 
-## 3. Strict Cross-Validation Gate Philosophy
-The entire matching engine operates on a mathematically pure **Strict Cross-Validation Philosophy**. 
+## 3. Best-Fit Matching Philosophy (Oracle as Source of Truth)
+The matching engine operates on the philosophy that **Oracle Fusion is the ultimate source of truth**. JSON payloads extracted via OCR or AI may contain typos, missing decimals, or date shifts. 
 
-If a piece of data is present in the JSON payload, it MUST match the corresponding data in Oracle exactly. If any field mismatches, the Oracle candidate is rejected. If a field is omitted (`null` or `""`) in the JSON, it is skipped during validation.
+Therefore, once the engine securely discovers the customer's identity (Phase 1), it uses **Best-Fit Scoring and Distance Metrics** to map the flawed JSON data to the true Oracle ledger, gracefully overriding JSON errors.
 
 ## 4. Phase 2: Receipt Reconciliation Rules
 Evaluates the payload against `UNAPPLIED/UNID` receipts first. If no match is found, repeats against `APPLIED` receipts.
 
-Instead of complex fallback scenarios, every receipt candidate is passed through the Strict Cross-Validation Gate:
-1. **`payment_reference`**: If provided, must strictly match or fuzzy match `RECEIPT_NUMBER`.
-2. **`total_amount`**: If provided, must strictly match `RECEIPT_AMOUNT` (no variances allowed).
-3. **`payment_date`**: If provided, must strictly match `RECEIPT_DATE` (no variances allowed).
-4. **`customer_name`**: If provided, must bidirectionally substring match `BILL_CUSTOMER_NAME` (min 10 chars).
+Receipt candidates are evaluated using a **0-100 point Scoring System**:
+1. **`payment_reference`**: If it strictly or fuzzy matches `RECEIPT_NUMBER`, it awards **+50 points** (Primary Identifier).
+2. **`total_amount`**: If exactly matching, awards **+30 points**. If within standard bank variances (1% or $25.00), awards **+15 points**.
+3. **`payment_date`**: If exactly matching, awards **+20 points**. If within ACH delay variance (±3 days), awards **+10 points**.
 
-If multiple receipts pass the gate, they are deduplicated by `RECEIPT_NUMBER`. If exactly 1 unique receipt remains, it is matched. If >1 remains, it is considered ambiguous and fails.
+To be accepted, a receipt must achieve a **minimum of 50 points**. This guarantees that the engine either perfectly matched the unique reference, or perfectly matched BOTH the date and amount. The highest scoring receipt is matched.
 
 ## 5. Phase 3: Invoice Reconciliation Rules
-Evaluates the payload against `OPEN` invoices first (including Credit Memos). If any payload invoice remains unmatched, repeats against `CLOSED` invoices.
+Evaluates the payload against `OPEN` invoices first. If any payload invoice remains unmatched, repeats against `CLOSED` invoices.
 
-Instead of cascaded linear rules, every invoice candidate is passed through the Strict Cross-Validation Gate via the SciPy Hungarian Bipartite Assignment algorithm (`match_invoices_bipartite`) or via direct customer matching (`match_invoice_by_customer`):
-1. **`invoice_number`**: If provided, must strictly match `TRANSACTION_NUMBER`.
-2. **`invoice_date`**: If provided, must strictly match `TRANSACTION_DATE` (no variances allowed).
-3. **`invoice_amount`**: If provided, must strictly match `AMOUNT_DUE_REMAINING` (no absolute value fuzzy matching for credit memos; must be exact mathematical equivalency).
+Invoices are matched using the **SciPy Hungarian Bipartite Assignment Algorithm** (`match_invoices_bipartite`). Instead of strict boolean rejection, the engine calculates a **Distance Cost Metric** for every possible pair:
+1. **`invoice_number`**: An exact substring match adds 0 cost. A non-exact substring match adds 50. A complete mismatch adds a massive 10000 penalty.
+2. **`invoice_date`**: Every day of deviation between the JSON and Oracle adds 10 to the cost. Unparseable dates add 500.
+3. **`invoice_amount`**: The absolute difference in dollar amount is added to the cost (e.g., a $5.00 typo adds 5.0 to the cost). Perfect matches receive a -100 bonus reward.
 
-Any candidate that fails validation is assigned an infinite cost in the distance matrix.
+The Hungarian Algorithm mathematically finds the lowest total cost assignment between all JSON invoices and Oracle invoices. Assignments with a cost `>= 5000` are rejected to prevent wild hallucinations.
 
 ## 6. Output Contract
 - **Success**: `receipt` populated, `invoices` array populated.
