@@ -169,8 +169,8 @@ async def _discover_potential_customers(
                                 if discovered_name:
                                     logger.info(f"Discovered customer name from Invoice Fallback: '{discovered_name}'")
                                     return [discovered_name]
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.error(f"Invoice fallback fetch failed: {e}")
             finally:
                 for p in pending:
                     p.cancel()
@@ -246,7 +246,7 @@ async def _discover_potential_customers(
 
     # Priority 5: Strict Invoice Search Fallback (Concurrent)
     p5_queries = []
-    for inv in payload.invoices or []:
+    for inv in payload.invoices:
         i_num = str(inv.invoice_number).strip() if inv.invoice_number else ""
         i_date = str(inv.invoice_date).strip() if inv.invoice_date else ""
         i_amt = inv.invoice_amount
@@ -400,7 +400,7 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
             duration = int((time.time() - start_time) * 1000)
             logger.info(
                 f"[{request_id}] RECON COMPLETE: Customer='{customer_name}', Receipt={'YES' if receipt_matched else 'NO'}, "
-                f"Invoices={matched_count}/{len(attempt_payload.invoices or [])} matched in {duration}ms"
+                f"Invoices={matched_count}/{len(attempt_payload.invoices)} matched in {duration}ms"
             )
             return attempt_payload
 
