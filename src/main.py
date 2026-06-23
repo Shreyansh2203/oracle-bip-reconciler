@@ -156,8 +156,7 @@ async def _discover_potential_customers(
     2. Exact customer_name search.
     3. Reference (locally filtering by Date + Amount) search.
        (3b) Stripped reference (locally filtering by Date + Amount) search.
-    4. [DISABLED] Date + Amount ONLY combined search.
-    5. Strict Invoice Fallback (Invoice Number + Date + Amount).
+    4. Strict Invoice Fallback (Invoice Number + Date + Amount).
     """
 
     from src.constants import DEFAULT_CONCURRENCY
@@ -275,22 +274,18 @@ async def _discover_potential_customers(
         except Exception as e:
             logger.warning(f"Priority 3b failed: {e}")
 
-    # Priority 4: payment_date + total_amount
-    if r_date and r_amt is not None:
-        logger.warning("Priority 4 skipped: Oracle BIP Receipt Report does not support Date/Amount parameters, so Date/Amount-ONLY search is impossible.")
-
-    # Priority 5: Strict Invoice Search Fallback (Concurrent)
-    p5_queries = []
+    # Priority 4: Strict Invoice Search Fallback (Concurrent)
+    p4_queries = []
     for inv in payload.invoices:
         i_num = str(inv.invoice_number).strip() if inv.invoice_number else ""
         i_date = str(inv.invoice_date).strip() if inv.invoice_date else ""
         i_amt = inv.invoice_amount
         if i_num and i_date and i_amt is not None:
-            p5_queries.append({"invoice_number": i_num, "invoice_date": i_date, "invoice_amount": str(i_amt)})
+            p4_queries.append({"invoice_number": i_num, "invoice_date": i_date, "invoice_amount": str(i_amt)})
 
-    if p5_queries:
-        logger.info("Priority 5: Strict Invoice Report Search Fallback (Num + Date + Amount)")
-        return await _search_invoices_concurrently(p5_queries)
+    if p4_queries:
+        logger.info("Priority 4: Strict Invoice Report Search Fallback (Num + Date + Amount)")
+        return await _search_invoices_concurrently(p4_queries)
 
     logger.warning("No valid identifiers found to execute safe bulk-fetch.")
     return []
