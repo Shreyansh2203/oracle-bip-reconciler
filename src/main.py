@@ -135,30 +135,73 @@ def _filter_data_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [r for r in rows if _is_data_row(r)]
 
 
-async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pwd: str, invoices: list) -> str | None:
+async def _discover_by_receipt(client: httpx.AsyncClient, user: str, pwd: str, r_num: str) -> set[str]:
+    discovered = set()
+    if not r_num:
+        return discovered
+        
+    logger.info(f"Level 2: Searching Receipt Report using payment_reference '{r_num}'")
+    
+    def _verify_receipt(raw_receipts: list[dict[str, Any]]) -> str | None:
+        if raw_receipts:
+            cand_name = raw_receipts[0].get("BILL_CUSTOMER_NAME", "").strip()
+            if cand_name:
+                return cand_name
+        return None
+
+    try:
+        r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
+        cand = _verify_receipt(_filter_data_rows(r_res))
+        if cand:
+            discovered.add(cand)
+    except Exception as e:
+        logger.warning(f"Level 2 (Exact) fetch failed: {e}")
+
+    # Try stripped reference
+    stripped_r_num = re.sub(r"[^a-zA-Z0-9]", "", r_num).lstrip("0").lower()
+    if stripped_r_num and len(stripped_r_num) >= 5 and stripped_r_num != r_num.lower():
+        logger.info(f"Level 2 (Stripped): Searching Receipt Report using '{stripped_r_num}'")
+        try:
+            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=stripped_r_num)
+            cand = _verify_receipt(_filter_data_rows(r_res))
+            if cand:
+                discovered.add(cand)
+        except Exception as e:
+            logger.warning(f"Level 2 (Stripped) fetch failed: {e}")
+
+    return discovered
+
+async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pwd: str, invoices: list) -> set[str]:
     from src.constants import DEFAULT_CONCURRENCY
     
     levels = [
-        {"desc": "Level 1 (Invoice Number)", "use_amt": False, "use_date": False},
-        {"desc": "Level 2 (Invoice Number + Amount)", "use_amt": True, "use_date": False},
-        {"desc": "Level 3 (Invoice Number + Amount + Date)", "use_amt": True, "use_date": True},
+        {"desc": "Level 3.1 (Invoice Number)", "use_amt": False, "use_date": False, "req_num": True},
+        {"desc": "Level 3.2 (Invoice Number + Amount)", "use_amt": True, "use_date": False, "req_num": True},
+        {"desc": "Level 3.3 (Invoice Number + Amount + Date)", "use_amt": True, "use_date": True, "req_num": True},
+        {"desc": "Level 3.4 (Amount + Date without Number)", "use_amt": True, "use_date": True, "req_num": False},
     ]
     
     for level in levels:
-        logger.info(f"Rule 3: Searching Invoice Report using {level['desc']} sequence...")
+        logger.info(f"Level 3: Searching Invoice Report using {level['desc']} sequence...")
         
         queries = []
         for inv in invoices:
             i_num = str(inv.invoice_number).strip() if inv.invoice_number else ""
-            if not i_num:
+            if level["req_num"] and not i_num:
                 continue
+            if not level["req_num"] and i_num:
+                continue # 3.4 is ONLY for null invoice numbers
                 
-            kwargs = {"invoice_number": i_num}
+            kwargs = {}
+            if level["req_num"]:
+                kwargs["invoice_number"] = i_num
             if level["use_amt"] and inv.invoice_amount is not None:
                 kwargs["invoice_amount"] = str(inv.invoice_amount)
             if level["use_date"] and inv.invoice_date:
                 kwargs["invoice_date"] = str(inv.invoice_date).strip()
                 
+            if not kwargs:
+                continue
             queries.append(kwargs)
             
         if not queries:
@@ -189,15 +232,46 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
                     p.cancel()
                     
         if len(discovered_candidates) == 1:
-            d_name = list(discovered_candidates)[0]
-            logger.info(f"Rule 3: Successfully isolated unique customer '{d_name}' at {level['desc']}")
-            return d_name
+            logger.info(f"Level 3: Successfully isolated unique customer {list(discovered_candidates)} at {level['desc']}")
+            return discovered_candidates
         elif len(discovered_candidates) > 1:
-            logger.warning(f"Rule 3: Multiple customers found {list(discovered_candidates)} at {level['desc']}, narrowing down...")
+            logger.warning(f"Level 3: Multiple customers found {list(discovered_candidates)} at {level['desc']}, narrowing down...")
         else:
-            logger.warning(f"Rule 3: No customers found at {level['desc']}")
+            logger.warning(f"Level 3: No customers found at {level['desc']}")
             
-    return None
+    return set()
+
+async def _disambiguate(client: httpx.AsyncClient, user: str, pwd: str, candidates: set[str], payload: ReconciliationRequest) -> list[str]:
+    logger.warning(f"Disambiguating {len(candidates)} candidate customers: {candidates}")
+    r_amt = payload.total_amount
+    r_date = str(payload.payment_date).strip() if payload.payment_date else None
+
+    if r_amt is None and r_date is None:
+        logger.warning("No payment amount or date provided to disambiguate. Cannot cross-reference.")
+        return []
+
+    valid_customers = []
+    for cand_name in candidates:
+        logger.info(f"Cross-referencing: Checking receipt for '{cand_name}' (Amount: {r_amt}, Date: {r_date})")
+        try:
+            r_res = await fetch_bip_receipts(
+                client, user, pwd, 
+                customer_name=cand_name,
+                receipt_amount=r_amt,
+                receipt_date=r_date
+            )
+            receipts_raw = _filter_data_rows(r_res)
+            if receipts_raw:
+                logger.info(f"Confirmed customer '{cand_name}' via cross-referenced receipt match")
+                valid_customers.append(cand_name)
+        except Exception as e:
+            logger.warning(f"Cross-reference failed for '{cand_name}': {e}")
+
+    if len(valid_customers) == 1:
+        return valid_customers
+    
+    logger.warning("Cross-referencing could not uniquely isolate the customer. Returning null.")
+    return []
 
 async def _discover_potential_customers(
     client: httpx.AsyncClient, user: str, pwd: str, payload: ReconciliationRequest
@@ -205,9 +279,9 @@ async def _discover_potential_customers(
     c_name = str(payload.customer_name).strip() if payload.customer_name else None
     r_num = str(payload.payment_reference).strip() if payload.payment_reference else None
 
-    # Rule 1: Use customer name directly
+    # Level 1: Direct Identification
     if c_name:
-        logger.info(f"Rule 1: Testing customer_name from JSON: '{c_name}'")
+        logger.info(f"Level 1: Testing customer_name from JSON: '{c_name}'")
         try:
             r_task = fetch_bip_receipts(client, user, pwd, customer_name=c_name)
             i_task = fetch_bip_invoices(client, user, pwd, customer_name=c_name)
@@ -219,53 +293,38 @@ async def _discover_potential_customers(
                 has_data = True
             
             if has_data:
-                logger.info(f"Rule 1: Confirmed customer '{c_name}' has ledger data.")
+                logger.info(f"Level 1: Confirmed customer '{c_name}' has ledger data.")
                 return [c_name]
-            logger.warning(f"Rule 1: Customer '{c_name}' has no ledger data. Falling back...")
+            logger.warning(f"Level 1: Customer '{c_name}' has no ledger data.")
         except Exception as e:
-            logger.warning(f"Rule 1 fetch failed: {e}")
+            logger.warning(f"Level 1 fetch failed: {e}")
 
-    # Rule 2 / Final Fallback 1: Use payment reference (Receipt Details Report)
-    if r_num:
-        logger.info(f"Rule 2: Searching Receipt Report using payment_reference '{r_num}'")
-        
-        def _verify_receipt(raw_receipts: list[dict[str, Any]]) -> str | None:
-            if raw_receipts:
-                cand_name = raw_receipts[0].get("BILL_CUSTOMER_NAME", "").strip()
-                if cand_name:
-                    return cand_name
-            return None
+    # Launch Level 2 (Receipt) and Level 3 (Invoice) Concurrently
+    logger.info("Executing concurrent search across Receipt and Invoice Reports...")
+    r_task = _discover_by_receipt(client, user, pwd, r_num)
+    i_task = _discover_by_invoice_sequence(client, user, pwd, payload.invoices)
+    
+    cand_receipt, cand_invoice = await asyncio.gather(r_task, i_task)
+    
+    # Cross-reference
+    intersection = cand_receipt.intersection(cand_invoice)
+    
+    if intersection:
+        if len(intersection) == 1:
+            logger.info(f"Concurrent Search matched on BOTH reports: {list(intersection)}")
+            return list(intersection)
+        else:
+            return await _disambiguate(client, user, pwd, intersection, payload)
+            
+    # If no intersection, combine all candidates
+    all_candidates = cand_receipt.union(cand_invoice)
+    if len(all_candidates) == 1:
+        logger.info(f"Concurrent Search resolved to single customer via one report: {list(all_candidates)}")
+        return list(all_candidates)
+    elif len(all_candidates) > 1:
+        return await _disambiguate(client, user, pwd, all_candidates, payload)
 
-        # Try exact reference
-        try:
-            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
-            discovered_name = _verify_receipt(_filter_data_rows(r_res))
-            if discovered_name:
-                logger.info(f"Rule 2 (Exact): Verified customer '{discovered_name}' via Receipt Score")
-                return [discovered_name]
-        except Exception as e:
-            logger.warning(f"Rule 2 (Exact) fetch failed: {e}")
-
-        # Try stripped reference
-        stripped_r_num = re.sub(r"[^a-zA-Z0-9]", "", r_num).lstrip("0").lower()
-        if stripped_r_num and len(stripped_r_num) >= 5 and stripped_r_num != r_num.lower():
-            logger.info(f"Rule 2 (Stripped): Searching Receipt Report using '{stripped_r_num}'")
-            try:
-                r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=stripped_r_num)
-                discovered_name = _verify_receipt(_filter_data_rows(r_res))
-                if discovered_name:
-                    logger.info(f"Rule 2 (Stripped): Verified customer '{discovered_name}' via Receipt Score")
-                    return [discovered_name]
-            except Exception as e:
-                logger.warning(f"Rule 2 (Stripped) fetch failed: {e}")
-
-    # Rule 3 / Final Fallback 2: Invoice Details Sequence
-    logger.info("Rule 3 / Final Fallback: Attempting to identify Customer Name using Invoice Details Report sequence...")
-    d_name = await _discover_by_invoice_sequence(client, user, pwd, payload.invoices)
-    if d_name:
-        return [d_name]
-
-    logger.warning("If the Customer Name cannot be identified from either report, return null.")
+    logger.warning("Final Fallback: If still unresolved, return NULL.")
     return []
 
 
