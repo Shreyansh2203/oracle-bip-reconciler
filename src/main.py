@@ -272,6 +272,15 @@ def _safe_str_match(s1: str | None, s2: str | None) -> bool:
     return str(s1).strip().lower() == str(s2).strip().lower()
 
 
+def _safe_float_match(f1: Any, f2: Any) -> bool:
+    try:
+        if f1 is None or f2 is None or str(f1).strip() == "" or str(f2).strip() == "":
+            return False
+        return abs(float(f1) - float(f2)) < 0.01
+    except (ValueError, TypeError):
+        return False
+
+
 @app.post("/v1/reconcile/batch", response_model=ReconciliationRequest | None)
 async def reconcile_data_batch(payload: ReconciliationRequest):
     request_id = str(uuid.uuid4())
@@ -327,12 +336,18 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
     # ── STEP 4: Map Invoices ──
     for invoice in payload.invoices:
         inv_num = str(invoice.invoice_number) if invoice.invoice_number else ""
+        inv_date = str(invoice.invoice_date).strip() if invoice.invoice_date else ""
+        inv_amt = invoice.invoice_amount
+        
         if not inv_num:
             continue
         
         for o_inv in all_invoices_raw:
             o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
-            if _safe_str_match(inv_num, o_num):
+            o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
+            o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
+            
+            if _safe_str_match(inv_num, o_num) and _safe_str_match(inv_date, o_date) and _safe_float_match(inv_amt, o_amt):
                 invoice.fusion_invoice_number = o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER")
                 invoice.fusion_invoice_date = o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE")
                 invoice.fusion_invoice_amount = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
