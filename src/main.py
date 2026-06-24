@@ -19,15 +19,7 @@ from src.config import get_oracle_url
 from src.constants import DEFAULT_TIMEOUT, MAX_CONNECTIONS, PHASE_CLOSED_OR_OTHER
 from src.models import ReconciliationRequest
 from src.services.oracle_bip import fetch_bip_invoices, fetch_bip_receipts
-from src.services.oracle_matcher import (
-    OracleInvoiceIndex,
-    OracleReceiptIndex,
-    match_invoice_by_customer,
-    match_invoices_bipartite,
-    match_receipt_in_memory,
-    safe_float_match,
-    safe_str_match,
-)
+
 
 load_dotenv()
 
@@ -153,8 +145,6 @@ async def _discover_potential_customers(
     3. If both are null -> search by invoice details, then verify by checking if a receipt exists with the total_amount & payment_date.
     """
     from src.constants import DEFAULT_CONCURRENCY
-    from src.services.oracle_matcher import score_receipt_candidate
-    from src.utils.date_formatter import format_oracle_date
 
     c_name = str(payload.customer_name).strip() if payload.customer_name else None
     r_num = str(payload.payment_reference).strip() if payload.payment_reference else None
@@ -163,22 +153,33 @@ async def _discover_potential_customers(
 
     # Rule 1: Use customer name
     if c_name:
-        logger.info(f"Rule 1: Discovered customer from JSON 'customer_name': {c_name}")
-        return [c_name]
+        logger.info(f"Rule 1: Testing customer_name from JSON: '{c_name}'")
+        try:
+            r_task = fetch_bip_receipts(client, user, pwd, customer_name=c_name)
+            i_task = fetch_bip_invoices(client, user, pwd, customer_name=c_name)
+            r_res, i_res = await asyncio.gather(r_task, i_task, return_exceptions=True)
+            has_data = False
+            if not isinstance(r_res, Exception) and _filter_data_rows(r_res):
+                has_data = True
+            if not isinstance(i_res, Exception) and _filter_data_rows(i_res):
+                has_data = True
+            
+            if has_data:
+                logger.info(f"Rule 1: Confirmed customer '{c_name}' has ledger data.")
+                return [c_name]
+            logger.warning(f"Rule 1: Customer '{c_name}' has no ledger data. Falling back...")
+        except Exception as e:
+            logger.warning(f"Rule 1 fetch failed: {e}")
 
     # Rule 2: If customer_name is null, use payment reference
     if r_num:
         logger.info(f"Rule 2: Searching Receipt Report using payment_reference '{r_num}'")
         
-        # Helper to verify receipt candidate
         def _verify_receipt(raw_receipts: list[dict[str, Any]]) -> str | None:
-            formatted_date = format_oracle_date(r_date) if r_date else None
-            for r in raw_receipts:
-                score = score_receipt_candidate(r, r_num, r_amt, formatted_date)
-                if score >= 50:
-                    cand_name = r.get("BILL_CUSTOMER_NAME", "").strip()
-                    if cand_name:
-                        return cand_name
+            if raw_receipts:
+                cand_name = raw_receipts[0].get("BILL_CUSTOMER_NAME", "").strip()
+                if cand_name:
+                    return cand_name
             return None
 
         # Try exact reference
@@ -265,53 +266,15 @@ async def _discover_potential_customers(
     return []
 
 
-def _try_match_receipt(
-    receipt_number: str, receipt_amount: float | None, receipt_date: str, customer_name: str, index: OracleReceiptIndex
-) -> dict[str, Any] | None:
-    """Try to match a receipt against a dataset. Returns match result or None."""
-    if not index.bip_receipts:
-        return None
-    result = match_receipt_in_memory(receipt_number, receipt_amount, receipt_date, customer_name, index)
-    if result.get("matched_in_oracle"):
-        return result
-    return None
-
-
-def _apply_receipt_match_result(payload: ReconciliationRequest, receipt_result: dict[str, Any]) -> None:
-    payload.fusion_receipt_number = receipt_result.get("fusion_receipt_number")
-    payload.fusion_receipt_date = receipt_result.get("fusion_receipt_date")
-    payload.fusion_customer_name = receipt_result.get("fusion_customer_name")
-    payload.fusion_customer_number = receipt_result.get("fusion_customer_number")
-    payload.fusion_currency = receipt_result.get("fusion_currency")
-    payload.fusion_receipt_status_code = receipt_result.get("fusion_receipt_status_code")
-    payload.fusion_applied_amount = receipt_result.get("fusion_applied_amount")
-    payload.match_phase = receipt_result.get("match_phase")
-    payload.match_rule = receipt_result.get("match_rule")
-
-
-def _apply_invoice_match_result(invoice: Any, invoice_result: dict[str, Any]) -> None:
-    invoice.fusion_invoice_number = invoice_result.get("fusion_invoice_number")
-    invoice.fusion_invoice_date = invoice_result.get("fusion_invoice_date")
-    invoice.fusion_invoice_amount = invoice_result.get("fusion_invoice_amount")
-    invoice.match_phase = invoice_result.get("match_phase")
-    invoice.match_rule = invoice_result.get("match_rule")
-
-
 @app.post("/v1/reconcile/batch", response_model=ReconciliationRequest | None)
 async def reconcile_data_batch(payload: ReconciliationRequest):
     request_id = str(uuid.uuid4())
-    logger.info(f"[{request_id}] Starting RECONCILIATION for customer {_redact(payload.customer_name)}")
-    start_time = time.time()
-
-    receipt_number = str(payload.payment_reference) if payload.payment_reference else ""
-    receipt_amount = payload.total_amount
-    receipt_date = str(payload.payment_date) if payload.payment_date else ""
-
+    logger.info(f"[{request_id}] Starting CUSTOMER DISCOVERY for payload")
+    
     client = get_http_client()
     user = os.getenv("ORACLE_USER", "")
     pwd = os.getenv("ORACLE_PASS", "")
 
-    # ── STEP 1: Discover Potential Customers ──
     try:
         potential_customers = await _discover_potential_customers(client, user, pwd, payload)
     except Exception as e:
@@ -321,104 +284,12 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
         ) from e
 
     if not potential_customers:
-        logger.warning(
-            f"[{request_id}] Unable to safely determine customer name from available identifiers. Returning null."
-        )
+        logger.warning(f"[{request_id}] Unable to determine customer name. Returning null.")
         return None
 
-    # Loop over all potential customers. First one to yield a successful match wins.
-    import copy
-
-    for customer_name in potential_customers:
-        logger.info(f"[{request_id}] Testing customer ledger: '{customer_name}'")
-        attempt_payload = copy.deepcopy(payload)
-
-        # ── STEP 2: Index Records for this Customer ──
-        i_task = fetch_bip_invoices(client, user, pwd, customer_name=customer_name)
-        r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
-        i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)
-
-        if isinstance(i_raw, Exception) or isinstance(r_raw, Exception):
-            err = i_raw if isinstance(i_raw, Exception) else r_raw
-            logger.error(f"[{request_id}] Oracle fetch failed during step 2: {err}")
-            raise HTTPException(status_code=502, detail=f"Oracle API error during ledger fetch: {err}")
-
-        all_invoices_raw = _filter_data_rows(i_raw)
-        all_receipts_raw = _filter_data_rows(r_raw)
-
-        all_invoices = OracleInvoiceIndex(all_invoices_raw)
-        all_receipts = OracleReceiptIndex(all_receipts_raw)
-
-        receipt_matched = False
-        matched_count = 0
-        unmatched_invoices = list(attempt_payload.invoices)
-
-        # ── STEP 3: Match Receipt ──
-        receipt_result = await asyncio.to_thread(
-            _try_match_receipt, receipt_number, receipt_amount, receipt_date, customer_name, all_receipts
-        )
-        if receipt_result:
-            _apply_receipt_match_result(attempt_payload, receipt_result)
-            receipt_matched = True
-
-        # ── STEP 4: Match Invoices (Exact) ──
-        still_unmatched = []
-        for invoice in unmatched_invoices:
-            invoice_num_str = str(invoice.invoice_number) if invoice.invoice_number else ""
-            invoice_date_str = str(invoice.invoice_date) if invoice.invoice_date else ""
-            invoice_amt_float = invoice.invoice_amount
-            document_num_str = str(invoice.customer_invoice_number) if invoice.customer_invoice_number else ""
-
-            result = await asyncio.to_thread(
-                match_invoice_by_customer,
-                invoice_num_str,
-                invoice_date_str,
-                invoice_amt_float,
-                document_num_str,
-                customer_name,
-                all_invoices,
-            )
-            if result.get("matched_in_oracle"):
-                _apply_invoice_match_result(invoice, result)
-                matched_count += 1
-            else:
-                still_unmatched.append(invoice)
-        unmatched_invoices = still_unmatched
-
-        # ── STEP 5: Match Invoices (Fuzzy Bipartite Fallback) ──
-        if unmatched_invoices and all_invoices_raw:
-            bipartite_results = await asyncio.to_thread(
-                match_invoices_bipartite, unmatched_invoices, customer_name, all_invoices, phase=PHASE_CLOSED_OR_OTHER
-            )
-            still_unmatched = []
-            for i, invoice in enumerate(unmatched_invoices):
-                if i in bipartite_results:
-                    _apply_invoice_match_result(invoice, bipartite_results[i])
-                    matched_count += 1
-                else:
-                    still_unmatched.append(invoice)
-            unmatched_invoices = still_unmatched
-
-        # ── EVALUATE SUCCESS ──
-        # If we found any match (either receipt or at least one invoice), this is the correct customer
-        if receipt_matched or matched_count > 0:
-            if not receipt_matched:
-                attempt_payload.add_warning("Receipt: No matching record found in Oracle.")
-            for invoice in unmatched_invoices:
-                inv_num = str(invoice.invoice_number) if invoice.invoice_number else "UNKNOWN"
-                attempt_payload.add_warning(f"Invoice {inv_num}: No matching record found in Oracle.")
-
-            duration = int((time.time() - start_time) * 1000)
-            logger.info(
-                f"[{request_id}] RECON COMPLETE: Customer='{customer_name}', Receipt={'YES' if receipt_matched else 'NO'}, "
-                f"Invoices={matched_count}/{len(attempt_payload.invoices)} matched in {duration}ms"
-            )
-            return attempt_payload
-
-        logger.info(
-            f"[{request_id}] Ledger for '{customer_name}' yielded zero matches. Moving to next potential customer."
-        )
-
-    # ── FINAL FAILURE ──
-    logger.info(f"[{request_id}] No matching records found across any potential customers. Returning null.")
-    return None
+    # We just take the first valid customer discovered
+    customer_name = potential_customers[0]
+    payload.fusion_customer_name = customer_name
+    
+    logger.info(f"[{request_id}] DISCOVERY COMPLETE: Customer='{customer_name}'. Returning payload without matching details per new rules.")
+    return payload
