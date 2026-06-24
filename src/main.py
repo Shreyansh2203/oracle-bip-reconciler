@@ -148,25 +148,10 @@ async def _discover_by_receipt(client: httpx.AsyncClient, user: str, pwd: str, r
                 return cand_name
         return None
 
-    try:
-        r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
-        cand = _verify_receipt(_filter_data_rows(r_res))
-        if cand:
-            return cand
-    except Exception as e:
-        logger.warning(f"Step 2 (Exact) fetch failed: {e}")
-
-    # Try stripped reference
-    stripped_r_num = re.sub(r"[^a-zA-Z0-9]", "", r_num).lstrip("0").lower()
-    if stripped_r_num and len(stripped_r_num) >= 5 and stripped_r_num != r_num.lower():
-        logger.info(f"Step 2 (Stripped): Searching Receipt Report using '{stripped_r_num}'")
-        try:
-            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=stripped_r_num)
-            cand = _verify_receipt(_filter_data_rows(r_res))
-            if cand:
-                return cand
-        except Exception as e:
-            logger.warning(f"Step 2 (Stripped) fetch failed: {e}")
+    r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
+    cand = _verify_receipt(_filter_data_rows(r_res))
+    if cand:
+        return cand
 
     return None
 
@@ -248,23 +233,14 @@ async def _discover_potential_customers(
 
     # Step 1: Direct Identification (Customer Name)
     if c_name:
-        logger.info(f"Step 1: Testing customer_name from JSON: '{c_name}'")
-        try:
-            r_task = fetch_bip_receipts(client, user, pwd, customer_name=c_name)
-            i_task = fetch_bip_invoices(client, user, pwd, customer_name=c_name)
-            r_res, i_res = await asyncio.gather(r_task, i_task, return_exceptions=True)
-            has_data = False
-            if not isinstance(r_res, Exception) and _filter_data_rows(r_res):
-                has_data = True
-            if not isinstance(i_res, Exception) and _filter_data_rows(i_res):
-                has_data = True
+        logger.info(f"Step 1: Testing customer_name from JSON: '{c_name}' in Receipt Details Report")
+        r_res = await fetch_bip_receipts(client, user, pwd, customer_name=c_name)
+        
+        if _filter_data_rows(r_res):
+            logger.info(f"Step 1: Confirmed customer '{c_name}' has ledger data.")
+            return [c_name]
             
-            if has_data:
-                logger.info(f"Step 1: Confirmed customer '{c_name}' has ledger data.")
-                return [c_name]
-            logger.warning(f"Step 1: Customer '{c_name}' has no ledger data. Moving to Step 2.")
-        except Exception as e:
-            logger.warning(f"Step 1 fetch failed: {e}")
+        logger.warning(f"Step 1: Customer '{c_name}' has no ledger data. Moving to Step 2.")
 
     # Step 2: Reference-Based Identification (Payment Reference)
     if r_num:
@@ -284,19 +260,7 @@ async def _discover_potential_customers(
     return []
 
 
-def _safe_str_match(s1: str | None, s2: str | None) -> bool:
-    if not s1 or not s2:
-        return False
-    return str(s1).strip().lower() == str(s2).strip().lower()
 
-
-def _safe_float_match(f1: Any, f2: Any) -> bool:
-    try:
-        if f1 is None or f2 is None or str(f1).strip() == "" or str(f2).strip() == "":
-            return False
-        return abs(float(f1) - float(f2)) < 0.01
-    except (ValueError, TypeError):
-        return False
 
 
 @app.post("/v1/reconcile/batch", response_model=ReconciliationRequest | None)
@@ -365,7 +329,7 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
             o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
             o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
             
-            if _safe_str_match(inv_num, o_num) and _safe_str_match(inv_date, o_date) and _safe_float_match(inv_amt, o_amt):
+            if str(inv_num) == str(o_num) and str(inv_date) == str(o_date) and str(inv_amt) == str(o_amt):
                 invoice.fusion_invoice_number = o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER")
                 invoice.fusion_invoice_date = o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE")
                 invoice.fusion_invoice_amount = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
