@@ -219,7 +219,7 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
 
 async def _discover_potential_customers(
     client: httpx.AsyncClient, user: str, pwd: str, payload: ReconciliationRequest
-) -> list[str]:
+) -> tuple[str | None, list[dict[str, Any]] | None]:
     c_name = str(payload.customer_name).strip() if payload.customer_name else None
     r_num = str(payload.payment_reference).strip() if payload.payment_reference else None
 
@@ -227,7 +227,7 @@ async def _discover_potential_customers(
     if not c_name and not r_num:
         logger.warning("Special Case Triggered: Both Customer Name and Payment Reference are NULL. Jumping to Step 3.")
         d_name = await _discover_by_invoice_sequence(client, user, pwd, payload.invoices)
-        return [d_name] if d_name else []
+        return d_name, None
 
     # Step 1: Direct Identification (Customer Name)
     if c_name:
@@ -236,7 +236,7 @@ async def _discover_potential_customers(
 
         if _filter_data_rows(r_res):
             logger.info(f"Step 1: Confirmed customer '{c_name}' has ledger data.")
-            return [c_name]
+            return c_name, r_res
 
         logger.warning(f"Step 1: Customer '{c_name}' has no ledger data. Moving to Step 2.")
 
@@ -245,17 +245,17 @@ async def _discover_potential_customers(
         d_name = await _discover_by_receipt(client, user, pwd, r_num)
         if d_name:
             logger.info(f"Step 2: Successfully identified customer '{d_name}' via Payment Reference.")
-            return [d_name]
+            return d_name, None
         logger.warning("Step 2 failed to identify customer. Moving to Step 3.")
 
     # Step 3: Invoice-Based Identification
     logger.info("Step 3: Attempting to identify Customer Name using Invoice Details Report sequence...")
     d_name = await _discover_by_invoice_sequence(client, user, pwd, payload.invoices)
     if d_name:
-        return [d_name]
+        return d_name, None
 
     logger.warning("Customer could not be identified after all steps. Returning NULL.")
-    return []
+    return None, None
 
 
 
@@ -272,27 +272,31 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
     pwd = os.getenv("ORACLE_PASS", "")
 
     try:
-        potential_customers = await _discover_potential_customers(client, user, pwd, payload)
+        customer_name, cached_r_res = await _discover_potential_customers(client, user, pwd, payload)
     except Exception as e:
         logger.error(f"[{request_id}] Oracle fetch failed: {e}")
         raise HTTPException(
             status_code=502, detail=f"Oracle API returned an error or timed out while fetching records: {e}"
         ) from e
 
-    if not potential_customers:
+    if not customer_name:
         logger.warning(f"[{request_id}] Unable to determine customer name. Returning null.")
         return None
 
-    # We just take the first valid customer discovered
-    customer_name = potential_customers[0]
     payload.fusion_customer_name = customer_name
 
     logger.info(f"[{request_id}] Fetching ledger to map columns for '{customer_name}'")
 
     # ── STEP 2: Fetch Ledger for this Customer ──
     i_task = fetch_bip_invoices(client, user, pwd, customer_name=customer_name)
-    r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
-    i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)
+    
+    if cached_r_res is not None:
+        logger.info(f"[{request_id}] Using cached Receipt Report from Step 1 discovery.")
+        r_raw = cached_r_res
+        i_raw = await i_task
+    else:
+        r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
+        i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)
 
     if isinstance(i_raw, Exception) or isinstance(r_raw, Exception):
         err = i_raw if isinstance(i_raw, Exception) else r_raw
