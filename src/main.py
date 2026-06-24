@@ -266,10 +266,17 @@ async def _discover_potential_customers(
     return []
 
 
+def _safe_str_match(s1: str | None, s2: str | None) -> bool:
+    if not s1 or not s2:
+        return False
+    return str(s1).strip().lower() == str(s2).strip().lower()
+
+
 @app.post("/v1/reconcile/batch", response_model=ReconciliationRequest | None)
 async def reconcile_data_batch(payload: ReconciliationRequest):
     request_id = str(uuid.uuid4())
-    logger.info(f"[{request_id}] Starting CUSTOMER DISCOVERY for payload")
+    logger.info(f"[{request_id}] Starting RECONCILIATION for payload")
+    start_time = time.time()
     
     client = get_http_client()
     user = os.getenv("ORACLE_USER", "")
@@ -291,5 +298,47 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
     customer_name = potential_customers[0]
     payload.fusion_customer_name = customer_name
     
-    logger.info(f"[{request_id}] DISCOVERY COMPLETE: Customer='{customer_name}'. Returning payload without matching details per new rules.")
+    logger.info(f"[{request_id}] Fetching ledger to map columns for '{customer_name}'")
+    
+    # ── STEP 2: Fetch Ledger for this Customer ──
+    i_task = fetch_bip_invoices(client, user, pwd, customer_name=customer_name)
+    r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
+    i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)
+
+    if isinstance(i_raw, Exception) or isinstance(r_raw, Exception):
+        err = i_raw if isinstance(i_raw, Exception) else r_raw
+        logger.error(f"[{request_id}] Oracle fetch failed during ledger fetch: {err}")
+        raise HTTPException(status_code=502, detail=f"Oracle API error during ledger fetch: {err}")
+
+    all_invoices_raw = _filter_data_rows(i_raw)
+    all_receipts_raw = _filter_data_rows(r_raw)
+
+    # ── STEP 3: Map Receipt ──
+    receipt_number = str(payload.payment_reference).strip() if payload.payment_reference else ""
+    if receipt_number:
+        for r in all_receipts_raw:
+            cand_num = str(r.get("RECEIPT_NUMBER", "")).strip()
+            if cand_num and (receipt_number.lower() in cand_num.lower() or cand_num.lower() in receipt_number.lower()):
+                payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
+                payload.fusion_receipt_date = r.get("RECEIPT_DATE")
+                payload.fusion_applied_amount = r.get("RECEIPT_AMOUNT")
+                break
+
+    # ── STEP 4: Map Invoices ──
+    for invoice in payload.invoices:
+        inv_num = str(invoice.invoice_number) if invoice.invoice_number else ""
+        if not inv_num:
+            continue
+        
+        for o_inv in all_invoices_raw:
+            o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
+            if _safe_str_match(inv_num, o_num):
+                invoice.fusion_invoice_number = o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER")
+                invoice.fusion_invoice_date = o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE")
+                invoice.fusion_invoice_amount = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
+                invoice.match_phase = "MATCHED"
+                break
+
+    duration = int((time.time() - start_time) * 1000)
+    logger.info(f"[{request_id}] RECON COMPLETE: Customer='{customer_name}'. Returning mapped payload in {duration}ms.")
     return payload
