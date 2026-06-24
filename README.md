@@ -8,11 +8,11 @@ Because upstream systems frequently send corrupted, misspelled, or missing custo
 
 The engine moves to the next step only if the current one fails or returns no results.
 
-### Step 1: Search by Customer Name
-If the JSON provides a `customer_name`, the API uses it directly to find the records.
+### Step 1: Search by Payment Reference
+If the JSON provides a `payment_reference`, the API uses it to exactly search the **Receipt Details Report**.
 
-### Step 2: Search by Payment Reference
-If Step 1 fails, the API uses the `payment_reference` to exactly search the **Receipt Details Report**.
+### Step 2: Search by Customer Name
+If Step 1 fails, the API uses the `customer_name` directly to find the records.
 
 ### Step 3: Search by Invoice Details
 If Step 2 fails (or if both Customer Name and Payment Reference are explicitly null), the API falls back to the **Invoice Details Report**. It applies parameters progressively to isolate a unique customer:

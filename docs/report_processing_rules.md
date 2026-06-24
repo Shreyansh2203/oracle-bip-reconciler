@@ -7,21 +7,21 @@ Follow these steps in order to identify the customer. Move to the next step only
 
 ---
 
-### Step 1 — Search by Customer Name *(Receipt Details Report)*
-Use the **Customer Name** directly as the search parameter.
-
-| Query Parameter | Source Field |
-|---|---|
-| `P_CUSTOMER_NAME` | Customer Name |
-
----
-
-### Step 2 — Search by Payment Reference *(Receipt Details Report)*
+### Step 1 — Search by Payment Reference *(Receipt Details Report)*
 Use the **Payment Reference** to locate the associated Customer Name.
 
 | Query Parameter | Source Field |
 |---|---|
 | `P_RECEIPT_NUMBER` | Payment Reference |
+
+---
+
+### Step 2 — Search by Customer Name *(Receipt Details Report)*
+Use the **Customer Name** directly as the search parameter.
+
+| Query Parameter | Source Field |
+|---|---|
+| `P_CUSTOMER_NAME` | Customer Name |
 
 ---
 
