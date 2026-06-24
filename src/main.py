@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import re
 import threading
 import time
 import uuid
@@ -16,10 +15,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_oracle_url
-from src.constants import DEFAULT_TIMEOUT, MAX_CONNECTIONS, PHASE_CLOSED_OR_OTHER
+from src.constants import DEFAULT_TIMEOUT, MAX_CONNECTIONS
 from src.models import ReconciliationRequest
 from src.services.oracle_bip import fetch_bip_invoices, fetch_bip_receipts
-
 
 load_dotenv()
 
@@ -138,9 +136,9 @@ def _filter_data_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 async def _discover_by_receipt(client: httpx.AsyncClient, user: str, pwd: str, r_num: str) -> str | None:
     if not r_num:
         return None
-        
+
     logger.info(f"Step 2: Searching Receipt Report using payment_reference '{r_num}'")
-    
+
     def _verify_receipt(raw_receipts: list[dict[str, Any]]) -> str | None:
         if raw_receipts:
             cand_name = raw_receipts[0].get("BILL_CUSTOMER_NAME", "").strip()
@@ -157,36 +155,36 @@ async def _discover_by_receipt(client: httpx.AsyncClient, user: str, pwd: str, r
 
 async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pwd: str, invoices: list) -> str | None:
     from src.constants import DEFAULT_CONCURRENCY
-    
+
     levels = [
         {"desc": "Step 3 (Priority 1: Invoice Number)", "use_amt": False, "use_date": False},
         {"desc": "Step 3 (Priority 2: Invoice Number + Amount)", "use_amt": True, "use_date": False},
         {"desc": "Step 3 (Priority 3: Invoice Number + Amount + Date)", "use_amt": True, "use_date": True},
     ]
-    
+
     for level in levels:
         logger.info(f"Executing {level['desc']} sequence...")
-        
+
         queries = []
         for inv in invoices:
             i_num = str(inv.invoice_number).strip() if inv.invoice_number else ""
             if not i_num:
                 continue
-                
+
             kwargs = {"invoice_number": i_num}
             if level["use_amt"] and inv.invoice_amount is not None:
                 kwargs["invoice_amount"] = str(inv.invoice_amount)
             if level["use_date"] and inv.invoice_date:
                 kwargs["invoice_date"] = str(inv.invoice_date).strip()
-                
+
             queries.append(kwargs)
-            
+
         if not queries:
             continue
-            
+
         chunk_size = DEFAULT_CONCURRENCY
         discovered_candidates = set()
-        
+
         for i in range(0, len(queries), chunk_size):
             chunk = queries[i : i + chunk_size]
             tasks = [fetch_bip_invoices(client, user, pwd, **kw) for kw in chunk]
@@ -207,7 +205,7 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
             finally:
                 for p in pending:
                     p.cancel()
-                    
+
         if len(discovered_candidates) == 1:
             d_name = list(discovered_candidates)[0]
             logger.info(f"Successfully isolated unique customer '{d_name}' at {level['desc']}")
@@ -216,7 +214,7 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
             logger.warning(f"Multiple customers found {list(discovered_candidates)} at {level['desc']}, narrowing down...")
         else:
             logger.warning(f"No customers found at {level['desc']}")
-            
+
     return None
 
 async def _discover_potential_customers(
@@ -235,11 +233,11 @@ async def _discover_potential_customers(
     if c_name:
         logger.info(f"Step 1: Testing customer_name from JSON: '{c_name}' in Receipt Details Report")
         r_res = await fetch_bip_receipts(client, user, pwd, customer_name=c_name)
-        
+
         if _filter_data_rows(r_res):
             logger.info(f"Step 1: Confirmed customer '{c_name}' has ledger data.")
             return [c_name]
-            
+
         logger.warning(f"Step 1: Customer '{c_name}' has no ledger data. Moving to Step 2.")
 
     # Step 2: Reference-Based Identification (Payment Reference)
@@ -268,7 +266,7 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
     request_id = str(uuid.uuid4())
     logger.info(f"[{request_id}] Starting RECONCILIATION for payload")
     start_time = time.time()
-    
+
     client = get_http_client()
     user = os.getenv("ORACLE_USER", "")
     pwd = os.getenv("ORACLE_PASS", "")
@@ -288,9 +286,9 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
     # We just take the first valid customer discovered
     customer_name = potential_customers[0]
     payload.fusion_customer_name = customer_name
-    
+
     logger.info(f"[{request_id}] Fetching ledger to map columns for '{customer_name}'")
-    
+
     # ── STEP 2: Fetch Ledger for this Customer ──
     i_task = fetch_bip_invoices(client, user, pwd, customer_name=customer_name)
     r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
@@ -320,15 +318,15 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
         inv_num = str(invoice.invoice_number) if invoice.invoice_number else ""
         inv_date = str(invoice.invoice_date).strip() if invoice.invoice_date else ""
         inv_amt = invoice.invoice_amount
-        
+
         if not inv_num:
             continue
-        
+
         for o_inv in all_invoices_raw:
             o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
             o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
             o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
-            
+
             if str(inv_num) == str(o_num) and str(inv_date) == str(o_date) and str(inv_amt) == str(o_amt):
                 invoice.fusion_invoice_number = o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER")
                 invoice.fusion_invoice_date = o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE")
