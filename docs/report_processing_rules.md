@@ -3,46 +3,57 @@
 ## Overview
 This logic provides a structured approach to identify customers using available data fields, with built-in fallback mechanisms for ambiguous or incomplete information.
 
-## Primary Identification Methods (in order of priority)
+Follow these steps in order to identify the customer. Move to the next step only if the current one fails or returns no results.
 
-### Level 1: Direct Identification
-If Customer Name is available → Use it directly to retrieve records.
+---
 
-### Level 2: Reference-Based Identification
-If Payment Reference is available → Use it to identify the associated Customer Name.
+### Step 1 — Search by Customer Name *(Receipt Details Report)*
+Use the **Customer Name** directly as the search parameter.
 
-### Level 3: Invoice-Based Identification
-If both Customer Name and Payment Reference are unavailable, use Invoice Details in this sequence:
+| Query Parameter | Source Field |
+|---|---|
+| `P_CUSTOMER_NAME` | Customer Name |
 
-| Step | Search Criteria | Action |
-|------|----------------|--------|
-| 3.1 | Invoice Number | Retrieve all matching records |
-| 3.2 | Invoice Number + Amount | Narrow results by adding amount |
-| 3.3 | Invoice Number + Amount + Date | Further refine using invoice date |
-| 3.4 | Amount + Date (if Invoice Number is null) | Search using financial details only |
+---
 
-## Handling Ambiguous Results
-When a search returns multiple matching records:
-- Cross-reference ALL available JSON fields (customer name, payment reference, amounts, dates)
-- Validate against Receipt and Invoice Details data
-- Confirm a match only when data is unambiguous and aligned
+### Step 2 — Search by Payment Reference *(Receipt Details Report)*
+Use the **Payment Reference** to locate the associated Customer Name.
 
-If no definitive match is found after Level 3:
-- Attempt the search in the alternative report (if searched Receipt Details, try Invoice Details, and vice versa)
-- If still unresolved, return NULL
+| Query Parameter | Source Field |
+|---|---|
+| `P_RECEIPT_NUMBER` | Payment Reference |
+| `P_CUSTOMER_NAME` | Customer Name |
+| `P_RECEIPT_DATE` | Payment Date |
+| `P_RECEIPT_AMOUNT` | Total Amount |
 
-## Available Search Fields
+---
 
-| Report Type | Fields |
-|-------------|--------|
-| Receipt Details | Customer Name, Payment Reference, Payment Date, Total Amount |
-| Invoice Details | Invoice Number, Invoice Date, Invoice Amount |
+### Step 3 — Search by Invoice Details *(Invoice Details Report)*
+Use invoice parameters to identify the customer. Apply them **progressively** based on results:
 
-## Key Principles
-✓ Use the most specific identifier available
-✓ Validate results against all related data fields
-✓ Fallback to alternative reports if primary search fails
-✓ Only commit to a match when data is conclusive
+| Priority | Parameters Used | When to Apply |
+|---|---|---|
+| 1st | `P_INVOICE_NUM` | Always start here — Invoice Number is a unique identifier |
+| 2nd | `P_INVOICE_NUM` + `P_INVOICE_AMOUNT` | If multiple customers are returned |
+| 3rd | `P_INVOICE_NUM` + `P_INVOICE_AMOUNT` + `P_INVOICE_DATE` | If still multiple customers are returned |
+
+| Query Parameter | Source Field |
+|---|---|
+| `P_CUSTOMER_NAME` | Customer Name |
+| `P_INVOICE_NUM` | Invoice Number |
+| `P_INVOICE_DATE` | Invoice Date |
+| `P_INVOICE_AMOUNT` | Invoice Amount |
+
+---
+
+### ⚠️ Special Case — Both Customer Name and Payment Reference are Null
+Skip Steps 1 and 2 entirely. **Go directly to Step 3** and use the Invoice Details sequence.
+
+---
+
+> **Note:** Customer Name is a common field available in **both** the Receipt Details Report and the Invoice Details Report and can be retrieved from either source.
+
+---
 
 ## Invoice Matching Logic
 For the final ledger reconciliation step, an invoice from the JSON payload maps successfully to an Oracle invoice record **only** when all three of the following details match perfectly:
