@@ -1,50 +1,45 @@
 # Customer Identification Logic
 
-## Objective
+## Overview
+This logic provides a structured approach to identify customers using available data fields, with built-in fallback mechanisms for ambiguous or incomplete information.
 
-Identify the **Customer Name**. Once the Customer Name is found, use it to retrieve the required records.
+## Primary Identification Methods (in order of priority)
 
-If the Customer Name cannot be identified from the **Receipt Details Report**, attempt to identify it using the **Invoice Details Report**. If the Customer Name still cannot be determined, return **null**.
+### Level 1: Direct Identification
+If Customer Name is available → Use it directly to retrieve records.
 
-## Search Priority
+### Level 2: Reference-Based Identification
+If Payment Reference is available → Use it to identify the associated Customer Name.
 
-### 1. Customer Name Available
+### Level 3: Invoice-Based Identification
+If both Customer Name and Payment Reference are unavailable, use Invoice Details in this sequence:
 
-* Use Customer Name directly to find the records.
+| Step | Search Criteria | Action |
+|------|----------------|--------|
+| 3.1 | Invoice Number | Retrieve all matching records |
+| 3.2 | Invoice Number + Amount | Narrow results by adding amount |
+| 3.3 | Invoice Number + Amount + Date | Further refine using invoice date |
+| 3.4 | Amount + Date (if Invoice Number is null) | Search using financial details only |
 
-### 2. Payment Reference Available
+## Handling Ambiguous Results
+When a search returns multiple matching records:
+- Cross-reference ALL available JSON fields (customer name, payment reference, amounts, dates)
+- Validate against Receipt and Invoice Details data
+- Confirm a match only when data is unambiguous and aligned
 
-* Use Payment Reference to identify the Customer Name.
-
-### 3. Invoice Details Available
-
-Use the following sequence until a unique customer is identified:
-
-1. Invoice Number
-2. Invoice Number + Invoice Amount
-3. Invoice Number + Invoice Amount + Invoice Date
-
-## Special Case
-
-If both Customer Name and Payment Reference are null in the JSON, use the Invoice Details sequence above.
+If no definitive match is found after Level 3:
+- Attempt the search in the alternative report (if searched Receipt Details, try Invoice Details, and vice versa)
+- If still unresolved, return NULL
 
 ## Available Search Fields
 
-### Receipt Details Report
+| Report Type | Fields |
+|-------------|--------|
+| Receipt Details | Customer Name, Payment Reference, Payment Date, Total Amount |
+| Invoice Details | Invoice Number, Invoice Date, Invoice Amount |
 
-* Customer Name
-* Payment Reference
-* Payment Date
-* Total Amount
-
-### Invoice Details Report
-
-* Invoice Number
-* Invoice Date
-* Invoice Amount
-
-## Final Fallback
-
-1. Attempt to identify the Customer Name using the Receipt Details Report.
-2. If not found, attempt to identify the Customer Name using the Invoice Details Report.
-3. If the Customer Name cannot be identified from either report, return **null**.
+## Key Principles
+✓ Use the most specific identifier available
+✓ Validate results against all related data fields
+✓ Fallback to alternative reports if primary search fails
+✓ Only commit to a match when data is conclusive
