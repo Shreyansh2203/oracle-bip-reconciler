@@ -137,7 +137,7 @@ async def _discover_by_receipt(client: httpx.AsyncClient, user: str, pwd: str, r
     if not r_num:
         return None
 
-    logger.info(f"Step 2: Searching Receipt Report using payment_reference '{r_num}'")
+    logger.info(f"Step 1: Searching Receipt Report using payment_reference '{r_num}'")
 
     def _verify_receipt(raw_receipts: list[dict[str, Any]]) -> str | None:
         if raw_receipts:
@@ -229,24 +229,24 @@ async def _discover_potential_customers(
         d_name = await _discover_by_invoice_sequence(client, user, pwd, payload.invoices)
         return d_name, None
 
-    # Step 1: Direct Identification (Customer Name)
-    if c_name:
-        logger.info(f"Step 1: Testing customer_name from JSON: '{c_name}' in Receipt Details Report")
-        r_res = await fetch_bip_receipts(client, user, pwd, customer_name=c_name)
-
-        if _filter_data_rows(r_res):
-            logger.info(f"Step 1: Confirmed customer '{c_name}' has ledger data.")
-            return c_name, r_res
-
-        logger.warning(f"Step 1: Customer '{c_name}' has no ledger data. Moving to Step 2.")
-
-    # Step 2: Reference-Based Identification (Payment Reference)
+    # Step 1: Reference-Based Identification (Payment Reference)
     if r_num:
         d_name = await _discover_by_receipt(client, user, pwd, r_num)
         if d_name:
-            logger.info(f"Step 2: Successfully identified customer '{d_name}' via Payment Reference.")
+            logger.info(f"Step 1: Successfully identified customer '{d_name}' via Payment Reference.")
             return d_name, None
-        logger.warning("Step 2 failed to identify customer. Moving to Step 3.")
+        logger.warning("Step 1 failed to identify customer. Moving to Step 2.")
+
+    # Step 2: Direct Identification (Customer Name)
+    if c_name:
+        logger.info(f"Step 2: Testing customer_name from JSON: '{c_name}' in Receipt Details Report")
+        r_res = await fetch_bip_receipts(client, user, pwd, customer_name=c_name)
+
+        if _filter_data_rows(r_res):
+            logger.info(f"Step 2: Confirmed customer '{c_name}' has ledger data.")
+            return c_name, r_res
+
+        logger.warning(f"Step 2: Customer '{c_name}' has no ledger data. Moving to Step 3.")
 
     # Step 3: Invoice-Based Identification
     logger.info("Step 3: Attempting to identify Customer Name using Invoice Details Report sequence...")
@@ -289,9 +289,9 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
 
     # ── STEP 2: Fetch Ledger for this Customer ──
     i_task = fetch_bip_invoices(client, user, pwd, customer_name=customer_name)
-    
+
     if cached_r_res is not None:
-        logger.info(f"[{request_id}] Using cached Receipt Report from Step 1 discovery.")
+        logger.info(f"[{request_id}] Using cached Receipt Report from Step 2 discovery.")
         r_raw = cached_r_res
         i_raw = await i_task
     else:
