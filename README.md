@@ -2,35 +2,27 @@
 
 This is a high-performance FastAPI service designed to reconcile upstream invoice payloads with real-time data from an Oracle ERP system using Oracle BI Publisher (BIP) reports.
 
-## Core Feature: The 5-Tier Customer Discovery Waterfall
+## Core Feature: Strict 3-Tier Customer Discovery Sequence
 
-Because upstream systems frequently send corrupted, misspelled, or missing customer names and payment references, this API utilizes a highly resilient 5-tier fallback search to reverse-engineer the correct customer identity directly from Oracle before attempting any ledger reconciliation. 
+Because upstream systems frequently send corrupted, misspelled, or missing customer names and payment references, this API utilizes a highly resilient sequence to identify the exact customer identity directly from Oracle before attempting any ledger reconciliation.
 
-If one priority fails to find a match, it gracefully falls back to the next, guaranteeing maximum match-rates without false positives.
+If the Customer Name cannot be identified from the **Receipt Details Report**, the system attempts to identify it using the **Invoice Details Report**. If it still cannot be determined, the API returns **null**.
 
-### Priority 1: Exact Payment Reference
-The API queries Oracle for the exact `payment_reference`. If exactly one receipt is found, it extracts the customer name associated with that receipt.
+### Priority 1: Customer Name Available
+If the JSON provides a `customer_name`, the API uses it directly to find the records.
 
-### Priority 1b: Stripped Payment Reference
-If the exact match fails, the API strips all non-alphanumeric characters and leading zeros from the reference. If the resulting string is at least 6 characters long, it queries Oracle again. This safely recovers payments where banks prepend codes (e.g. `WT-000000324185` -> `324185`).
+### Priority 2: Payment Reference Available (Receipt Details)
+If the Customer Name fails or is missing, the API uses the `payment_reference` to search the **Receipt Details Report**. It attempts an exact match, and if that fails, a stripped match (removing all non-alphanumeric characters and leading zeros).
 
-### Priority 2: Exact Customer Name
-If the reference fails, it queries Oracle for the `customer_name` string provided in the payload.
+### Priority 3: Invoice Details Sequence (Final Fallback)
+If both the Customer Name and Payment Reference are missing from the JSON, or if the Receipt Details Report failed to identify the customer, the system falls back to the **Invoice Details Report**.
 
-### Priority 3: Reference + Amount + Date
-If both single-parameter searches fail, the API queries Oracle using the exact combination of the `payment_reference`, `total_amount`, and `payment_date`. This handles cases where the customer name is entirely mangled.
+To avoid false positives, the API queries Oracle in a strict sequence to isolate exactly one unique customer:
+1. **Level 1**: Queries Oracle using ONLY the `invoice_number` across all provided invoices.
+2. **Level 2**: If multiple clashing customers are found (or none), it narrows the search using `invoice_number` + `invoice_amount`.
+3. **Level 3**: If still not uniquely identified, it narrows the search further using `invoice_number` + `invoice_amount` + `invoice_date`.
 
-### Priority 3b: Stripped Reference + Amount + Date
-Similar to Priority 1b, if the exact 3-way match fails, it queries Oracle again using the stripped numeric reference alongside the exact amount and date.
-
-### Priority 4: Strict Invoice-Level Discovery
-If all receipt searches fail (meaning the receipt is missing or the date/amounts don't align), the system falls back to the provided invoice lines. 
-To guarantee strict matching and avoid pulling irrelevant data, the API will **only** search for an invoice if the payload provides **all three** of the following parameters:
-1. `invoice_number`
-2. `invoice_date`
-3. `invoice_amount`
-
-If an invoice line possesses all three, they are sent to Oracle concurrently. If Oracle finds that specific invoice, the API extracts the `BILL_CUSTOMER_NAME` from it and uses it to locate the missing receipt.
+Once exactly one customer name is mathematically isolated from this sequence, the API adopts it and proceeds to the mapping phase.
 
 ## Asynchronous Architecture
 This engine is built on **FastAPI** and is 100% asynchronous. All heavy CPU-bound mathematical operations (e.g., Levenshtein distance calculations, SciPy's Hungarian algorithm for bipartite mapping) are automatically offloaded to a background thread pool via `asyncio.to_thread()`. This guarantees that the main event loop never blocks, allowing the server to handle thousands of concurrent reconciliation payloads simultaneously without freezing.
