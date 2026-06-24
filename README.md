@@ -12,7 +12,7 @@ The engine moves to the next step only if the current one fails or returns no re
 If the JSON provides a `customer_name`, the API uses it directly to find the records.
 
 ### Step 2: Search by Payment Reference
-If Step 1 fails, the API uses the `payment_reference` to search the **Receipt Details Report**. It attempts an exact match, and if that fails, a stripped match (removing all non-alphanumeric characters and leading zeros).
+If Step 1 fails, the API uses the `payment_reference` to exactly search the **Receipt Details Report**.
 
 ### Step 3: Search by Invoice Details
 If Step 2 fails (or if both Customer Name and Payment Reference are explicitly null), the API falls back to the **Invoice Details Report**. It applies parameters progressively to isolate a unique customer:
@@ -23,7 +23,7 @@ If Step 2 fails (or if both Customer Name and Payment Reference are explicitly n
 If a unique customer is still not identified after this rigorous sequence, the API gracefully returns `null`.
 
 ## Asynchronous Architecture
-This engine is built on **FastAPI** and is 100% asynchronous. All heavy CPU-bound mathematical operations (e.g., Levenshtein distance calculations, SciPy's Hungarian algorithm for bipartite mapping) are automatically offloaded to a background thread pool via `asyncio.to_thread()`. This guarantees that the main event loop never blocks, allowing the server to handle thousands of concurrent reconciliation payloads simultaneously without freezing.
+This engine is built on **FastAPI** and is 100% asynchronous. All heavy I/O operations and API requests to Oracle are automatically managed concurrently. This guarantees that the main event loop never blocks, allowing the server to handle thousands of concurrent reconciliation payloads simultaneously without freezing.
 
 ## Setup and Running
 
