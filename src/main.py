@@ -147,22 +147,81 @@ async def _discover_potential_customers(
     client: httpx.AsyncClient, user: str, pwd: str, payload: ReconciliationRequest
 ) -> list[str]:
     """
-    Smart targeted fetch returning a list of potential customer names using a 5-tier waterfall approach:
-    1. Exact payment_reference search.
-       (1b) Stripped alphanumeric payment_reference search.
-    2. Exact customer_name search.
-    3. Reference (locally filtering by Date + Amount) search.
-       (3b) Stripped reference (locally filtering by Date + Amount) search.
-    4. Strict Invoice Fallback (Invoice Number + Date + Amount).
+    Simplified Discovery Logic:
+    1. If customer_name exists -> return it.
+    2. If customer_name is null -> search by payment_reference and verify using Receipt Score.
+    3. If both are null -> search by invoice details, then verify by checking if a receipt exists with the total_amount & payment_date.
     """
-
     from src.constants import DEFAULT_CONCURRENCY
+    from src.services.oracle_matcher import score_receipt_candidate
+    from src.utils.date_formatter import format_oracle_date
 
-    async def _search_invoices_concurrently(inv_queries: list[dict[str, Any]]) -> list[str]:
+    c_name = str(payload.customer_name).strip() if payload.customer_name else None
+    r_num = str(payload.payment_reference).strip() if payload.payment_reference else None
+    r_date = str(payload.payment_date).strip() if payload.payment_date else None
+    r_amt = payload.total_amount
+
+    # Rule 1: Use customer name
+    if c_name:
+        logger.info(f"Rule 1: Discovered customer from JSON 'customer_name': {c_name}")
+        return [c_name]
+
+    # Rule 2: If customer_name is null, use payment reference
+    if r_num:
+        logger.info(f"Rule 2: Searching Receipt Report using payment_reference '{r_num}'")
+        
+        # Helper to verify receipt candidate
+        def _verify_receipt(raw_receipts: list[dict[str, Any]]) -> str | None:
+            formatted_date = format_oracle_date(r_date) if r_date else None
+            for r in raw_receipts:
+                score = score_receipt_candidate(r, r_num, r_amt, formatted_date)
+                if score >= 50:
+                    cand_name = r.get("BILL_CUSTOMER_NAME", "").strip()
+                    if cand_name:
+                        return cand_name
+            return None
+
+        # Try exact reference
+        try:
+            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
+            receipts_raw = _filter_data_rows(r_res)
+            discovered_name = _verify_receipt(receipts_raw)
+            if discovered_name:
+                logger.info(f"Rule 2 (Exact): Verified customer '{discovered_name}' via Receipt Score")
+                return [discovered_name]
+        except Exception as e:
+            logger.warning(f"Rule 2 (Exact) fetch failed: {e}")
+
+        # Try stripped reference (e.g. ignoring leading zeroes or spaces)
+        stripped_r_num = re.sub(r"[^a-zA-Z0-9]", "", r_num).lstrip("0").lower()
+        if stripped_r_num and len(stripped_r_num) >= 5 and stripped_r_num != r_num.lower():
+            logger.info(f"Rule 2 (Stripped): Searching Receipt Report using '{stripped_r_num}'")
+            try:
+                r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=stripped_r_num)
+                receipts_raw = _filter_data_rows(r_res)
+                discovered_name = _verify_receipt(receipts_raw)
+                if discovered_name:
+                    logger.info(f"Rule 2 (Stripped): Verified customer '{discovered_name}' via Receipt Score")
+                    return [discovered_name]
+            except Exception as e:
+                logger.warning(f"Rule 2 (Stripped) fetch failed: {e}")
+
+    # Rule 3: If both are null, use invoices
+    p4_queries = []
+    for inv in payload.invoices:
+        i_num = str(inv.invoice_number).strip() if inv.invoice_number else ""
+        i_date = str(inv.invoice_date).strip() if inv.invoice_date else ""
+        i_amt = inv.invoice_amount
+        if i_num and i_date and i_amt is not None:
+            p4_queries.append({"invoice_number": i_num, "invoice_date": i_date, "invoice_amount": str(i_amt)})
+
+    if p4_queries:
+        logger.info("Rule 3: Searching Invoice Report using provided invoices...")
         chunk_size = DEFAULT_CONCURRENCY
-        for i in range(0, len(inv_queries), chunk_size):
-            chunk = inv_queries[i : i + chunk_size]
-            logger.info(f"Priority 5: Searching {len(chunk)} invoices concurrently...")
+        
+        discovered_candidates = set()
+        for i in range(0, len(p4_queries), chunk_size):
+            chunk = p4_queries[i : i + chunk_size]
             tasks = [fetch_bip_invoices(client, user, pwd, **kwargs) for kwargs in chunk]
             pending = [asyncio.create_task(t) for t in tasks]
             try:
@@ -173,120 +232,36 @@ async def _discover_potential_customers(
                             i_res = task.result()
                             invoices_raw = _filter_data_rows(i_res)
                             if invoices_raw:
-                                discovered_name = invoices_raw[0].get("BILL_CUSTOMER_NAME", "")
-                                if discovered_name:
-                                    logger.info(f"Discovered customer name from Invoice Fallback: '{discovered_name}'")
-                                    return [discovered_name]
+                                d_name = invoices_raw[0].get("BILL_CUSTOMER_NAME", "").strip()
+                                if d_name:
+                                    discovered_candidates.add(d_name)
                         except Exception as e:
-                            logger.error(f"Invoice fallback fetch failed: {e}")
+                            logger.error(f"Rule 3 Invoice fetch failed: {e}")
             finally:
                 for p in pending:
                     p.cancel()
-        return []
 
-    c_name = str(payload.customer_name).strip() if payload.customer_name else None
-    r_num = str(payload.payment_reference).strip() if payload.payment_reference else None
-    r_date = str(payload.payment_date).strip() if payload.payment_date else None
-    r_amt = payload.total_amount
+        # "also match payment date and total amount just to confirm we are fetching correct records"
+        valid_customers = []
+        for cand_name in discovered_candidates:
+            logger.info(f"Rule 3 Verification: Checking receipt for '{cand_name}' (Amount: {r_amt}, Date: {r_date})")
+            try:
+                r_res = await fetch_bip_receipts(
+                    client, user, pwd, 
+                    customer_name=cand_name,
+                    receipt_amount=r_amt,
+                    receipt_date=r_date
+                )
+                receipts_raw = _filter_data_rows(r_res)
+                if receipts_raw:
+                    logger.info(f"Rule 3 Verification: Confirmed customer '{cand_name}' via matched receipt")
+                    valid_customers.append(cand_name)
+            except Exception as e:
+                logger.warning(f"Rule 3 Verification failed for '{cand_name}': {e}")
+                
+        return valid_customers
 
-    stripped_r_num = None
-    if r_num:
-        stripped_r_num = re.sub(r"[^a-zA-Z0-9]", "", r_num).lstrip("0").lower()
-        if len(stripped_r_num) < 6 or stripped_r_num == r_num.lower():
-            stripped_r_num = None
-
-    # Priority 1: payment_reference ONLY
-    if r_num:
-        logger.info("Priority 1: Searching by payment_reference ONLY")
-        try:
-            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
-            receipts_raw = _filter_data_rows(r_res)
-            if len(receipts_raw) == 1:
-                discovered_name = receipts_raw[0].get("BILL_CUSTOMER_NAME", "")
-                if discovered_name:
-                    logger.info(f"Priority 1 matched uniquely: '{discovered_name}'")
-                    return [discovered_name]
-        except Exception as e:
-            logger.warning(f"Priority 1 failed: {e}")
-
-    # Priority 1b: Stripped payment_reference ONLY
-    if stripped_r_num:
-        logger.info(f"Priority 1b: Searching by stripped payment_reference ONLY ({stripped_r_num})")
-        try:
-            r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=stripped_r_num)
-            receipts_raw = _filter_data_rows(r_res)
-            if len(receipts_raw) == 1:
-                discovered_name = receipts_raw[0].get("BILL_CUSTOMER_NAME", "")
-                if discovered_name:
-                    logger.info(f"Priority 1b matched uniquely: '{discovered_name}'")
-                    return [discovered_name]
-        except Exception as e:
-            logger.warning(f"Priority 1b failed: {e}")
-
-    # Priority 2: customer_name ONLY
-    if c_name:
-        logger.info("Priority 2: Searching by customer_name ONLY")
-        try:
-            r_res = await fetch_bip_receipts(client, user, pwd, customer_name=c_name)
-            receipts_raw = _filter_data_rows(r_res)
-            if receipts_raw:
-                logger.info(f"Priority 2 matched: '{c_name}'")
-                return [c_name]
-        except Exception as e:
-            logger.warning(f"Priority 2 failed: {e}")
-
-    # Priority 3: payment_reference + total_amount + payment_date
-    if r_num and r_amt is not None and r_date:
-        logger.info("Priority 3: Searching by reference + amount + date")
-        try:
-            r_res = await fetch_bip_receipts(
-                client, user, pwd, 
-                receipt_number=r_num,
-                receipt_amount=r_amt,
-                receipt_date=r_date
-            )
-            receipts_raw = _filter_data_rows(r_res)
-            if receipts_raw:
-                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in receipts_raw if r.get("BILL_CUSTOMER_NAME", "")})
-                if customers:
-                    logger.info(f"Priority 3 matched multiple/single customers: {customers}")
-                    return customers
-        except Exception as e:
-            logger.warning(f"Priority 3 failed: {e}")
-
-    # Priority 3b: Stripped payment_reference + total_amount + payment_date
-    if stripped_r_num and r_amt is not None and r_date:
-        logger.info(f"Priority 3b: Searching by stripped reference ({stripped_r_num}) + amount + date")
-        try:
-            r_res = await fetch_bip_receipts(
-                client, user, pwd, 
-                receipt_number=stripped_r_num,
-                receipt_amount=r_amt,
-                receipt_date=r_date
-            )
-            receipts_raw = _filter_data_rows(r_res)
-            if receipts_raw:
-                customers = list({r.get("BILL_CUSTOMER_NAME", "") for r in receipts_raw if r.get("BILL_CUSTOMER_NAME", "")})
-                if customers:
-                    logger.info(f"Priority 3b matched multiple/single customers: {customers}")
-                    return customers
-        except Exception as e:
-            logger.warning(f"Priority 3b failed: {e}")
-
-    # Priority 4: Strict Invoice Search Fallback (Concurrent)
-    p4_queries = []
-    for inv in payload.invoices:
-        i_num = str(inv.invoice_number).strip() if inv.invoice_number else ""
-        i_date = str(inv.invoice_date).strip() if inv.invoice_date else ""
-        i_amt = inv.invoice_amount
-        if i_num and i_date and i_amt is not None:
-            p4_queries.append({"invoice_number": i_num, "invoice_date": i_date, "invoice_amount": str(i_amt)})
-
-    if p4_queries:
-        logger.info("Priority 4: Strict Invoice Report Search Fallback (Num + Date + Amount)")
-        return await _search_invoices_concurrently(p4_queries)
-
-    logger.warning("No valid identifiers found to execute safe bulk-fetch.")
+    logger.warning("No valid identifiers found to execute discovery.")
     return []
 
 
