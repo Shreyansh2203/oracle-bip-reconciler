@@ -22,9 +22,6 @@ Use the **Payment Reference** to locate the associated Customer Name.
 | Query Parameter | Source Field |
 |---|---|
 | `P_RECEIPT_NUMBER` | Payment Reference |
-| `P_CUSTOMER_NAME` | Customer Name |
-| `P_RECEIPT_DATE` | Payment Date |
-| `P_RECEIPT_AMOUNT` | Total Amount |
 
 ---
 
