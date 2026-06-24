@@ -23,7 +23,6 @@ from src.constants import (
     BIP_MIN_WAIT_SECONDS,
     BIP_TIMEOUT,
 )
-from src.utils.date_formatter import format_bip_date
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +205,8 @@ async def fetch_bip_invoices(
         "/Custom/Shreyansh/Financials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
     ]
 
-    fmt_date = format_bip_date(invoice_date) if invoice_date else ""
+    from src.utils.date_formatter import format_oracle_date
+    fmt_date = format_oracle_date(invoice_date) if invoice_date else ""
 
     # ALWAYS pass all 4 parameters to prevent BI Publisher "Missing Parameter" faults
     parameters = [
