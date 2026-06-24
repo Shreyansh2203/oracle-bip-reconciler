@@ -4,19 +4,18 @@
 
 ## 1. Core Architecture
 The engine operates in two distinct phases:
-- **Phase 1: Network Layer (Targeted Bulk-Fetch)** -> Executes Oracle BIP queries to discover the customer and download their ledger.
-- **Phase 2 & 3: RAM Layer (In-Memory)** -> Executes deterministic rule cascades against the downloaded ledger. *Note: All heavy CPU-bound matching algorithms (Levenshtein, SciPy Hungarian bipartite mapping) are wrapped in `asyncio.to_thread()` to guarantee the FastAPI event loop remains 100% non-blocking and highly concurrent.*
+- **Phase 1: Network Layer (Customer Discovery)** -> Executes Oracle BIP queries to discover the customer and download their ledger.
+- **Phase 2 & 3: RAM Layer (In-Memory)** -> Executes deterministic Best-Fit rule cascades against the downloaded ledger. *Note: All heavy CPU-bound matching algorithms are wrapped in `asyncio.to_thread()` to guarantee the FastAPI event loop remains 100% non-blocking and highly concurrent.*
 
-## 2. Phase 1: Network Layer (Discovery Waterfall)
-The engine queries Oracle in a strict sequence to discover `BILL_CUSTOMER_NAME`. It stops at the first successful priority level.
-- **Priority 1**: `payment_reference` ONLY (Must yield EXACTLY 1 match).
-- **Priority 1b**: Stripped `payment_reference` ONLY (Strips non-alphanumeric/leading zeros, must be >= 6 chars, yields EXACTLY 1 match).
-- **Priority 2**: `customer_name` ONLY (Extracts exact string).
-- **Priority 3**: `payment_reference` + `total_amount` + `payment_date` (Yields ALL unique customer names).
-- **Priority 3b**: Stripped `payment_reference` + `total_amount` + `payment_date`.
-- **Priority 4**: `invoice_number` + `invoice_date` + `invoice_amount` (Strict concurrent 3-way search. Payload invoices missing ANY of these 3 fields are completely ignored).
+## 2. Phase 1: Network Layer (Customer Discovery)
+The engine queries Oracle in a strict, simplified 3-rule sequence to discover `BILL_CUSTOMER_NAME`. 
 
-*Multi-Customer Testing Loop*: If multiple potential customers are discovered (e.g., via P3), the engine tests Phase 2 and Phase 3 against each customer's ledger sequentially. The first customer ledger that successfully matches the payload is securely locked in.
+- **Rule 1: Customer Name Priority**
+  If `customer_name` is provided in the JSON, the engine immediately proceeds with it. No preliminary discovery search is performed.
+- **Rule 2: Payment Reference Fallback**
+  If `customer_name` is missing, the engine queries the Oracle Receipt Report using the `payment_reference`. To guarantee accuracy, the retrieved receipt is passed through the Best-Fit scoring algorithm. The customer name is only accepted if the receipt scores >= 50 points (proving amount/date alignment). Both exact and stripped references are attempted.
+- **Rule 3: Invoice Fallback (With Verification)**
+  If both `customer_name` and `payment_reference` are missing, the engine queries the Oracle Invoice Report using the provided `invoice_number`, `invoice_amount`, and `invoice_date`. Once a potential customer name is discovered, the engine executes a verification query to the Receipt Report, demanding an exact match on the JSON's `total_amount` and `payment_date` before accepting the customer name.
 
 ## 3. Best-Fit Matching Philosophy (Oracle as Source of Truth)
 The matching engine operates on the philosophy that **Oracle Fusion is the ultimate source of truth**. JSON payloads extracted via OCR or AI may contain typos, missing decimals, or date shifts. 
