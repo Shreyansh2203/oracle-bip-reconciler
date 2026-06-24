@@ -43,3 +43,11 @@ If no definitive match is found after Level 3:
 ✓ Validate results against all related data fields
 ✓ Fallback to alternative reports if primary search fails
 ✓ Only commit to a match when data is conclusive
+
+## Invoice Matching Logic
+For the final ledger reconciliation step, an invoice from the JSON payload maps successfully to an Oracle invoice record **only** when all three of the following details match perfectly:
+1. **Invoice Number**
+2. **Invoice Date**
+3. **Invoice Amount**
+
+If any of these three fields are null or misaligned, the specific invoice will fail to match, even if the parent Customer was successfully identified.
