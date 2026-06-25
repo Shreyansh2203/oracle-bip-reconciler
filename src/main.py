@@ -318,6 +318,14 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
                 break
 
     # ── STEP 4: Map Invoices ──
+    def _is_amount_equal(amt1: Any, amt2: Any) -> bool:
+        if amt1 is None or amt2 is None:
+            return False
+        try:
+            return float(amt1) == float(amt2)
+        except (ValueError, TypeError):
+            return False
+
     for invoice in payload.invoices:
         inv_num = str(invoice.invoice_number) if invoice.invoice_number else ""
         inv_date = str(invoice.invoice_date).strip() if invoice.invoice_date else ""
@@ -331,7 +339,7 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
             o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
             o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
 
-            if str(inv_num) == str(o_num) and str(inv_date) == str(o_date) and str(inv_amt) == str(o_amt):
+            if str(inv_num) == str(o_num) and str(inv_date) == str(o_date) and _is_amount_equal(inv_amt, o_amt):
                 invoice.fusion_invoice_number = o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER")
                 invoice.fusion_invoice_date = o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE")
                 invoice.fusion_invoice_amount = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
