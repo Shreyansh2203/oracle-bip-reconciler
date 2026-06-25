@@ -308,18 +308,7 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
     all_invoices_raw = _filter_data_rows(i_raw)
     all_receipts_raw = _filter_data_rows(r_raw)
 
-    # ── STEP 3: Map Receipt ──
-    receipt_number = str(payload.payment_reference).strip() if payload.payment_reference else ""
-    if receipt_number:
-        for r in all_receipts_raw:
-            cand_num = str(r.get("RECEIPT_NUMBER", "")).strip()
-            if cand_num and (receipt_number.lower() in cand_num.lower() or cand_num.lower() in receipt_number.lower()):
-                payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
-                payload.fusion_receipt_date = r.get("RECEIPT_DATE")
-                payload.fusion_applied_amount = r.get("RECEIPT_AMOUNT")
-                break
-
-    # ── STEP 4: Map Invoices ──
+    # ── Date and Amount Helpers ──
     def _normalize_date(raw: Any) -> str | None:
         """Normalize a date value into canonical YYYY-MM-DD format.
 
@@ -387,6 +376,32 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
             return float(amt1) == float(amt2)
         except (ValueError, TypeError):
             return False
+
+    # ── STEP 3: Map Receipt ──
+    receipt_number = str(payload.payment_reference).strip() if payload.payment_reference else ""
+    if receipt_number:
+        for r in all_receipts_raw:
+            cand_num = str(r.get("RECEIPT_NUMBER", "")).strip()
+            if cand_num and (receipt_number.lower() in cand_num.lower() or cand_num.lower() in receipt_number.lower()):
+                payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
+                payload.fusion_receipt_date = r.get("RECEIPT_DATE")
+                payload.fusion_applied_amount = r.get("RECEIPT_AMOUNT")
+                break
+    else:
+        # Fallback to total amount and payment date if payment_reference is not available
+        total_amt = payload.total_amount
+        pay_date = payload.payment_date
+        if total_amt is not None and pay_date:
+            for r in all_receipts_raw:
+                r_amt = r.get("RECEIPT_AMOUNT")
+                r_date = r.get("RECEIPT_DATE")
+                if _is_amount_equal(total_amt, r_amt) and _is_date_equal(pay_date, r_date):
+                    payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
+                    payload.fusion_receipt_date = r.get("RECEIPT_DATE")
+                    payload.fusion_applied_amount = r.get("RECEIPT_AMOUNT")
+                    break
+
+    # ── STEP 4: Map Invoices ──
 
     for invoice in payload.invoices:
         inv_num = str(invoice.invoice_number) if invoice.invoice_number else ""

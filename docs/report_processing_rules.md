@@ -52,6 +52,13 @@ Skip Steps 1 and 2 entirely. **Go directly to Step 3** and use the Invoice Detai
 
 ---
 
+## Receipt Mapping Logic
+For the final ledger reconciliation step, the receipt is mapped to an Oracle receipt record using the following priority:
+1. **Payment Reference**: If the JSON payload provides a `payment_reference`, it must be a substring match (case-insensitive) with the Oracle `RECEIPT_NUMBER`.
+2. **Amount and Date Fallback**: If the `payment_reference` is missing or null, the receipt maps successfully if both the `total_amount` and `payment_date` match an Oracle receipt's `RECEIPT_AMOUNT` and `RECEIPT_DATE` respectively. The date is compared using the same date normalization logic as invoices.
+
+---
+
 ## Invoice Matching Logic
 For the final ledger reconciliation step, an invoice from the JSON payload maps successfully to an Oracle invoice record **only** when all three of the following details match:
 1. **Invoice Number** — String exactly matches
