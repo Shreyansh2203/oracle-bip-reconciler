@@ -1,0 +1,50 @@
+{
+    "customer_name": "Garagepreneurs Internet",
+    "payment_reference": null,
+    "payment_date": "2022-10-14",
+    "header_id": 982369,
+    "invoices": [
+        {
+            "Line_ID": 349099,
+            "invoice_number": "1393074",
+            "invoice_date": "2025-03-12",
+            "invoice_amount": 1000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 925110,
+            "invoice_number": "2394193",
+            "invoice_date": "2022-10-10",
+            "invoice_amount": 70619921.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 700095,
+            "invoice_number": "2388122",
+            "invoice_date": "2022-10-07",
+            "invoice_amount": 48770096.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 629384,
+            "invoice_number": "2388121",
+            "invoice_date": "2022-10-07",
+            "invoice_amount": -48746584.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 352937,
+            "invoice_number": "2376110",
+            "invoice_date": "2022-09-30",
+            "invoice_amount": 222782953.73,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 293427386.73,
+    "confidence_score": 67
+}

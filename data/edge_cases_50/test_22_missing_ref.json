@@ -1,0 +1,50 @@
+{
+    "customer_name": "Dsoft Innovations",
+    "payment_reference": null,
+    "payment_date": "2022-10-07",
+    "header_id": 205571,
+    "invoices": [
+        {
+            "Line_ID": 982273,
+            "invoice_number": "2375129",
+            "invoice_date": "2022-09-30",
+            "invoice_amount": 44338.53,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 138655,
+            "invoice_number": "1052012",
+            "invoice_date": "2022-09-30",
+            "invoice_amount": 11563.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 658256,
+            "invoice_number": "2382107",
+            "invoice_date": "2022-09-30",
+            "invoice_amount": -700.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 571978,
+            "invoice_number": "2382119",
+            "invoice_date": "2022-09-30",
+            "invoice_amount": -80.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 588326,
+            "invoice_number": "2347195",
+            "invoice_date": "2022-09-17",
+            "invoice_amount": 87276.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 142397.53,
+    "confidence_score": 91
+}

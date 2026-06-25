@@ -1,0 +1,50 @@
+{
+    "customer_name": "Axis Bank",
+    "payment_reference": "RCJ_25Aug23_2",
+    "payment_date": "2023-08-25",
+    "header_id": 976959,
+    "invoices": [
+        {
+            "Line_ID": 427608,
+            "invoice_number": "1460041",
+            "invoice_date": "2025-11-20",
+            "invoice_amount": 5001.5,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 965834,
+            "invoice_number": "1458059",
+            "invoice_date": "2025-11-20",
+            "invoice_amount": 10000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 165113,
+            "invoice_number": "1384042",
+            "invoice_date": "2025-02-13",
+            "invoice_amount": 30001.5,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 972629,
+            "invoice_number": "1370039",
+            "invoice_date": "2024-07-31",
+            "invoice_amount": 200.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 328840,
+            "invoice_number": "202324INV112-1",
+            "invoice_date": "2024-06-27",
+            "invoice_amount": 20001.5,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 65204.5,
+    "confidence_score": 55
+}

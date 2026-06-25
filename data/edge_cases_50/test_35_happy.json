@@ -1,0 +1,50 @@
+{
+    "customer_name": "American Express Banking",
+    "payment_reference": "QCMIG202200001",
+    "payment_date": "2022-12-31",
+    "header_id": 405762,
+    "invoices": [
+        {
+            "Line_ID": 981453,
+            "invoice_number": "1421039",
+            "invoice_date": "2025-07-29",
+            "invoice_amount": 200.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 552428,
+            "invoice_number": "1386040",
+            "invoice_date": "2025-02-14",
+            "invoice_amount": 10000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 952908,
+            "invoice_number": "100010",
+            "invoice_date": "2024-06-18",
+            "invoice_amount": 110845.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 606949,
+            "invoice_number": "1322038",
+            "invoice_date": "2023-04-17",
+            "invoice_amount": 135000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 695707,
+            "invoice_number": "2398204",
+            "invoice_date": "2022-10-11",
+            "invoice_amount": 4071.71,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 260116.71,
+    "confidence_score": 92
+}

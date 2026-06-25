@@ -1,0 +1,50 @@
+{
+    "customer_name": "HSB_New_Customer_Test",
+    "payment_reference": null,
+    "payment_date": "2025-11-04",
+    "header_id": 325461,
+    "invoices": [
+        {
+            "Line_ID": 889957,
+            "invoice_number": "INV11",
+            "invoice_date": "2025-11-04",
+            "invoice_amount": 3000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 162156,
+            "invoice_number": "INV9",
+            "invoice_date": "2025-11-04",
+            "invoice_amount": 2000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 784318,
+            "invoice_number": "INV6",
+            "invoice_date": "2025-11-04",
+            "invoice_amount": 1000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 592493,
+            "invoice_number": "INV8",
+            "invoice_date": "2025-11-04",
+            "invoice_amount": 1000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 700012,
+            "invoice_number": "INV10",
+            "invoice_date": "2025-11-04",
+            "invoice_amount": 3000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 10000.0,
+    "confidence_score": 80
+}

@@ -1,0 +1,50 @@
+{
+    "customer_name": "Gokwik Commerce Solutions Private Limited",
+    "payment_reference": null,
+    "payment_date": "2022-12-13",
+    "header_id": 826177,
+    "invoices": [
+        {
+            "Line_ID": 329260,
+            "invoice_number": "UAT-BRKN/DEC/B2B083",
+            "invoice_date": "2022-12-31",
+            "invoice_amount": 34446.3,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 885963,
+            "invoice_number": "SE-BRKN/DEC/B2B083",
+            "invoice_date": "2022-12-31",
+            "invoice_amount": 34446.3,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 897419,
+            "invoice_number": "UAT-JE-272654",
+            "invoice_date": "2022-12-13",
+            "invoice_amount": -1353.29,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 955923,
+            "invoice_number": "SE-JE-272654",
+            "invoice_date": "2022-12-13",
+            "invoice_amount": -1353.29,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 488744,
+            "invoice_number": "UAT-JE-271093",
+            "invoice_date": "2022-12-01",
+            "invoice_amount": -6792.64,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 59393.38000000002,
+    "confidence_score": 82
+}

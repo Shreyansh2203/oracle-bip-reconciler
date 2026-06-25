@@ -1,0 +1,50 @@
+{
+    "customer_name": "Amazon Digital Services",
+    "payment_reference": "HSBCN21174763291",
+    "payment_date": "2021-06-23",
+    "header_id": 676041,
+    "invoices": [
+        {
+            "Line_ID": 775126,
+            "invoice_number": "97011",
+            "invoice_date": "2024-05-15",
+            "invoice_amount": -5000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 132207,
+            "invoice_number": "1348040",
+            "invoice_date": "2024-05-15",
+            "invoice_amount": 10000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 737656,
+            "invoice_number": "98010",
+            "invoice_date": "2024-05-15",
+            "invoice_amount": 10000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 742068,
+            "invoice_number": "1347040",
+            "invoice_date": "2024-05-15",
+            "invoice_amount": 10000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 541294,
+            "invoice_number": "1347039",
+            "invoice_date": "2024-02-14",
+            "invoice_amount": 10000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 35000.0,
+    "confidence_score": 56
+}

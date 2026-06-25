@@ -1,0 +1,50 @@
+{
+    "customer_name": "Clix Capital Services Private Limited",
+    "payment_reference": "274947",
+    "payment_date": "2022-12-30",
+    "header_id": 592811,
+    "invoices": [
+        {
+            "Line_ID": 609815,
+            "invoice_number": "1270020",
+            "invoice_date": "2023-06-05",
+            "invoice_amount": 15001.5,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 708960,
+            "invoice_number": "1268025",
+            "invoice_date": "2023-06-01",
+            "invoice_amount": 400000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 796555,
+            "invoice_number": "1270016",
+            "invoice_date": "2023-05-31",
+            "invoice_amount": 55001.5,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 674363,
+            "invoice_number": "1270015",
+            "invoice_date": "2023-05-31",
+            "invoice_amount": 45000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 794686,
+            "invoice_number": "1270019",
+            "invoice_date": "2023-05-31",
+            "invoice_amount": 10001.5,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 525004.5,
+    "confidence_score": 51
+}

@@ -1,0 +1,50 @@
+{
+    "customer_name": "Makemytrip",
+    "payment_reference": "N133221958220477",
+    "payment_date": "2022-05-13",
+    "header_id": 542997,
+    "invoices": [
+        {
+            "Line_ID": 815966,
+            "invoice_number": "2413140",
+            "invoice_date": "2022-10-14",
+            "invoice_amount": 564246.04,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 886178,
+            "invoice_number": "2395228",
+            "invoice_date": "2022-10-11",
+            "invoice_amount": 72087.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 293571,
+            "invoice_number": "2395229",
+            "invoice_date": "2022-10-11",
+            "invoice_amount": 50645.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 661755,
+            "invoice_number": "2395235",
+            "invoice_date": "2022-10-11",
+            "invoice_amount": 3375799.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 939602,
+            "invoice_number": "2395231",
+            "invoice_date": "2022-10-11",
+            "invoice_amount": 79695.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 4142472.04,
+    "confidence_score": 67
+}

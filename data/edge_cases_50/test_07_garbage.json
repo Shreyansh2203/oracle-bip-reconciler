@@ -1,0 +1,16 @@
+{
+    "customer_name": "GARBAGE",
+    "payment_reference": "GARBAGE",
+    "payment_date": "2024-11-13",
+    "header_id": 988889,
+    "invoices": [
+        {
+            "Line_ID": 1,
+            "invoice_number": "GARB",
+            "invoice_date": "2024",
+            "invoice_amount": 10.0
+        }
+    ],
+    "total_amount": 0.0,
+    "confidence_score": 97
+}
