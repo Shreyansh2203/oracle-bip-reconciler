@@ -1,0 +1,50 @@
+{
+    "customer_name": "IIFL FINANCE LIMITED",
+    "payment_reference": null,
+    "payment_date": "2022-12-29",
+    "header_id": 518134,
+    "invoices": [
+        {
+            "Line_ID": 805750,
+            "invoice_number": "UAT-BRKN/DEC/B2B172",
+            "invoice_date": "2022-12-31",
+            "invoice_amount": 172225.1,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 967870,
+            "invoice_number": "UAT-BRKN/DEC/B2B092",
+            "invoice_date": "2022-12-31",
+            "invoice_amount": 704825.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 690612,
+            "invoice_number": "SE-BRKN/DEC/B2B172",
+            "invoice_date": "2022-12-31",
+            "invoice_amount": 172225.1,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 285460,
+            "invoice_number": "UAT-BRKN/DEC/B2B022",
+            "invoice_date": "2022-12-31",
+            "invoice_amount": 618.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 690441,
+            "invoice_number": "SE-BRKN/DEC/B2B092",
+            "invoice_date": "2022-12-31",
+            "invoice_amount": 704825.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 1754718.2,
+    "confidence_score": 57
+}

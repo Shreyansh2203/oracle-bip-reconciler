@@ -1,0 +1,50 @@
+{
+    "customer_name": "GARBAGE_CUSTOMER_NAME_999",
+    "payment_reference": "INVALID_REF_000",
+    "payment_date": "2022-10-14",
+    "header_id": 484430,
+    "invoices": [
+        {
+            "Line_ID": 348349,
+            "invoice_number": "2369178",
+            "invoice_date": "2022-09-30",
+            "invoice_amount": 29100.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 203518,
+            "invoice_number": "2370267",
+            "invoice_date": "2022-09-30",
+            "invoice_amount": 4124122.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 367023,
+            "invoice_number": "1052014",
+            "invoice_date": "2022-09-30",
+            "invoice_amount": 24080.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 536904,
+            "invoice_number": "2262249",
+            "invoice_date": "2022-08-31",
+            "invoice_amount": 1460301.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 673914,
+            "invoice_number": "2268123",
+            "invoice_date": "2022-08-31",
+            "invoice_amount": -197.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 5637406.0,
+    "confidence_score": 87
+}

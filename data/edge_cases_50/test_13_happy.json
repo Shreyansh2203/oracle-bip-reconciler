@@ -1,0 +1,50 @@
+{
+    "customer_name": "Just Dial",
+    "payment_reference": "AXISP00328403856",
+    "payment_date": "2022-10-14",
+    "header_id": 792804,
+    "invoices": [
+        {
+            "Line_ID": 447903,
+            "invoice_number": "1076012",
+            "invoice_date": "2022-11-02",
+            "invoice_amount": 810600.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 278913,
+            "invoice_number": "1064050",
+            "invoice_date": "2022-10-21",
+            "invoice_amount": 109045.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 882205,
+            "invoice_number": "2412123",
+            "invoice_date": "2022-10-15",
+            "invoice_amount": 579000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 130743,
+            "invoice_number": "2412127",
+            "invoice_date": "2022-10-15",
+            "invoice_amount": 579000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 467849,
+            "invoice_number": "2380116",
+            "invoice_date": "2022-10-04",
+            "invoice_amount": 110975.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 2188620.0,
+    "confidence_score": 63
+}

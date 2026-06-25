@@ -1,0 +1,50 @@
+{
+    "customer_name": "UAT Test India Private Limited",
+    "payment_reference": "123",
+    "payment_date": "2023-02-28",
+    "header_id": 913903,
+    "invoices": [
+        {
+            "Line_ID": 133672,
+            "invoice_number": "1194012",
+            "invoice_date": "2023-02-28",
+            "invoice_amount": -3998.5,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 592652,
+            "invoice_number": "1193012",
+            "invoice_date": "2023-02-28",
+            "invoice_amount": 100000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 647092,
+            "invoice_number": "1194011",
+            "invoice_date": "2023-02-28",
+            "invoice_amount": -20998.5,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 698798,
+            "invoice_number": "1193010",
+            "invoice_date": "2023-02-28",
+            "invoice_amount": 21000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 296143,
+            "invoice_number": "1192010",
+            "invoice_date": "2023-02-27",
+            "invoice_amount": 23401.5,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 119404.5,
+    "confidence_score": 88
+}

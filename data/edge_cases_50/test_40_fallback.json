@@ -1,0 +1,50 @@
+{
+    "customer_name": "GARBAGE_CUSTOMER_NAME_999",
+    "payment_reference": "INVALID_REF_000",
+    "payment_date": "2022-10-03",
+    "header_id": 486106,
+    "invoices": [
+        {
+            "Line_ID": 860164,
+            "invoice_number": "SE-JE-274128",
+            "invoice_date": "2022-12-23",
+            "invoice_amount": 162000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 831680,
+            "invoice_number": "UAT-JE-274128",
+            "invoice_date": "2022-12-23",
+            "invoice_amount": 162000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 432632,
+            "invoice_number": "UAT-BRKN/DEC/CNB006",
+            "invoice_date": "2022-12-16",
+            "invoice_amount": -150000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 509648,
+            "invoice_number": "SE-BRKN/DEC/CNB006",
+            "invoice_date": "2022-12-16",
+            "invoice_amount": -150000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 758580,
+            "invoice_number": "UAT-BRKNTSK2300474",
+            "invoice_date": "2022-07-31",
+            "invoice_amount": 150000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 174000.0,
+    "confidence_score": 97
+}
