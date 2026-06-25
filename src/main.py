@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -318,6 +320,66 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
                 break
 
     # ── STEP 4: Map Invoices ──
+    def _normalize_date(raw: Any) -> str | None:
+        """Normalize a date value into canonical YYYY-MM-DD format.
+
+        Handles industry-standard variations:
+          - Separators: slash, dash, dot, space  (2026/10/05, 2026-10-05, 05.10.2026)
+          - Orderings:  YYYY-MM-DD, DD-MM-YYYY, MM-DD-YYYY, DD/MM/YYYY …
+          - Month names: 05-Jan-2026, January 5 2026, 5 Jan 2026
+          - Compact:     20261005
+          - Timestamps:  2026-10-05T00:00:00, 2026-10-05 00:00:00+05:30
+        Returns None when the value cannot be parsed.
+        """
+        if raw is None:
+            return None
+        s = str(raw).strip()
+        if not s:
+            return None
+
+        # Strip trailing timestamp portions (T00:00:00, T12:30:00Z, etc.)
+        s = re.split(r"[T ]", s)[0].strip()
+
+        # Ordered from most specific to least specific to avoid ambiguity
+        formats = [
+            # ISO / Oracle canonical
+            "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
+            # Day first (common in invoices)
+            "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y",
+            # US style
+            "%m-%d-%Y", "%m/%d/%Y", "%m.%d.%Y",
+            # Two-digit year variants
+            "%Y-%m-%d", "%d-%m-%y", "%m-%d-%y",
+            "%d/%m/%y", "%m/%d/%y",
+            # Month name variants
+            "%d-%b-%Y", "%d-%b-%y", "%d %b %Y", "%d %b %y",
+            "%b %d, %Y", "%b %d %Y",
+            "%d-%B-%Y", "%d %B %Y", "%B %d, %Y", "%B %d %Y",
+            # Compact (YYYYMMDD)
+            "%Y%m%d",
+        ]
+
+        for fmt in formats:
+            try:
+                dt = datetime.strptime(s, fmt)
+                # Guard against DD-MM vs MM-DD ambiguity:
+                # If year < 100 it was a 2-digit year; strptime already handled it.
+                # If month > 12 the parse would have failed, so the ordering is safe.
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+
+        return None
+
+    def _is_date_equal(date1: Any, date2: Any) -> bool:
+        """Compare two dates after normalizing both to YYYY-MM-DD."""
+        n1 = _normalize_date(date1)
+        n2 = _normalize_date(date2)
+        if n1 is None or n2 is None:
+            # Fallback: raw string comparison (preserves old behaviour)
+            return str(date1).strip() == str(date2).strip()
+        return n1 == n2
+
     def _is_amount_equal(amt1: Any, amt2: Any) -> bool:
         if amt1 is None or amt2 is None:
             return False
@@ -339,7 +401,7 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
             o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
             o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
 
-            if str(inv_num) == str(o_num) and str(inv_date) == str(o_date) and _is_amount_equal(inv_amt, o_amt):
+            if str(inv_num) == str(o_num) and _is_date_equal(inv_date, o_date) and _is_amount_equal(inv_amt, o_amt):
                 invoice.fusion_invoice_number = o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER")
                 invoice.fusion_invoice_date = o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE")
                 invoice.fusion_invoice_amount = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
