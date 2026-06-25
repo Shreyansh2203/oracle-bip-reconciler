@@ -1,0 +1,26 @@
+{
+    "customer_name": "ASIAN PAINTS",
+    "payment_reference": "PRE-7878",
+    "payment_date": "2024-10-23",
+    "header_id": 957803,
+    "invoices": [
+        {
+            "Line_ID": 573177,
+            "invoice_number": "16002",
+            "invoice_date": "2024-10-23",
+            "invoice_amount": 8000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 620879,
+            "invoice_number": "16001",
+            "invoice_date": "2024-10-23",
+            "invoice_amount": 45000.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 53000.0,
+    "confidence_score": 95
+}
