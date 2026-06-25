@@ -1,0 +1,30 @@
+{
+  "customer_name": "Cartier House Care Centre Partnership",
+  "payment_reference": "EFT00000542",
+  "payment_date": "2025/11/28",
+  "invoices": [
+    {
+      "invoice_number": "225812831804",
+      "invoice_date": "2025/11/14",
+      "invoice_amount": 144.98,
+      "description": null,
+      "customer_invoice_number": "00000000000026995",
+      "storeNo": null
+    }
+  ],
+  "total_amount": 144.98,
+  "confidence_score": 0.83,
+  "confidence_label": "HIGH",
+  "invoice_count": 1,
+  "_meta": {
+    "file_kind": "native_pdf",
+    "filename": "144.98 W.pdf",
+    "input_tokens": 5662,
+    "output_tokens": 128,
+    "total_tokens": 5790,
+    "api_calls": 2,
+    "response_time_ms": 2488,
+    "num_pages": 1,
+    "warnings": []
+  }
+}
