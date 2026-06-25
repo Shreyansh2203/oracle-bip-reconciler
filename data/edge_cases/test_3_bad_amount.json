@@ -1,0 +1,26 @@
+{
+    "customer_name": "Accenture Solutions",
+    "payment_reference": null,
+    "payment_date": "2025-06-22",
+    "header_id": 442078,
+    "invoices": [
+        {
+            "Line_ID": 627901,
+            "invoice_number": "12047",
+            "invoice_date": "2025-06-22",
+            "invoice_amount": 850.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        },
+        {
+            "Line_ID": 539621,
+            "invoice_number": "12021",
+            "invoice_date": "2025-06-19",
+            "invoice_amount": 70.0,
+            "customer_invoice_number": "",
+            "storeNo": ""
+        }
+    ],
+    "total_amount": 920.0,
+    "confidence_score": 85
+}
