@@ -53,9 +53,19 @@ Skip Steps 1 and 2 entirely. **Go directly to Step 3** and use the Invoice Detai
 ---
 
 ## Invoice Matching Logic
-For the final ledger reconciliation step, an invoice from the JSON payload maps successfully to an Oracle invoice record **only** when all three of the following details match perfectly:
-1. **Invoice Number** (String exactly matches)
-2. **Invoice Date** (String exactly matches)
-3. **Invoice Amount** (Evaluated mathematically, e.g., `8000.0` matches `"8000"`)
+For the final ledger reconciliation step, an invoice from the JSON payload maps successfully to an Oracle invoice record **only** when all three of the following details match:
+1. **Invoice Number** — String exactly matches
+2. **Invoice Date** — Compared after **date normalization** (see below)
+3. **Invoice Amount** — Evaluated mathematically, e.g., `8000.0` matches `"8000"`
+
+### Date Normalization
+Dates from the JSON payload and Oracle are normalized to a canonical `YYYY-MM-DD` format before comparison. This handles industry-standard variations including:
+- **Separators**: slashes, dashes, dots (`2026/10/05`, `2026-10-05`, `05.10.2026`)
+- **Orderings**: `YYYY-MM-DD`, `DD-MM-YYYY`, `MM-DD-YYYY`
+- **Month names**: `05-Jan-2026`, `January 5 2026`, `5 Jan 2026`
+- **Compact**: `20261005`
+- **Timestamps**: trailing time portions are stripped (`2026-10-05T00:00:00`)
+
+If a date cannot be parsed by any known format, the system falls back to a raw string comparison.
 
 If any of these three fields are null or misaligned, the specific invoice will fail to match, even if the parent Customer was successfully identified.
