@@ -57,13 +57,24 @@ For the final ledger reconciliation step, the receipt is mapped to an Oracle rec
 1. **Payment Reference**: If the JSON payload provides a `payment_reference`, it must be a substring match (case-insensitive) with the Oracle `RECEIPT_NUMBER`.
 2. **Amount and Date Fallback**: If the `payment_reference` is missing or null, the receipt maps successfully if both the `total_amount` and `payment_date` match an Oracle receipt's `RECEIPT_AMOUNT` and `RECEIPT_DATE` respectively. The date is compared using the same date normalization logic as invoices.
 
+**Receipt Backfill:**
+Once successfully mapped, the payload's `payment_reference`, `payment_date`, `total_amount`, and `customer_name` are automatically backfilled using the truthful data from the Oracle report if they were originally missing or incorrect. Additional fields like `fusion_customer_number`, `fusion_currency`, and `fusion_receipt_status_code` are also populated.
+
 ---
 
-## Invoice Matching Logic
-For the final ledger reconciliation step, an invoice from the JSON payload maps successfully to an Oracle invoice record **only** when all three of the following details match:
-1. **Invoice Number** — String exactly matches
-2. **Invoice Date** — Compared after **date normalization** (see below)
-3. **Invoice Amount** — Evaluated mathematically, e.g., `8000.0` matches `"8000"`
+## Invoice Matching Logic (Tiered Fallback)
+For the final ledger reconciliation step, an invoice from the JSON payload attempts to map to an Oracle invoice record using a tiered fallback strategy. This handles OCR errors and missing fields by safely searching the customer's isolated ledger. 
+
+The system tracks mapped invoices to prevent assigning the same Oracle invoice twice.
+
+1. **3-Way Match (Highest Priority)**: Invoice Number, Date, and Amount all match.
+2. **2-Way Match**: Two out of three fields match (Number + Date, Number + Amount, or Date + Amount). This is only accepted if exactly *one* unique invoice matches these two fields in the remaining ledger.
+3. **1-Way Match (Lowest Priority)**: Only one field matches (Number, Date, or Amount). This is only accepted if exactly *one* unique invoice matches this field in the remaining ledger.
+
+*Note: Invoice Number matching allows for partial substrings (e.g. truncated OCR numbers) if the string is at least 5 characters long.*
+
+**Invoice Backfill:**
+Once successfully mapped, the payload's `invoice_number`, `invoice_date`, and `invoice_amount` are automatically corrected to reflect the exact data from the Oracle report, effectively repairing any OCR typos.
 
 ### Date Normalization
 Dates from the JSON payload and Oracle are normalized to a canonical `YYYY-MM-DD` format before comparison. This handles industry-standard variations including:
@@ -74,5 +85,3 @@ Dates from the JSON payload and Oracle are normalized to a canonical `YYYY-MM-DD
 - **Timestamps**: trailing time portions are stripped (`2026-10-05T00:00:00`)
 
 If a date cannot be parsed by any known format, the system falls back to a raw string comparison.
-
-If any of these three fields are null or misaligned, the specific invoice will fail to match, even if the parent Customer was successfully identified.
