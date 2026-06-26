@@ -20,6 +20,7 @@ from src.config import get_oracle_url
 from src.constants import DEFAULT_TIMEOUT, MAX_CONNECTIONS
 from src.models import ReconciliationRequest
 from src.services.oracle_bip import fetch_bip_invoices, fetch_bip_receipts
+from src.utils.validators import sanitize_float_val
 
 load_dotenv()
 
@@ -189,24 +190,26 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
 
         for i in range(0, len(queries), chunk_size):
             chunk = queries[i : i + chunk_size]
-            tasks = [fetch_bip_invoices(client, user, pwd, **kw) for kw in chunk]
-            pending = [asyncio.create_task(t) for t in tasks]
+            tasks = [asyncio.create_task(fetch_bip_invoices(client, user, pwd, **kw)) for kw in chunk]
+            
             try:
-                while pending:
-                    done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-                    for task in done:
-                        try:
-                            i_res = task.result()
-                            invoices_raw = _filter_data_rows(i_res)
-                            if invoices_raw:
-                                d_name = invoices_raw[0].get("BILL_CUSTOMER_NAME", "").strip()
-                                if d_name:
-                                    discovered_candidates.add(d_name)
-                        except Exception as e:
-                            logger.error(f"Invoice fetch failed in sequence: {e}")
+                for coro in asyncio.as_completed(tasks):
+                    try:
+                        i_res = await coro
+                        invoices_raw = _filter_data_rows(i_res)
+                        if invoices_raw:
+                            d_name = invoices_raw[0].get("BILL_CUSTOMER_NAME", "").strip()
+                            if d_name:
+                                discovered_candidates.add(d_name)
+                                break  # Short-circuit: stop waiting for other tasks in this chunk
+                    except Exception as e:
+                        logger.error(f"Invoice fetch failed in sequence: {e}")
             finally:
-                for p in pending:
-                    p.cancel()
+                for t in tasks:
+                    t.cancel()
+            
+            if discovered_candidates:
+                break  # Short-circuit: stop processing further chunks
 
         if len(discovered_candidates) == 1:
             d_name = list(discovered_candidates)[0]
@@ -373,8 +376,8 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
         if amt1 is None or amt2 is None:
             return False
         try:
-            return float(amt1) == float(amt2)
-        except (ValueError, TypeError):
+            return sanitize_float_val(amt1) == sanitize_float_val(amt2)
+        except Exception:
             return False
 
     # ── STEP 3: Map Receipt ──
@@ -382,7 +385,7 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
         # 1. Map Fusion properties
         payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
         payload.fusion_receipt_date = r.get("RECEIPT_DATE")
-        payload.fusion_applied_amount = float(r.get("RECEIPT_AMOUNT")) if r.get("RECEIPT_AMOUNT") else None
+        payload.fusion_applied_amount = sanitize_float_val(r.get("RECEIPT_AMOUNT")) if r.get("RECEIPT_AMOUNT") else None
         payload.fusion_currency = r.get("CURRENCY")
         payload.fusion_receipt_status_code = r.get("RECEIPT_STATUS_CODE")
         payload.fusion_customer_number = r.get("BILL_CUSTOMER_NUMBER")
@@ -439,7 +442,7 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
         inv_item.invoice_number = inv_item.fusion_invoice_number
         inv_item.invoice_date = inv_item.fusion_invoice_date
         if inv_item.fusion_invoice_amount is not None:
-            inv_item.invoice_amount = float(inv_item.fusion_invoice_amount)
+            inv_item.invoice_amount = sanitize_float_val(inv_item.fusion_invoice_amount)
 
         mapped_oracle_invoices.add(str(inv_item.fusion_invoice_number))
 
