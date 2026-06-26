@@ -368,8 +368,8 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
         n1 = _normalize_date(date1)
         n2 = _normalize_date(date2)
         if n1 is None or n2 is None:
-            # Fallback: raw string comparison (preserves old behaviour)
-            return str(date1).strip() == str(date2).strip()
+            # Fallback: raw string comparison (case-insensitive)
+            return str(date1).strip().lower() == str(date2).strip().lower()
         return n1 == n2
 
     def _is_amount_equal(amt1: Any, amt2: Any) -> bool:
