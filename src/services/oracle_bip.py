@@ -239,7 +239,7 @@ async def fetch_bip_receipts(
 ) -> list[dict[str, Any]]:
     candidate_paths = [
         os.getenv("ORACLE_BIP_RECEIPT_PATH", ""),
-        "/Custom/Shreyansh/Financials/Receivables/Upgrade/Get Receipt Details Report.xdo",
+        "/Custom/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
     ]
 
     # Use standard Oracle format (YYYY-MM-DD) instead of BIP format (MM-DD-YYYY) to prevent ORA-01861 500 errors
