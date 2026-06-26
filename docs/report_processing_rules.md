@@ -1,9 +1,19 @@
-# Customer Identification Logic
+# High-Level Architecture Overview
+
+To process batches of invoices efficiently and prevent Oracle API timeouts, the reconciliation engine operates in three distinct phases:
+
+1. **Customer Discovery (Oracle API)**: The engine queries Oracle BI Publisher to figure out *who* the customer is using progressive searches (e.g. searching by Invoice Number, then Invoice Number + Amount). The engine short-circuits this phase immediately upon identifying the customer to save API calls.
+2. **Ledger Fetch (Oracle API)**: Once the Customer Name is discovered (e.g. "New Horizon Foods"), the engine sends **one single query** to download that customer's entire ledger (all invoices and receipts) into local memory.
+3. **In-Memory Matching (Python)**: The engine matches the JSON payload against the downloaded ledger entirely in memory. It uses a tiered safety logic (3-Way, 2-Way, 1-Way fallbacks) to maximize OCR error recovery without sending any further queries to Oracle.
+
+---
+
+# Customer Identification Logic (Discovery Phase)
 
 ## Overview
 This logic provides a structured approach to identify customers using available data fields, with built-in fallback mechanisms for ambiguous or incomplete information.
 
-Follow these steps in order to identify the customer. Move to the next step only if the current one fails or returns no results.
+Follow these steps in order to identify the customer. Move to the next step only if the current one fails or returns no results. This phase short-circuits as soon as a single unique customer is found.
 
 ---
 
