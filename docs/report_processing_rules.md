@@ -71,7 +71,7 @@ The system tracks mapped invoices to prevent assigning the same Oracle invoice t
 2. **2-Way Match**: Two out of three fields match (Number + Date, Number + Amount, or Date + Amount). This is only accepted if exactly *one* unique invoice matches these two fields in the remaining ledger.
 3. **1-Way Match (Lowest Priority)**: Only one field matches (Number, Date, or Amount). This is only accepted if exactly *one* unique invoice matches this field in the remaining ledger.
 
-*Note: Invoice Number matching allows for partial substrings (e.g. truncated OCR numbers) if the string is at least 5 characters long.*
+*Note: Invoice Number matching allows for partial substrings (e.g. truncated OCR numbers) if the string is at least 5 characters long. However, to prevent risky mappings, **1-Way Matches on the Invoice Number require an EXACT string match**. Substring matches are only accepted if accompanied by a Date or Amount match (2-way/3-way).*
 
 **Invoice Backfill:**
 Once successfully mapped, the payload's `invoice_number`, `invoice_date`, and `invoice_amount` are automatically corrected to reflect the exact data from the Oracle report, effectively repairing any OCR typos.

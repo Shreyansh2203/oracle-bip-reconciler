@@ -494,7 +494,7 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
 
         # 3. 1-Way Match Fallbacks (Only if still not matched)
         if not matched_o_inv:
-            matches_num = []
+            matches_num_exact = []
             matches_amt = []
             matches_date = []
 
@@ -503,16 +503,17 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
                 o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
                 o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
 
-                num_ok = _is_num_ok(inv_num, o_num)
+                # For 1-way matching, we require an EXACT match on the invoice number to avoid risky substring matches
+                num_exact = (inv_num == o_num) if inv_num else False
                 date_ok = _is_date_equal(inv_date, o_date)
                 amt_ok = _is_amount_equal(inv_amt, o_amt)
 
-                if num_ok: matches_num.append(o_inv)
+                if num_exact: matches_num_exact.append(o_inv)
                 if amt_ok: matches_amt.append(o_inv)
                 if date_ok: matches_date.append(o_inv)
 
-            if len(matches_num) == 1:
-                matched_o_inv = matches_num[0]
+            if len(matches_num_exact) == 1:
+                matched_o_inv = matches_num_exact[0]
             elif len(matches_amt) == 1:
                 matched_o_inv = matches_amt[0]
             elif len(matches_date) == 1:
