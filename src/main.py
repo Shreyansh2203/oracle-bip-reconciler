@@ -378,14 +378,31 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
             return False
 
     # ── STEP 3: Map Receipt ──
+    def _apply_receipt_mapping(r: dict[str, Any]) -> None:
+        # 1. Map Fusion properties
+        payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
+        payload.fusion_receipt_date = r.get("RECEIPT_DATE")
+        payload.fusion_applied_amount = float(r.get("RECEIPT_AMOUNT")) if r.get("RECEIPT_AMOUNT") else None
+        payload.fusion_currency = r.get("CURRENCY")
+        payload.fusion_receipt_status_code = r.get("RECEIPT_STATUS_CODE")
+        payload.fusion_customer_number = r.get("BILL_CUSTOMER_NUMBER")
+
+        # 2. Backfill missing original payload fields with Truthful Oracle Data
+        if not payload.payment_reference:
+            payload.payment_reference = payload.fusion_receipt_number
+        if not payload.payment_date:
+            payload.payment_date = payload.fusion_receipt_date
+        if payload.total_amount is None:
+            payload.total_amount = payload.fusion_applied_amount
+        if not payload.customer_name:
+            payload.customer_name = r.get("BILL_CUSTOMER_NAME") or customer_name
+
     receipt_number = str(payload.payment_reference).strip() if payload.payment_reference else ""
     if receipt_number:
         for r in all_receipts_raw:
             cand_num = str(r.get("RECEIPT_NUMBER", "")).strip()
             if cand_num and (receipt_number.lower() in cand_num.lower() or cand_num.lower() in receipt_number.lower()):
-                payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
-                payload.fusion_receipt_date = r.get("RECEIPT_DATE")
-                payload.fusion_applied_amount = r.get("RECEIPT_AMOUNT")
+                _apply_receipt_mapping(r)
                 break
     else:
         # Fallback to total amount and payment date if payment_reference is not available
@@ -396,32 +413,113 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
                 r_amt = r.get("RECEIPT_AMOUNT")
                 r_date = r.get("RECEIPT_DATE")
                 if _is_amount_equal(total_amt, r_amt) and _is_date_equal(pay_date, r_date):
-                    payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
-                    payload.fusion_receipt_date = r.get("RECEIPT_DATE")
-                    payload.fusion_applied_amount = r.get("RECEIPT_AMOUNT")
+                    _apply_receipt_mapping(r)
                     break
 
-    # ── STEP 4: Map Invoices ──
+    # ── STEP 4: Map Invoices (Tiered Matching) ──
+    mapped_oracle_invoices: set[str] = set()
+
+    def _is_num_ok(inv_num: str, o_num: str) -> bool:
+        if not inv_num or not o_num:
+            return False
+        if inv_num == o_num:
+            return True
+        # Allow partial match if it's a significant substring (e.g., OCR chopped off start/end)
+        if len(inv_num) >= 5 and (inv_num in o_num or o_num in inv_num):
+            return True
+        return False
+
+    def _apply_invoice_mapping(inv_item, o_inv: dict[str, Any]) -> None:
+        inv_item.fusion_invoice_number = o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER")
+        inv_item.fusion_invoice_date = o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE")
+        inv_item.fusion_invoice_amount = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
+        inv_item.match_phase = "MATCHED"
+
+        # Backfill JSON payload to fix OCR typos
+        inv_item.invoice_number = inv_item.fusion_invoice_number
+        inv_item.invoice_date = inv_item.fusion_invoice_date
+        if inv_item.fusion_invoice_amount is not None:
+            inv_item.invoice_amount = float(inv_item.fusion_invoice_amount)
+
+        mapped_oracle_invoices.add(str(inv_item.fusion_invoice_number))
 
     for invoice in payload.invoices:
-        inv_num = str(invoice.invoice_number) if invoice.invoice_number else ""
+        inv_num = str(invoice.invoice_number).strip() if invoice.invoice_number else ""
         inv_date = str(invoice.invoice_date).strip() if invoice.invoice_date else ""
         inv_amt = invoice.invoice_amount
 
-        if not inv_num:
-            continue
+        # Find match in remaining unmapped Oracle ledger
+        available_o_invoices = [
+            o for o in all_invoices_raw 
+            if str(o.get("TRANSACTION_NUMBER") or o.get("INVOICE_NUMBER")) not in mapped_oracle_invoices
+        ]
 
-        for o_inv in all_invoices_raw:
+        # 1. Perfect 3-Way Match
+        matched_o_inv = None
+        for o_inv in available_o_invoices:
             o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
             o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
             o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
 
-            if str(inv_num) == str(o_num) and _is_date_equal(inv_date, o_date) and _is_amount_equal(inv_amt, o_amt):
-                invoice.fusion_invoice_number = o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER")
-                invoice.fusion_invoice_date = o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE")
-                invoice.fusion_invoice_amount = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
-                invoice.match_phase = "MATCHED"
+            if _is_num_ok(inv_num, o_num) and _is_date_equal(inv_date, o_date) and _is_amount_equal(inv_amt, o_amt):
+                matched_o_inv = o_inv
                 break
+        
+        # 2. 2-Way Match Fallbacks
+        if not matched_o_inv:
+            matches_num_amt = []
+            matches_num_date = []
+            matches_date_amt = []
+
+            for o_inv in available_o_invoices:
+                o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
+                o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
+                o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
+
+                num_ok = _is_num_ok(inv_num, o_num)
+                date_ok = _is_date_equal(inv_date, o_date)
+                amt_ok = _is_amount_equal(inv_amt, o_amt)
+
+                if num_ok and amt_ok: matches_num_amt.append(o_inv)
+                if num_ok and date_ok: matches_num_date.append(o_inv)
+                if date_ok and amt_ok: matches_date_amt.append(o_inv)
+            
+            # Prefer combinations including invoice number first
+            if len(matches_num_amt) == 1:
+                matched_o_inv = matches_num_amt[0]
+            elif len(matches_num_date) == 1:
+                matched_o_inv = matches_num_date[0]
+            elif len(matches_date_amt) == 1:
+                matched_o_inv = matches_date_amt[0]
+
+        # 3. 1-Way Match Fallbacks (Only if still not matched)
+        if not matched_o_inv:
+            matches_num = []
+            matches_amt = []
+            matches_date = []
+
+            for o_inv in available_o_invoices:
+                o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
+                o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
+                o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
+
+                num_ok = _is_num_ok(inv_num, o_num)
+                date_ok = _is_date_equal(inv_date, o_date)
+                amt_ok = _is_amount_equal(inv_amt, o_amt)
+
+                if num_ok: matches_num.append(o_inv)
+                if amt_ok: matches_amt.append(o_inv)
+                if date_ok: matches_date.append(o_inv)
+
+            if len(matches_num) == 1:
+                matched_o_inv = matches_num[0]
+            elif len(matches_amt) == 1:
+                matched_o_inv = matches_amt[0]
+            elif len(matches_date) == 1:
+                matched_o_inv = matches_date[0]
+
+        if matched_o_inv:
+            _apply_invoice_mapping(invoice, matched_o_inv)
 
     duration = int((time.time() - start_time) * 1000)
     logger.info(f"[{request_id}] RECON COMPLETE: Customer='{customer_name}'. Returning mapped payload in {duration}ms.")
