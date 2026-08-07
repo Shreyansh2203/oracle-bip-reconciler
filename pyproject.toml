@@ -51,6 +51,7 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.vulture]
 ignore_names = ["cls", "mock_*"]
