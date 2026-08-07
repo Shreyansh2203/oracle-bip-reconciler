@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -20,7 +20,7 @@ class InvoiceItem(BaseModel):
     description: str | None = None
     customer_invoice_number: str | int | None = None
     store_no: str | int | None = Field(None, alias="storeNo")
-    match_phase: str | None = None
+    match_phase: Literal["MATCHED", "UNMATCHED"] | None = None
     match_rule: str | None = None
 
     @field_validator("invoice_number", "invoice_date", "customer_invoice_number", mode="before")
@@ -54,12 +54,12 @@ class ReconciliationRequest(BaseModel):
     header_id: int | str | None = None
     invoices: list[InvoiceItem] = Field(default_factory=list, max_length=2500)
     total_amount: float | None = None
-    confidence_score: float | None = None
+    confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
     confidence_label: str | None = None
     invoice_count: int | None = None
     meta_data: MetaDataModel | None = None
     meta_extra: Any = Field(default=None, alias="_meta")
-    match_phase: str | None = None
+    match_phase: Literal["MATCHED", "UNMATCHED"] | None = None
     match_rule: str | None = None
 
     @field_validator("customer_name", "payment_reference", "payment_date", mode="before")

@@ -10,7 +10,7 @@ import time
 from collections import OrderedDict
 from typing import Any
 
-import defusedxml.ElementTree as ET
+import defusedxml.ElementTree as ET  # type: ignore
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -47,13 +47,24 @@ def _cleanup_bip_cache() -> None:
     while len(_bip_cache) > BIP_MAX_CACHE_ENTRIES:
         _bip_cache.popitem(last=False)
 
+    # Prevent memory leaks from unused locks
+    keys_to_remove = [k for k, lock in _bip_locks.items() if k not in _bip_cache and not lock.locked()]
+    for k in keys_to_remove:
+        _bip_locks.pop(k, None)
+
 
 def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
-    root = ET.fromstring(response_text)
-    report_bytes_elem = next(root.iter("{http://xmlns.oracle.com/oxp/service/PublicReportService}reportBytes"), None)
-    if report_bytes_elem is None or not report_bytes_elem.text:
+    report_bytes_b64 = None
+    for event, elem in ET.iterparse(io.StringIO(response_text), events=("end",)):
+        if elem.tag.endswith("}reportBytes") or elem.tag == "reportBytes":
+            report_bytes_b64 = elem.text
+            break
+        elem.clear()
+        
+    if not report_bytes_b64:
         return []
-    report_bytes = base64.b64decode(report_bytes_elem.text)
+
+    report_bytes = base64.b64decode(report_bytes_b64)
     csv_text = report_bytes.decode("utf-8", errors="replace")
 
     results = []
