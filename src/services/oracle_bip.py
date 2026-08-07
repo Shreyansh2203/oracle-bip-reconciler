@@ -55,12 +55,12 @@ def _cleanup_bip_cache() -> None:
 
 def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
     report_bytes_b64 = None
-    for event, elem in ET.iterparse(io.StringIO(response_text), events=("end",)):
+    for _event, elem in ET.iterparse(io.StringIO(response_text), events=("end",)):
         if elem.tag.endswith("}reportBytes") or elem.tag == "reportBytes":
             report_bytes_b64 = elem.text
             break
         elem.clear()
-        
+
     if not report_bytes_b64:
         return []
 
