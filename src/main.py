@@ -3,13 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import re
 import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from dotenv import load_dotenv
@@ -20,7 +18,7 @@ from src.config import get_oracle_url
 from src.constants import DEFAULT_TIMEOUT, MAX_CONNECTIONS
 from src.models import ReconciliationRequest
 from src.services.oracle_bip import fetch_bip_invoices, fetch_bip_receipts
-from src.utils.validators import sanitize_float_val
+from src.services.reconciliation import map_ledger_to_payload
 
 load_dotenv()
 
@@ -61,7 +59,8 @@ async def lifespan(app: FastAPI):
     global http_client
     if http_client:
         await http_client.aclose()
-        http_client = None
+        with _http_client_lock:
+            http_client = None
 
 
 app = FastAPI(
@@ -191,7 +190,7 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
         for i in range(0, len(queries), chunk_size):
             chunk = queries[i : i + chunk_size]
             tasks = [asyncio.create_task(fetch_bip_invoices(client, user, pwd, **kw)) for kw in chunk]
-            
+
             try:
                 for coro in asyncio.as_completed(tasks):
                     try:
@@ -201,15 +200,16 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
                             d_name = invoices_raw[0].get("BILL_CUSTOMER_NAME", "").strip()
                             if d_name:
                                 discovered_candidates.add(d_name)
-                                break  # Short-circuit: stop waiting for other tasks in this chunk
+                                if len(discovered_candidates) > 1:
+                                    break  # Short-circuit only if we found a conflict
                     except Exception as e:
                         logger.error(f"Invoice fetch failed in sequence: {e}")
             finally:
                 for t in tasks:
                     t.cancel()
-            
-            if discovered_candidates:
-                break  # Short-circuit: stop processing further chunks
+
+            if len(discovered_candidates) > 1:
+                break  # Short-circuit: stop processing further chunks if we found a conflict
 
         if len(discovered_candidates) == 1:
             d_name = list(discovered_candidates)[0]
@@ -301,229 +301,17 @@ async def reconcile_data_batch(payload: ReconciliationRequest):
         i_raw = await i_task
     else:
         r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
-        i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)
+        i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)  # type: ignore
 
-    if isinstance(i_raw, Exception) or isinstance(r_raw, Exception):
-        err = i_raw if isinstance(i_raw, Exception) else r_raw
+    if isinstance(i_raw, BaseException) or isinstance(r_raw, BaseException):
+        err = i_raw if isinstance(i_raw, BaseException) else r_raw
         logger.error(f"[{request_id}] Oracle fetch failed during ledger fetch: {err}")
         raise HTTPException(status_code=502, detail=f"Oracle API error during ledger fetch: {err}")
 
-    all_invoices_raw = _filter_data_rows(i_raw)
-    all_receipts_raw = _filter_data_rows(r_raw)
+    all_invoices_raw = _filter_data_rows(cast(list[dict[str, Any]], i_raw))
+    all_receipts_raw = _filter_data_rows(cast(list[dict[str, Any]], r_raw))
 
-    # ── Date and Amount Helpers ──
-    def _normalize_date(raw: Any) -> str | None:
-        """Normalize a date value into canonical YYYY-MM-DD format.
-
-        Handles industry-standard variations:
-          - Separators: slash, dash, dot, space  (2026/10/05, 2026-10-05, 05.10.2026)
-          - Orderings:  YYYY-MM-DD, DD-MM-YYYY, MM-DD-YYYY, DD/MM/YYYY …
-          - Month names: 05-Jan-2026, January 5 2026, 5 Jan 2026
-          - Compact:     20261005
-          - Timestamps:  2026-10-05T00:00:00, 2026-10-05 00:00:00+05:30
-        Returns None when the value cannot be parsed.
-        """
-        if raw is None:
-            return None
-        s = str(raw).strip()
-        if not s:
-            return None
-
-        # Strip trailing timestamp portions (T00:00:00, T12:30:00Z, etc.)
-        s = re.split(r"[T ]", s)[0].strip()
-
-        # Ordered from most specific to least specific to avoid ambiguity
-        formats = [
-            # ISO / Oracle canonical
-            "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
-            # Day first (common in invoices)
-            "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y",
-            # US style
-            "%m-%d-%Y", "%m/%d/%Y", "%m.%d.%Y",
-            # Two-digit year variants
-            "%Y-%m-%d", "%d-%m-%y", "%m-%d-%y",
-            "%d/%m/%y", "%m/%d/%y",
-            # Month name variants
-            "%d-%b-%Y", "%d-%b-%y", "%d %b %Y", "%d %b %y",
-            "%b %d, %Y", "%b %d %Y",
-            "%d-%B-%Y", "%d %B %Y", "%B %d, %Y", "%B %d %Y",
-            # Compact (YYYYMMDD)
-            "%Y%m%d",
-        ]
-
-        for fmt in formats:
-            try:
-                dt = datetime.strptime(s, fmt)
-                # Guard against DD-MM vs MM-DD ambiguity:
-                # If year < 100 it was a 2-digit year; strptime already handled it.
-                # If month > 12 the parse would have failed, so the ordering is safe.
-                return dt.strftime("%Y-%m-%d")
-            except ValueError:
-                continue
-
-        return None
-
-    def _is_date_equal(date1: Any, date2: Any) -> bool:
-        """Compare two dates after normalizing both to YYYY-MM-DD."""
-        n1 = _normalize_date(date1)
-        n2 = _normalize_date(date2)
-        if n1 is None or n2 is None:
-            # Fallback: raw string comparison (case-insensitive)
-            return str(date1).strip().lower() == str(date2).strip().lower()
-        return n1 == n2
-
-    def _is_amount_equal(amt1: Any, amt2: Any) -> bool:
-        if amt1 is None or amt2 is None:
-            return False
-        try:
-            return sanitize_float_val(amt1) == sanitize_float_val(amt2)
-        except Exception:
-            return False
-
-    # ── STEP 3: Map Receipt ──
-    def _apply_receipt_mapping(r: dict[str, Any]) -> None:
-        # 1. Map Fusion properties
-        payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
-        payload.fusion_receipt_date = r.get("RECEIPT_DATE")
-        payload.fusion_applied_amount = sanitize_float_val(r.get("RECEIPT_AMOUNT")) if r.get("RECEIPT_AMOUNT") else None
-        payload.fusion_currency = r.get("CURRENCY")
-        payload.fusion_receipt_status_code = r.get("RECEIPT_STATUS_CODE")
-        payload.fusion_customer_number = r.get("BILL_CUSTOMER_NUMBER")
-
-        # 2. Backfill missing original payload fields with Truthful Oracle Data
-        if not payload.payment_reference:
-            payload.payment_reference = payload.fusion_receipt_number
-        if not payload.payment_date:
-            payload.payment_date = payload.fusion_receipt_date
-        if payload.total_amount is None:
-            payload.total_amount = payload.fusion_applied_amount
-        if not payload.customer_name:
-            payload.customer_name = r.get("BILL_CUSTOMER_NAME") or customer_name
-
-    receipt_number = str(payload.payment_reference).strip() if payload.payment_reference else ""
-    if receipt_number:
-        for r in all_receipts_raw:
-            cand_num = str(r.get("RECEIPT_NUMBER", "")).strip()
-            if cand_num and (receipt_number.lower() in cand_num.lower() or cand_num.lower() in receipt_number.lower()):
-                _apply_receipt_mapping(r)
-                break
-    else:
-        # Fallback to total amount and payment date if payment_reference is not available
-        total_amt = payload.total_amount
-        pay_date = payload.payment_date
-        if total_amt is not None and pay_date:
-            for r in all_receipts_raw:
-                r_amt = r.get("RECEIPT_AMOUNT")
-                r_date = r.get("RECEIPT_DATE")
-                if _is_amount_equal(total_amt, r_amt) and _is_date_equal(pay_date, r_date):
-                    _apply_receipt_mapping(r)
-                    break
-
-    # ── STEP 4: Map Invoices (Tiered Matching) ──
-    mapped_oracle_invoices: set[str] = set()
-
-    def _is_num_ok(inv_num: str, o_num: str) -> bool:
-        if not inv_num or not o_num:
-            return False
-        if inv_num == o_num:
-            return True
-        # Allow partial match if it's a significant substring (e.g., OCR chopped off start/end)
-        if len(inv_num) >= 5 and (inv_num in o_num or o_num in inv_num):
-            return True
-        return False
-
-    def _apply_invoice_mapping(inv_item, o_inv: dict[str, Any]) -> None:
-        inv_item.fusion_invoice_number = o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER")
-        inv_item.fusion_invoice_date = o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE")
-        inv_item.fusion_invoice_amount = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
-        inv_item.match_phase = "MATCHED"
-
-        # Backfill JSON payload to fix OCR typos
-        inv_item.invoice_number = inv_item.fusion_invoice_number
-        inv_item.invoice_date = inv_item.fusion_invoice_date
-        if inv_item.fusion_invoice_amount is not None:
-            inv_item.invoice_amount = sanitize_float_val(inv_item.fusion_invoice_amount)
-
-        mapped_oracle_invoices.add(str(inv_item.fusion_invoice_number))
-
-    for invoice in payload.invoices:
-        inv_num = str(invoice.invoice_number).strip() if invoice.invoice_number else ""
-        inv_date = str(invoice.invoice_date).strip() if invoice.invoice_date else ""
-        inv_amt = invoice.invoice_amount
-
-        # Find match in remaining unmapped Oracle ledger
-        available_o_invoices = [
-            o for o in all_invoices_raw 
-            if str(o.get("TRANSACTION_NUMBER") or o.get("INVOICE_NUMBER")) not in mapped_oracle_invoices
-        ]
-
-        # 1. Perfect 3-Way Match
-        matched_o_inv = None
-        for o_inv in available_o_invoices:
-            o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
-            o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
-            o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
-
-            if _is_num_ok(inv_num, o_num) and _is_date_equal(inv_date, o_date) and _is_amount_equal(inv_amt, o_amt):
-                matched_o_inv = o_inv
-                break
-        
-        # 2. 2-Way Match Fallbacks
-        if not matched_o_inv:
-            matches_num_amt = []
-            matches_num_date = []
-            matches_date_amt = []
-
-            for o_inv in available_o_invoices:
-                o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
-                o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
-                o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
-
-                num_ok = _is_num_ok(inv_num, o_num)
-                date_ok = _is_date_equal(inv_date, o_date)
-                amt_ok = _is_amount_equal(inv_amt, o_amt)
-
-                if num_ok and amt_ok: matches_num_amt.append(o_inv)
-                if num_ok and date_ok: matches_num_date.append(o_inv)
-                if date_ok and amt_ok: matches_date_amt.append(o_inv)
-            
-            # Prefer combinations including invoice number first
-            if len(matches_num_amt) == 1:
-                matched_o_inv = matches_num_amt[0]
-            elif len(matches_num_date) == 1:
-                matched_o_inv = matches_num_date[0]
-            elif len(matches_date_amt) == 1:
-                matched_o_inv = matches_date_amt[0]
-
-        # 3. 1-Way Match Fallbacks (Only if still not matched)
-        if not matched_o_inv:
-            matches_num_exact = []
-            matches_amt = []
-            matches_date = []
-
-            for o_inv in available_o_invoices:
-                o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
-                o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
-                o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
-
-                # For 1-way matching, we require an EXACT match on the invoice number to avoid risky substring matches
-                num_exact = (inv_num == o_num) if inv_num else False
-                date_ok = _is_date_equal(inv_date, o_date)
-                amt_ok = _is_amount_equal(inv_amt, o_amt)
-
-                if num_exact: matches_num_exact.append(o_inv)
-                if amt_ok: matches_amt.append(o_inv)
-                if date_ok: matches_date.append(o_inv)
-
-            if len(matches_num_exact) == 1:
-                matched_o_inv = matches_num_exact[0]
-            elif len(matches_amt) == 1:
-                matched_o_inv = matches_amt[0]
-            elif len(matches_date) == 1:
-                matched_o_inv = matches_date[0]
-
-        if matched_o_inv:
-            _apply_invoice_mapping(invoice, matched_o_inv)
+    map_ledger_to_payload(payload, customer_name, all_receipts_raw, all_invoices_raw)
 
     duration = int((time.time() - start_time) * 1000)
     logger.info(f"[{request_id}] RECON COMPLETE: Customer='{customer_name}'. Returning mapped payload in {duration}ms.")
