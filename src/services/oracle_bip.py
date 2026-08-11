@@ -6,12 +6,11 @@ import csv
 import io
 import logging
 import os
-import time
-from collections import OrderedDict
 from typing import Any
 
 import defusedxml.ElementTree as ET  # type: ignore
 import httpx
+from cachetools import TTLCache
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.config import get_oracle_url
@@ -22,13 +21,14 @@ from src.constants import (
     BIP_MAX_WAIT_SECONDS,
     BIP_MIN_WAIT_SECONDS,
     BIP_TIMEOUT,
+    DEFAULT_INVOICE_REPORT_PATH,
+    DEFAULT_RECEIPT_REPORT_PATH,
 )
 
 logger = logging.getLogger(__name__)
 
 BIP_MAX_CACHE_ENTRIES = 1000
-_bip_cache: OrderedDict[str, tuple[float, list[dict[str, Any]]]] = OrderedDict()
-_bip_locks: dict[str, asyncio.Lock] = {}
+_bip_cache = TTLCache(maxsize=BIP_MAX_CACHE_ENTRIES, ttl=BIP_CACHE_TTL_SECONDS)
 
 
 def _get_cache_key(report_type: str, parameters: list[dict[str, Any]]) -> str:
@@ -37,20 +37,7 @@ def _get_cache_key(report_type: str, parameters: list[dict[str, Any]]) -> str:
     return f"{report_type}::{param_str}"
 
 
-def _cleanup_bip_cache() -> None:
-    now = time.time()
-    expired_keys = [k for k, (ts, _) in _bip_cache.items() if now - ts >= BIP_CACHE_TTL_SECONDS]
-    for k in expired_keys:
-        _bip_cache.pop(k, None)
 
-    # Enforce maximum cache size by removing oldest elements (LRU-ish)
-    while len(_bip_cache) > BIP_MAX_CACHE_ENTRIES:
-        _bip_cache.popitem(last=False)
-
-    # Prevent memory leaks from unused locks
-    keys_to_remove = [k for k, lock in _bip_locks.items() if k not in _bip_cache and not lock.locked()]
-    for k in keys_to_remove:
-        _bip_locks.pop(k, None)
 
 
 def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
@@ -95,7 +82,7 @@ async def _run_bip_report(
     valid_parameters = parameters
 
     # Build parameter XML
-    from xml.sax.saxutils import escape
+    from xml.sax.saxutils import escape  # nosec B406
 
     param_xml = ""
     for param in valid_parameters:
@@ -110,33 +97,23 @@ async def _run_bip_report(
 
     cache_key = _get_cache_key(report_type, valid_parameters)
 
-    _cleanup_bip_cache()
+    if cache_key in _bip_cache:
+        return _bip_cache[cache_key]
 
-    if cache_key not in _bip_locks:
-        _bip_locks[cache_key] = asyncio.Lock()
+    last_error = None
+    valid_paths = [p for p in candidate_paths if p and p.strip()]
+    base_url = get_oracle_url().rstrip("/")
+    soap_url = f"{base_url}/xmlpserver/services/ExternalReportWSSService"
 
-    async with _bip_locks[cache_key]:
-        if cache_key in _bip_cache:
-            timestamp, cached_data = _bip_cache[cache_key]
-            # Move to end to mark as recently used (LRU)
-            _bip_cache.move_to_end(cache_key)
-            if time.time() - timestamp < BIP_CACHE_TTL_SECONDS:
-                return cached_data
+    headers = {"Content-Type": 'application/soap+xml;charset=UTF-8;action=""', "User-Agent": "httpx"}
 
-        last_error = None
-        valid_paths = [p for p in candidate_paths if p and p.strip()]
-        base_url = get_oracle_url().rstrip("/")
-        soap_url = f"{base_url}/xmlpserver/services/ExternalReportWSSService"
+    safe_username = escape(username, {'"': "&quot;", "'": "&apos;"})
+    safe_password = escape(password, {'"': "&quot;", "'": "&apos;"})
 
-        headers = {"Content-Type": 'application/soap+xml;charset=UTF-8;action=""', "User-Agent": "httpx"}
-
-        safe_username = escape(username, {'"': "&quot;", "'": "&apos;"})
-        safe_password = escape(password, {'"': "&quot;", "'": "&apos;"})
-
-        for report_path in valid_paths:
-            safe_path = escape(report_path.strip(), {'"': "&quot;", "'": "&apos;"})
-            param_block = f"<pub:parameterNameValues>{param_xml}</pub:parameterNameValues>" if param_xml else ""
-            xml_payload = f"""<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
+    for report_path in valid_paths:
+        safe_path = escape(report_path.strip(), {'"': "&quot;", "'": "&apos;"})
+        param_block = f"<pub:parameterNameValues>{param_xml}</pub:parameterNameValues>" if param_xml else ""
+        xml_payload = f"""<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
    <soap:Header/>
    <soap:Body>
       <pub:runReport>
@@ -152,40 +129,40 @@ async def _run_bip_report(
    </soap:Body>
 </soap:Envelope>"""
 
+        try:
+            response = await client.post(
+                soap_url, content=xml_payload, headers=headers, auth=(username, password), timeout=BIP_TIMEOUT
+            )
+            response.raise_for_status()
+
             try:
-                response = await client.post(
-                    soap_url, content=xml_payload, headers=headers, auth=(username, password), timeout=BIP_TIMEOUT
-                )
-                response.raise_for_status()
+                results = await asyncio.to_thread(_parse_soap_response_sync, response.text)
+                _bip_cache[cache_key] = results
+                return results
+            except Exception as parse_error:
+                logger.error(f"Failed to parse SOAP XML: {parse_error}")
+                raise Exception(f"Failed to parse SOAP response: {parse_error}") from parse_error
 
-                try:
-                    results = await asyncio.to_thread(_parse_soap_response_sync, response.text)
-                    _bip_cache[cache_key] = (time.time(), results)
-                    return results
-                except Exception as parse_error:
-                    logger.error(f"Failed to parse SOAP XML: {parse_error}")
-                    raise OracleBIPTransientError(f"Failed to parse SOAP response: {parse_error}") from parse_error
-
-            except httpx.HTTPStatusError as error:
-                if error.response.status_code == 404 or "Report definition not found" in error.response.text:
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 404 or "Report definition not found" in error.response.text:
+                last_error = error
+                continue
+            if error.response.status_code in [429, 500, 502, 503, 504]:
+                if (
+                    "Report definition not found" in error.response.text
+                    or "not found" in error.response.text.lower()
+                ):
                     last_error = error
                     continue
-                if error.response.status_code in [429, 500, 502, 503, 504]:
-                    if (
-                        "Report definition not found" in error.response.text
-                        or "not found" in error.response.text.lower()
-                    ):
-                        last_error = error
-                        continue
-                    raise OracleBIPTransientError(f"Transient BIP error {error}") from error
-                raise
-            except Exception as error:
-                logger.exception(f"Failed to execute BIP report for {report_type} match: {error}")
-                raise
+                raise OracleBIPTransientError(f"Transient BIP error {error}") from error
+            raise
+        except Exception as error:
+            logger.exception(f"Failed to execute BIP report for {report_type} match: {error}")
+            raise
 
-        if last_error:
-            raise last_error
-        return []
+    if last_error:
+        raise last_error
+    return []
 
 
 @retry(
@@ -205,7 +182,7 @@ async def fetch_bip_invoices(
 ) -> list[dict[str, Any]]:
     candidate_paths = [
         os.getenv("ORACLE_BIP_INVOICE_PATH", ""),
-        "/Custom/Shreyansh/Financials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo",
+        DEFAULT_INVOICE_REPORT_PATH,
     ]
 
     from src.utils.date_formatter import format_oracle_date
@@ -242,7 +219,7 @@ async def fetch_bip_receipts(
 ) -> list[dict[str, Any]]:
     candidate_paths = [
         os.getenv("ORACLE_BIP_RECEIPT_PATH", ""),
-        "/Custom/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo",
+        DEFAULT_RECEIPT_REPORT_PATH,
     ]
 
     # Use standard Oracle format (YYYY-MM-DD) instead of BIP format (MM-DD-YYYY) to prevent ORA-01861 500 errors

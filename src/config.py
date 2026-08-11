@@ -4,7 +4,7 @@ import os
 from urllib.parse import urlparse
 
 
-def get_oracle_url():
+def get_oracle_url() -> str:
     url = os.getenv("ORACLE_URL", "").strip()
     allow_insecure = os.getenv("ALLOW_INSECURE_ORACLE_HTTP", "false").strip().lower() == "true"
     if not url:

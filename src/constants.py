@@ -15,4 +15,6 @@ BIP_MIN_WAIT_SECONDS = 1
 BIP_MAX_WAIT_SECONDS = 10
 _ttl_str = os.getenv("BIP_CACHE_TTL_SECONDS", "60").strip()
 BIP_CACHE_TTL_SECONDS = int(_ttl_str) if _ttl_str else 60
+DEFAULT_INVOICE_REPORT_PATH = "/Custom/Shreyansh/Financials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
+DEFAULT_RECEIPT_REPORT_PATH = "/Custom/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"
 
