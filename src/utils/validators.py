@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from typing import Any
 
 
 def sanitize_string_val(value: str | int | None) -> str | None:
@@ -14,7 +13,7 @@ def sanitize_string_val(value: str | int | None) -> str | None:
     return stripped
 
 
-def sanitize_float_val(value: Any) -> float | None:
+def sanitize_float_val(value: float | str | None) -> float | None:
     """Sanitize float inputs: strip commas, convert 'none' to None, validate finiteness."""
     if isinstance(value, str):
         clean_value = value.strip().replace(",", "")

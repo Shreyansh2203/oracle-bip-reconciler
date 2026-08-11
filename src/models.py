@@ -10,7 +10,7 @@ from src.utils.validators import sanitize_float_val, sanitize_string_val
 class InvoiceItem(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    line_id: int | str | None = Field(None, alias="Line_ID")
+    line_id: int | str | None = Field(default=None, alias="line_id")
     invoice_number: str | int | None = None
     fusion_invoice_number: str | None = None
     invoice_date: str | None = None
@@ -19,7 +19,7 @@ class InvoiceItem(BaseModel):
     fusion_invoice_amount: float | None = None
     description: str | None = None
     customer_invoice_number: str | int | None = None
-    store_no: str | int | None = Field(None, alias="storeNo")
+    store_no: str | int | None = Field(default=None, alias="store_no")
     match_phase: Literal["MATCHED", "UNMATCHED"] | None = None
     match_rule: str | None = None
 
@@ -30,7 +30,7 @@ class InvoiceItem(BaseModel):
 
     @field_validator("invoice_amount", "fusion_invoice_amount", mode="before")
     @classmethod
-    def sanitize_floats(cls, v: Any) -> Any:
+    def sanitize_floats(cls, v: float | str | None) -> float | None:
         return sanitize_float_val(v)
 
 
@@ -58,7 +58,7 @@ class ReconciliationRequest(BaseModel):
     confidence_label: str | None = None
     invoice_count: int | None = None
     meta_data: MetaDataModel | None = None
-    meta_extra: Any = Field(default=None, alias="_meta")
+    meta_extra: dict[str, Any] | None = Field(default=None, alias="_meta")
     match_phase: Literal["MATCHED", "UNMATCHED"] | None = None
     match_rule: str | None = None
 
@@ -69,7 +69,7 @@ class ReconciliationRequest(BaseModel):
 
     @field_validator("total_amount", "confidence_score", mode="before")
     @classmethod
-    def sanitize_floats(cls, v: Any) -> Any:
+    def sanitize_floats(cls, v: float | str | None) -> float | None:
         return sanitize_float_val(v)
 
     @model_validator(mode="after")
