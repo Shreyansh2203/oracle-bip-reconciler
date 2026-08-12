@@ -2,7 +2,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from src.core.config import settings
-from src.core.dependencies import get_api_key, get_client, limiter
+from src.core.dependencies import get_client, limiter
 from src.models import ReconciliationRequest
 from src.services.reconciliation import process_reconciliation_batch
 
@@ -14,7 +14,6 @@ async def reconcile_data_batch(
     request: Request,
     payload: ReconciliationRequest,
     client: httpx.AsyncClient = Depends(get_client),  # noqa: B008
-    api_key: str | None = Depends(get_api_key),  # noqa: B008
 ) -> ReconciliationRequest | None:
     res, err, status = await process_reconciliation_batch(
         payload=payload,
