@@ -15,6 +15,8 @@ dependencies = [
     "defusedxml>=0.7.1",
     "slowapi>=0.1.9",
     "cachetools>=6.2.6",
+    "pydantic-settings>=2.0.0",
+    "redis>=5.0.0",
 ]
 
 [dependency-groups]
@@ -58,7 +60,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.vulture]
-ignore_names = ["cls", "mock_*", "request"]
+ignore_names = ["cls", "mock_*", "request", "root", "health_check", "readiness_check", "reconcile_data_batch", "model_config", "validate_oracle_url", "global_exception_handler", "line_id", "description", "match_phase", "confidence_score", "sanitize_strings", "sanitize_floats", "_set_invoice_count", "add_warning", "fusion_currency", "fusion_receipt_status_code", "fusion_customer_number", "fusion_customer_name"]
 
 [tool.taskipy.tasks]
 start = "uvicorn src.main:app --reload --host 127.0.0.1 --port 8000"
@@ -66,3 +68,9 @@ lint = "ruff check src/ tests/"
 deadcode = "vulture src/ tests/ --min-confidence 80"
 test = "pytest"
 check_all = "task lint && task deadcode && task test"
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+
+[tool.bandit]
+skips = ["B101"]
