@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     ORACLE_URL: str
     ORACLE_USER: str
     ORACLE_PASS: str
-    API_KEY: str | None = None
     CORS_ORIGINS: str = ""
     ALLOW_INSECURE_ORACLE_HTTP: bool = False
     REDIS_URL: str | None = None
