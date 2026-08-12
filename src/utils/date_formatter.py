@@ -48,17 +48,3 @@ def format_oracle_date(date_string: str | None) -> str | None:
 
     return None
 
-
-def format_bip_date(date_string: str | None) -> str:
-    """
-    Converts a date string to MM-DD-YYYY format required by Oracle BIP report parameters.
-    Uses format_oracle_date internally for normalization, then reformats.
-    """
-    normalized = format_oracle_date(date_string)
-    if not normalized:
-        return ""
-    try:
-        parsed_date = datetime.strptime(normalized, "%Y-%m-%d")
-        return parsed_date.strftime("%m-%d-%Y")
-    except ValueError:
-        return ""

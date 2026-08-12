@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import base64
 import csv
 import io
+import json
 import logging
 import os
 from typing import Any
@@ -13,7 +13,6 @@ import httpx
 from cachetools import TTLCache
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from src.config import get_oracle_url
 from src.constants import (
     BIP_CACHE_TTL_SECONDS,
     BIP_CHUNK_DOWNLOAD_SIZE,
@@ -24,12 +23,45 @@ from src.constants import (
     DEFAULT_INVOICE_REPORT_PATH,
     DEFAULT_RECEIPT_REPORT_PATH,
 )
+from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 BIP_MAX_CACHE_ENTRIES = 1000
-_bip_cache = TTLCache(maxsize=BIP_MAX_CACHE_ENTRIES, ttl=BIP_CACHE_TTL_SECONDS)
 
+class AsyncCache:
+    def __init__(self):
+        self.local = TTLCache(maxsize=BIP_MAX_CACHE_ENTRIES, ttl=BIP_CACHE_TTL_SECONDS)
+        self.redis = None
+        if getattr(settings, 'REDIS_URL', None):
+            try:
+                import redis.asyncio as redis
+                self.redis = redis.from_url(settings.REDIS_URL)
+                logger.info("Redis cache initialized for Oracle BIP")
+            except ImportError:
+                logger.warning("Redis is configured but redis package is not installed. Falling back to local cache.")
+
+    async def get(self, key: str) -> Any:
+        if self.redis:
+            try:
+                val = await self.redis.get(key)
+                return json.loads(val) if val else None
+            except Exception as e:
+                logger.error(f"Redis get error: {e}")
+                return self.local.get(key)
+        return self.local.get(key)
+
+    async def set(self, key: str, value: Any) -> None:
+        if self.redis:
+            try:
+                await self.redis.set(key, json.dumps(value), ex=BIP_CACHE_TTL_SECONDS)
+            except Exception as e:
+                logger.error(f"Redis set error: {e}")
+                self.local[key] = value
+        else:
+            self.local[key] = value
+
+_bip_cache = AsyncCache()
 
 def _get_cache_key(report_type: str, parameters: list[dict[str, Any]]) -> str:
     sorted_params = sorted(parameters, key=lambda x: x["name"])
@@ -81,53 +113,58 @@ async def _run_bip_report(
     # which may crash the query if they are invalid strings like 'null'.
     valid_parameters = parameters
 
-    # Build parameter XML
-    from xml.sax.saxutils import escape  # nosec B406
-
-    param_xml = ""
-    for param in valid_parameters:
-        safe_val = escape(str(param["values"][0]), {'"': "&quot;", "'": "&apos;"})
-        param_xml += f"""
-               <pub:item>
-                  <pub:name>{param["name"]}</pub:name>
-                  <pub:values>
-                     <pub:item>{safe_val}</pub:item>
-                  </pub:values>
-               </pub:item>"""
-
     cache_key = _get_cache_key(report_type, valid_parameters)
-
-    if cache_key in _bip_cache:
-        return _bip_cache[cache_key]
+    cached_val = await _bip_cache.get(cache_key)
+    if cached_val is not None:
+        return cached_val
 
     last_error = None
     valid_paths = [p for p in candidate_paths if p and p.strip()]
-    base_url = get_oracle_url().rstrip("/")
+    base_url = settings.ORACLE_URL.rstrip("/")
     soap_url = f"{base_url}/xmlpserver/services/ExternalReportWSSService"
+
+    if base_url.startswith("http://") and "localhost" not in base_url and "127.0.0.1" not in base_url:
+        logger.warning(f"Sending Oracle BIP credentials over unencrypted HTTP protocol to {base_url}!")
 
     headers = {"Content-Type": 'application/soap+xml;charset=UTF-8;action=""', "User-Agent": "httpx"}
 
-    safe_username = escape(username, {'"': "&quot;", "'": "&apos;"})
-    safe_password = escape(password, {'"': "&quot;", "'": "&apos;"})
+    soap_ns = "http://www.w3.org/2003/05/soap-envelope"
+    pub_ns = "http://xmlns.oracle.com/oxp/service/PublicReportService"
+    ET.register_namespace("soap", soap_ns)
+    ET.register_namespace("pub", pub_ns)
 
     for report_path in valid_paths:
-        safe_path = escape(report_path.strip(), {'"': "&quot;", "'": "&apos;"})
-        param_block = f"<pub:parameterNameValues>{param_xml}</pub:parameterNameValues>" if param_xml else ""
-        xml_payload = f"""<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
-   <soap:Header/>
-   <soap:Body>
-      <pub:runReport>
-         <pub:reportRequest>
-            <pub:attributeFormat>csv</pub:attributeFormat>
-            {param_block}
-            <pub:reportAbsolutePath>{safe_path}</pub:reportAbsolutePath>
-            <pub:sizeOfDataChunkDownload>{BIP_CHUNK_DOWNLOAD_SIZE}</pub:sizeOfDataChunkDownload>
-         </pub:reportRequest>
-         <pub:userID>{safe_username}</pub:userID>
-         <pub:password>{safe_password}</pub:password>
-      </pub:runReport>
-   </soap:Body>
-</soap:Envelope>"""
+        envelope = ET.Element(f"{{{soap_ns}}}Envelope")
+        ET.SubElement(envelope, f"{{{soap_ns}}}Header")
+        body = ET.SubElement(envelope, f"{{{soap_ns}}}Body")
+        run_report = ET.SubElement(body, f"{{{pub_ns}}}runReport")
+
+        report_req = ET.SubElement(run_report, f"{{{pub_ns}}}reportRequest")
+        attr_format = ET.SubElement(report_req, f"{{{pub_ns}}}attributeFormat")
+        attr_format.text = "csv"
+
+        if valid_parameters:
+            param_names_values = ET.SubElement(report_req, f"{{{pub_ns}}}parameterNameValues")
+            for param in valid_parameters:
+                item = ET.SubElement(param_names_values, f"{{{pub_ns}}}item")
+                name = ET.SubElement(item, f"{{{pub_ns}}}name")
+                name.text = param["name"]
+                values = ET.SubElement(item, f"{{{pub_ns}}}values")
+                val_item = ET.SubElement(values, f"{{{pub_ns}}}item")
+                val_item.text = str(param["values"][0])
+
+        report_path_el = ET.SubElement(report_req, f"{{{pub_ns}}}reportAbsolutePath")
+        report_path_el.text = report_path.strip()
+
+        size = ET.SubElement(report_req, f"{{{pub_ns}}}sizeOfDataChunkDownload")
+        size.text = str(BIP_CHUNK_DOWNLOAD_SIZE)
+
+        user_el = ET.SubElement(run_report, f"{{{pub_ns}}}userID")
+        user_el.text = username
+        pass_el = ET.SubElement(run_report, f"{{{pub_ns}}}password")
+        pass_el.text = password
+
+        xml_payload = ET.tostring(envelope, encoding="utf-8", xml_declaration=False).decode("utf-8")
 
         try:
             response = await client.post(
@@ -136,8 +173,8 @@ async def _run_bip_report(
             response.raise_for_status()
 
             try:
-                results = await asyncio.to_thread(_parse_soap_response_sync, response.text)
-                _bip_cache[cache_key] = results
+                results = _parse_soap_response_sync(response.text)
+                await _bip_cache.set(cache_key, results)
                 return results
             except Exception as parse_error:
                 logger.error(f"Failed to parse SOAP XML: {parse_error}")

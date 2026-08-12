@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import time
 import uuid
 from typing import Any
@@ -32,7 +31,7 @@ def _is_amount_equal(amt1: Any, amt2: Any) -> bool:
         return False
     try:
         return sanitize_float_val(amt1) == sanitize_float_val(amt2)
-    except Exception:
+    except (ValueError, TypeError):
         return False
 
 
@@ -162,7 +161,7 @@ def map_ledger_to_payload(
             matches_date_amt = []
             matches_amt = []
             matches_date = []
-            matches_fuzzy_num = []
+            matches_fuzzy_num: list[dict[str, Any]] = []
 
             for o_inv in available_o_invoices:
                 o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
@@ -202,13 +201,18 @@ def map_ledger_to_payload(
             invoice.match_phase = "UNMATCHED"
 
 
-async def process_reconciliation_batch(payload: ReconciliationRequest, client: httpx.AsyncClient) -> tuple[ReconciliationRequest | None, str | None, int | None]:
+async def process_reconciliation_batch(
+    payload: ReconciliationRequest,
+    client: httpx.AsyncClient,
+    oracle_user: str,
+    oracle_pass: str
+) -> tuple[ReconciliationRequest | None, str | None, int | None]:
     request_id = str(uuid.uuid4())
     logger.info(f"[{request_id}] Starting RECONCILIATION for payload")
     start_time = time.time()
 
-    user = os.getenv("ORACLE_USER", "")
-    pwd = os.getenv("ORACLE_PASS", "")
+    user = oracle_user
+    pwd = oracle_pass
 
     try:
         customer_name, cached_r_res = await discover_potential_customers(client, user, pwd, payload)
@@ -232,7 +236,7 @@ async def process_reconciliation_batch(payload: ReconciliationRequest, client: h
         i_raw = await i_task
     else:
         r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
-        i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)
+        i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)  # type: ignore
 
     if isinstance(i_raw, BaseException) or isinstance(r_raw, BaseException):
         err = i_raw if isinstance(i_raw, BaseException) else r_raw

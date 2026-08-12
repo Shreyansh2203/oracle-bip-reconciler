@@ -92,27 +92,36 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
             async with current_sem:
                 return await fetch_bip_invoices(client, user, pwd, **kw_args)
 
-        tasks = [asyncio.create_task(_bounded_fetch(kw)) for kw in queries]
+        import itertools
+        def chunked_iterable(iterable, size):
+            it = iter(iterable)
+            while True:
+                chunk = tuple(itertools.islice(it, size))
+                if not chunk:
+                    break
+                yield chunk
 
-        try:
-            for coro in asyncio.as_completed(tasks):
-                try:
-                    i_res = await coro
-                    invoices_raw = _filter_data_rows(i_res)
-                    if invoices_raw:
-                        d_name = str(invoices_raw[0].get("BILL_CUSTOMER_NAME", "")).strip()
-                        if d_name:
-                            discovered_candidates.add(d_name)
-                            if len(discovered_candidates) > 1:
-                                break  # Short-circuit only if we found a conflict
-                except Exception as e:
-                    logger.error(f"Invoice fetch failed in sequence: {e}")
-        finally:
-            for t in tasks:
-                t.cancel()
+        for query_chunk in chunked_iterable(queries, DEFAULT_CONCURRENCY):
+            tasks = [asyncio.create_task(_bounded_fetch(kw)) for kw in query_chunk]
+            try:
+                for coro in asyncio.as_completed(tasks):
+                    try:
+                        i_res = await coro
+                        invoices_raw = _filter_data_rows(i_res)
+                        if invoices_raw:
+                            d_name = str(invoices_raw[0].get("BILL_CUSTOMER_NAME", "")).strip()
+                            if d_name:
+                                discovered_candidates.add(d_name)
+                                if len(discovered_candidates) > 1:
+                                    break  # Short-circuit only if we found a conflict
+                    except Exception as e:
+                        logger.error(f"Invoice fetch failed in sequence: {e}")
+            finally:
+                for t in tasks:
+                    t.cancel()
 
-        if len(discovered_candidates) > 1:
-            break  # Short-circuit: stop processing if we found a conflict
+            if len(discovered_candidates) > 1:
+                break
 
         if len(discovered_candidates) == 1:
             d_name = list(discovered_candidates)[0]
@@ -120,6 +129,7 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
             return d_name
         elif len(discovered_candidates) > 1:
             logger.warning(f"Multiple customers found {list(discovered_candidates)} at {level['desc']}, narrowing down...")
+            continue
         else:
             logger.warning(f"No customers found at {level['desc']}")
 

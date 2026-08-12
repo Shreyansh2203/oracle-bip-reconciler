@@ -1,38 +1,26 @@
 from __future__ import annotations
 
 import logging
-import os
-import traceback
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import httpx
-from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request, Security
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.security import APIKeyHeader
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
 
-from src.config import get_oracle_url
+from src.api.routers import health, reconciliation
 from src.constants import DEFAULT_TIMEOUT, MAX_CONNECTIONS
-from src.models import ReconciliationRequest
-from src.services.reconciliation import process_reconciliation_batch
-
-load_dotenv()
+from src.core.config import settings
+from src.core.dependencies import limiter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("reconciliation_api")
-
-
-def _redact(name: str | None) -> str:
-    if not name:
-        return "UNKNOWN"
-    return f"{name[:3]}***"
 
 
 @asynccontextmanager
@@ -55,12 +43,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, cast(Any, _rate_limit_exceeded_handler))
+app.add_middleware(SlowAPIMiddleware)
 
 # Setup CORS
-origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 if not origins:
     logger.warning("CORS_ORIGINS is empty. API will fail closed to browsers.")
 app.add_middleware(
@@ -74,61 +62,12 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.error(f"Unhandled internal error: {exc}\n{traceback.format_exc()}")
+    logger.error(f"Unhandled internal error: {type(exc).__name__} - {str(exc)}")
     return JSONResponse(
         status_code=500,
         content={"detail": "An unexpected internal server error occurred."},
     )
 
 
-@app.get("/")
-@limiter.limit("60/minute")
-async def root(request: Request) -> dict[str, str]:
-    return {"status": "online", "message": "Oracle Reconciliation API is running"}
-
-
-@app.get("/health")
-@limiter.limit("60/minute")
-async def health_check(request: Request) -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.get("/ready")
-@limiter.limit("60/minute")
-async def readiness_check(request: Request) -> dict[str, str]:
-    try:
-        oracle_url = get_oracle_url()
-    except ValueError:
-        oracle_url = None
-    if not os.getenv("ORACLE_USER") or not os.getenv("ORACLE_PASS") or not oracle_url:
-        raise HTTPException(status_code=503, detail="Service not ready: missing required configuration")
-    return {"status": "ready"}
-
-
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-def get_api_key(api_key: str | None = Security(api_key_header)) -> str | None:
-    expected_api_key = os.getenv("API_KEY")
-    if not expected_api_key:
-        logger.warning("API_KEY environment variable is not set. API is unsecured.")
-        return api_key
-    if not api_key or api_key != expected_api_key:
-        raise HTTPException(status_code=403, detail="Could not validate API Key")
-    return api_key
-
-def get_client(request: Request) -> httpx.AsyncClient:
-    return request.app.state.http_client
-
-
-@app.post("/v1/reconcile/batch", response_model=ReconciliationRequest | None)
-@limiter.limit("10/minute")
-async def reconcile_data_batch(
-    request: Request,
-    payload: ReconciliationRequest,
-    client: httpx.AsyncClient = Depends(get_client),  # noqa: B008
-    api_key: str | None = Depends(get_api_key)  # noqa: B008
-) -> ReconciliationRequest | None:
-    res, err, status = await process_reconciliation_batch(payload, client)
-    if err:
-        raise HTTPException(status_code=status or 500, detail=err)
-    return res
+app.include_router(health.router)
+app.include_router(reconciliation.router)

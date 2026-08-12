@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oracle BIP Reconciler API</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        :root {
+            --bg-color: #0f172a;
+            --text-color: #f8fafc;
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --accent-start: #3b82f6;
+            --accent-end: #8b5cf6;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.2), transparent 25%),
+                        radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.2), transparent 25%);
+            background-size: cover;
+            overflow: hidden;
+        }
+
+        .container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 3rem 4rem;
+            text-align: center;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: float 6s ease-in-out infinite;
+            position: relative;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.05em;
+        }
+
+        p {
+            font-size: 1.125rem;
+            color: #94a3b8;
+            margin-bottom: 2.5rem;
+            font-weight: 300;
+            line-height: 1.6;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .status-badge::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background-color: #10b981;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+            box-shadow: 0 0 10px #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        .status-badge:hover {
+            background: rgba(16, 185, 129, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .links {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .btn {
+            text-decoration: none;
+            color: var(--text-color);
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+            border: none;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
+            box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5);
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .bg-shape {
+            position: absolute;
+            filter: blur(100px);
+            z-index: 1;
+            opacity: 0.5;
+            animation: float 10s infinite reverse;
+        }
+
+        .shape-1 {
+            top: -10%;
+            left: -10%;
+            width: 300px;
+            height: 300px;
+            background: var(--accent-start);
+        }
+
+        .shape-2 {
+            bottom: -10%;
+            right: -10%;
+            width: 400px;
+            height: 400px;
+            background: var(--accent-end);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-shape shape-1"></div>
+    <div class="bg-shape shape-2"></div>
+    
+    <div class="container">
+        <h1>Oracle BIP Reconciler</h1>
+        <p>Enterprise API for Oracle ERP Cloud reconciliation matching.</p>
+        
+        <div class="status-badge">
+            Systems Online
+        </div>
+
+        <div class="links">
+            <a href="/docs" class="btn btn-primary">Swagger UI</a>
+            <a href="/redoc" class="btn">ReDoc API</a>
+        </div>
+    </div>
+</body>
+</html>
