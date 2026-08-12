@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from src.core.config import settings
-from src.core.dependencies import get_api_key, limiter
+from src.core.dependencies import limiter
 
 router = APIRouter()
 
@@ -15,7 +15,7 @@ HTML_CONTENT = html_path.read_text(encoding="utf-8") if html_path.exists() else 
 
 @router.get("/", response_class=HTMLResponse)
 @limiter.limit("60/minute")
-async def root(request: Request, api_key: str | None = Depends(get_api_key)) -> HTMLResponse:
+async def root(request: Request) -> HTMLResponse:
     return HTMLResponse(content=HTML_CONTENT)
 
 
