@@ -15,6 +15,14 @@ from src.utils.validators import sanitize_float_val
 
 logger = logging.getLogger("reconciliation_api")
 
+# Returned verbatim to the client so Oracle report paths, SQL and hostnames are never
+# echoed back; the underlying exception is only ever written to the server log.
+CLIENT_UPSTREAM_ERROR = "The reconciliation service is temporarily unable to reach the Oracle ERP ledger."
+
+
+def _normalized_date(value: Any) -> str:
+    return str(value).strip().lower()
+
 
 def _is_date_equal(date1: Any, date2: Any) -> bool:
     """Compare two dates after normalizing both to YYYY-MM-DD."""
@@ -22,8 +30,19 @@ def _is_date_equal(date1: Any, date2: Any) -> bool:
     n2 = format_oracle_date(date2)
     if n1 is None or n2 is None:
         # Fallback: raw string comparison (case-insensitive)
-        return str(date1).strip().lower() == str(date2).strip().lower()
+        return _normalized_date(date1) == _normalized_date(date2)
     return n1 == n2
+
+
+def _dates_match(
+    norm1: str | None,
+    raw1: str,
+    norm2: str | None,
+    raw2: str,
+) -> bool:
+    if norm1 is None or norm2 is None:
+        return raw1 == raw2
+    return norm1 == norm2
 
 
 def _is_amount_equal(amt1: Any, amt2: Any) -> bool:
@@ -41,18 +60,42 @@ def _is_num_ok(inv_num: str, o_num: str) -> bool:
     if inv_num == o_num:
         return True
 
-    # Substring check for OCR truncation (enforce min length on both to prevent false positives)
-    if len(inv_num) >= 5 and len(o_num) >= 5 and (inv_num in o_num or o_num in inv_num):
+    # The minimum length applies to BOTH sides: a 3-4 character Oracle number is within
+    # the typo tolerance of a 5 character OCR number, which produces false positives.
+    if len(inv_num) < 5 or len(o_num) < 5:
+        return False
+
+    # Substring check for OCR truncation
+    if inv_num in o_num or o_num in inv_num:
         return True
 
-    # Fuzzy matching using Levenshtein distance for OCR typos
-    # Allow 1 typo for strings up to 6 chars, 2 typos for longer
-    if len(inv_num) >= 5:
-        max_dist = 1 if len(inv_num) <= 6 else 2
-        if Levenshtein.distance(inv_num, o_num) <= max_dist:
-            return True
+    # Fuzzy matching using Levenshtein distance for OCR typos.
+    # Allow 1 typo for numbers up to 6 chars, 2 typos for longer. The budget is derived
+    # from the shorter of the two numbers so it is not skewed by an OCR-truncated input.
+    max_dist = 1 if min(len(inv_num), len(o_num)) <= 6 else 2
+    return Levenshtein.distance(inv_num, o_num) <= max_dist
 
-    return False
+
+class _OracleInvoice:
+    """A single Oracle ledger row with its comparison keys pre-computed once."""
+
+    __slots__ = ("number", "number_raw", "date_raw", "date_norm", "date_cmp", "amount_raw", "amount", "mapped")
+
+    def __init__(self, raw: dict[str, Any]) -> None:
+        number_raw = raw.get("TRANSACTION_NUMBER") or raw.get("INVOICE_NUMBER")
+        date_raw = raw.get("TRANSACTION_DATE") or raw.get("INVOICE_DATE")
+        amount_raw = raw.get("TRANSACTION_TOTAL") or raw.get("TOTAL_AMOUNTS") or raw.get("INVOICE_AMOUNT")
+
+        self.number_raw = number_raw
+        # "" (not "None") is the key used by both the lookup index and the mapped ledger,
+        # so a number-less row can never be handed out twice.
+        self.number = str(number_raw) if number_raw is not None else ""
+        self.date_raw = date_raw
+        self.date_norm = format_oracle_date(date_raw)
+        self.date_cmp = _normalized_date(date_raw)
+        self.amount_raw = amount_raw
+        self.amount = sanitize_float_val(amount_raw) if amount_raw is not None else None
+        self.mapped = False
 
 
 def map_ledger_to_payload(
@@ -98,12 +141,17 @@ def map_ledger_to_payload(
                     break
 
     # ── STEP 4: Map Invoices (Tiered Matching) ──
-    mapped_oracle_invoices: set[str] = set()
+    # Normalisation (date parsing, float coercion, number keying) is done once per Oracle
+    # row here instead of inside the O(payload_invoices x ledger_rows) matching loop.
+    ledger = [_OracleInvoice(row) for row in all_invoices_raw]
+    inv_by_num: dict[str, list[_OracleInvoice]] = {}
+    for entry in ledger:
+        inv_by_num.setdefault(entry.number, []).append(entry)
 
-    def _apply_invoice_mapping(inv_item: Any, o_inv: dict[str, Any]) -> None:
-        inv_item.fusion_invoice_number = o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER")
-        inv_item.fusion_invoice_date = o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE")
-        inv_item.fusion_invoice_amount = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
+    def _apply_invoice_mapping(inv_item: Any, o_inv: _OracleInvoice) -> None:
+        inv_item.fusion_invoice_number = o_inv.number_raw
+        inv_item.fusion_invoice_date = o_inv.date_raw
+        inv_item.fusion_invoice_amount = o_inv.amount_raw
         inv_item.match_phase = "MATCHED"
 
         inv_item.invoice_number = inv_item.fusion_invoice_number
@@ -111,42 +159,33 @@ def map_ledger_to_payload(
         if inv_item.fusion_invoice_amount is not None:
             inv_item.invoice_amount = sanitize_float_val(inv_item.fusion_invoice_amount)
 
-        mapped_oracle_invoices.add(str(inv_item.fusion_invoice_number))
-
-    # Pre-index Oracle invoices
-    inv_by_num: dict[str, list[dict[str, Any]]] = {}
-
-    for o_inv in all_invoices_raw:
-        o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
-        if o_num not in inv_by_num:
-            inv_by_num[o_num] = []
-        inv_by_num[o_num].append(o_inv)
+        o_inv.mapped = True
 
     for invoice in payload.invoices:
         inv_num = str(invoice.invoice_number).strip() if invoice.invoice_number else ""
         inv_date = str(invoice.invoice_date).strip() if invoice.invoice_date else ""
         inv_amt = invoice.invoice_amount
 
+        inv_date_norm = format_oracle_date(inv_date)
+        inv_date_cmp = _normalized_date(inv_date)
+        inv_amt_cmp = sanitize_float_val(inv_amt) if inv_amt is not None else None
+
         matched_o_inv = None
 
         # 1. Dictionary-based lookup for EXACT number matches
         if inv_num in inv_by_num:
-            candidates = [o for o in inv_by_num[inv_num] if str(o.get("TRANSACTION_NUMBER") or o.get("INVOICE_NUMBER")) not in mapped_oracle_invoices]
+            candidates = [o for o in inv_by_num[inv_num] if not o.mapped]
 
             # Exact 3-Way Match
             for o_inv in candidates:
-                o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
-                o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
-                if _is_date_equal(inv_date, o_date) and _is_amount_equal(inv_amt, o_amt):
+                if _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp) and inv_amt_cmp == o_inv.amount:
                     matched_o_inv = o_inv
                     break
 
             # 2-Way Match Fallbacks (Num + Amt, Num + Date)
             if not matched_o_inv:
                 for o_inv in candidates:
-                    o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
-                    o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
-                    if _is_amount_equal(inv_amt, o_amt) or _is_date_equal(inv_date, o_date):
+                    if inv_amt_cmp == o_inv.amount or _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp):
                         matched_o_inv = o_inv
                         break
 
@@ -156,38 +195,43 @@ def map_ledger_to_payload(
 
         # 2. Fuzzy Matching Fallback (if exact num failed)
         if not matched_o_inv:
-            available_o_invoices = [o for o in all_invoices_raw if str(o.get("TRANSACTION_NUMBER") or o.get("INVOICE_NUMBER")) not in mapped_oracle_invoices]
+            available_o_invoices = [o for o in ledger if not o.mapped]
 
-            matches_date_amt = []
-            matches_amt = []
-            matches_date = []
-            matches_fuzzy_num: list[dict[str, Any]] = []
+            matches_date_amt: list[_OracleInvoice] = []
+            matches_amt: list[_OracleInvoice] = []
+            matches_date: list[_OracleInvoice] = []
+            # Split by priority instead of insert(0), which reversed the tie-break order
+            # and made the last priority candidate win.
+            matches_fuzzy_num_corroborated: list[_OracleInvoice] = []
+            matches_fuzzy_num: list[_OracleInvoice] = []
 
             for o_inv in available_o_invoices:
-                o_num = str(o_inv.get("TRANSACTION_NUMBER") or o_inv.get("INVOICE_NUMBER", ""))
-                o_date = str(o_inv.get("TRANSACTION_DATE") or o_inv.get("INVOICE_DATE", ""))
-                o_amt = o_inv.get("TRANSACTION_TOTAL") or o_inv.get("TOTAL_AMOUNTS") or o_inv.get("INVOICE_AMOUNT")
-
-                date_ok = _is_date_equal(inv_date, o_date)
-                amt_ok = _is_amount_equal(inv_amt, o_amt)
+                date_ok = _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp)
+                amt_ok = inv_amt_cmp is not None and inv_amt_cmp == o_inv.amount
 
                 if date_ok and amt_ok:
                     matches_date_amt.append(o_inv)
-
-                # Expensive fuzzy check only if needed
-                if _is_num_ok(inv_num, o_num):
-                    if amt_ok or date_ok:
-                        matches_fuzzy_num.insert(0, o_inv) # Priority
-                    else:
-                        matches_fuzzy_num.append(o_inv)
 
                 if amt_ok:
                     matches_amt.append(o_inv)
                 if date_ok:
                     matches_date.append(o_inv)
 
+            if not matches_date_amt:
+                for o_inv in available_o_invoices:
+                    if not _is_num_ok(inv_num, o_inv.number):
+                        continue
+                    amt_ok = inv_amt_cmp is not None and inv_amt_cmp == o_inv.amount
+                    date_ok = _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp)
+                    if amt_ok or date_ok:
+                        matches_fuzzy_num_corroborated.append(o_inv)
+                    else:
+                        matches_fuzzy_num.append(o_inv)
+
             if matches_date_amt:
                 matched_o_inv = matches_date_amt[0]
+            elif matches_fuzzy_num_corroborated:
+                matched_o_inv = matches_fuzzy_num_corroborated[0]
             elif matches_fuzzy_num:
                 matched_o_inv = matches_fuzzy_num[0]
             elif len(matches_amt) == 1:
@@ -217,8 +261,8 @@ async def process_reconciliation_batch(
     try:
         customer_name, cached_r_res = await discover_potential_customers(client, user, pwd, payload)
     except Exception as e:
-        logger.error(f"[{request_id}] Oracle fetch failed: {e}")
-        return None, f"Oracle API returned an error or timed out while fetching records: {e}", 502
+        logger.exception(f"[{request_id}] Oracle fetch failed during customer discovery: {type(e).__name__}: {e}")
+        return None, CLIENT_UPSTREAM_ERROR, 502
 
     if not customer_name:
         logger.warning(f"[{request_id}] Unable to determine customer name. Returning null.")
@@ -240,8 +284,8 @@ async def process_reconciliation_batch(
 
     if isinstance(i_raw, BaseException) or isinstance(r_raw, BaseException):
         err = i_raw if isinstance(i_raw, BaseException) else r_raw
-        logger.error(f"[{request_id}] Oracle fetch failed during ledger fetch: {err}")
-        return None, f"Oracle API error during ledger fetch: {err}", 502
+        logger.error(f"[{request_id}] Oracle fetch failed during ledger fetch: {type(err).__name__}: {err}", exc_info=err)
+        return None, CLIENT_UPSTREAM_ERROR, 502
 
     all_invoices_raw = _filter_data_rows(i_raw)
     all_receipts_raw = _filter_data_rows(r_raw)
