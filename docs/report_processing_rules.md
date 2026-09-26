@@ -73,15 +73,18 @@ Once successfully mapped, the payload's `payment_reference`, `payment_date`, `to
 ---
 
 ## Invoice Matching Logic (Tiered Fallback)
-For the final ledger reconciliation step, an invoice from the JSON payload attempts to map to an Oracle invoice record using a tiered fallback strategy. This handles OCR errors and missing fields by safely searching the customer's isolated ledger. 
+For the final ledger reconciliation step, an invoice from the JSON payload attempts to map to an Oracle invoice record using a tiered fallback strategy. This handles OCR errors and missing fields by safely searching the customer's isolated ledger.
 
-The system tracks mapped invoices to prevent assigning the same Oracle invoice twice.
+Every Oracle row is normalised **once** before matching starts (invoice number key, date folded to `YYYY-MM-DD`, amount coerced to a float), so each comparison below is a plain equality check. Consumption is tracked with a per-row `mapped` flag rather than a set of invoice numbers, because a customer can legitimately have two ledger rows sharing an invoice number (partial shipments, split payments, a credit memo) and a number-keyed set cannot tell them apart.
+
+The first tier that produces a match wins, and a match is only accepted when it is unambiguous:
 
 1. **3-Way Match (Highest Priority)**: Invoice Number, Date, and Amount all match.
-2. **2-Way Match**: Two out of three fields match (Number + Date, Number + Amount, or Date + Amount). This is only accepted if exactly *one* unique invoice matches these two fields in the remaining ledger.
-3. **1-Way Match (Lowest Priority)**: Only one field matches (Number, Date, or Amount). This is only accepted if exactly *one* unique invoice matches this field in the remaining ledger.
+2. **2-Way Match**: Two out of three fields match (Number + Date, or Number + Amount).
+3. **1-Way Match**: Only one field matches. An **exact** number hit is accepted when exactly one unmapped row shares that number. A Date-only or Amount-only hit is accepted only when exactly one unmapped row agrees; two rows sharing a date or an amount leaves the line `UNMATCHED` rather than guessing.
+4. **Fuzzy Number Match (Lowest Priority)**: Runs only when the number is not an exact dictionary hit. Candidates are split into two buckets: a fuzzy number *plus* a Date or Amount agreement outranks the 1-way Date-only and Amount-only tiers, while a fuzzy number on its own is used only if nothing above it matched. Ties within a bucket are broken by ledger order.
 
-*Note: Invoice Number matching allows for partial substrings (e.g. truncated OCR numbers) if the string is at least 5 characters long. However, to prevent risky mappings, **1-Way Matches on the Invoice Number require an EXACT string match**. Substring matches are only accepted if accompanied by a Date or Amount match (2-way/3-way).*
+*Note: Invoice Number fuzzy matching accepts an equal string, a substring in either direction, and a bounded Levenshtein distance. Both the substring rule and the typo budget key off the **shorter** of the two numbers, so a truncated OCR input cannot hand a short Oracle number the slack of a long one. To prevent risky mappings, **1-Way Matches on the Invoice Number require an EXACT string match**.*
 
 **Invoice Backfill:**
 Once successfully mapped, the payload's `invoice_number`, `invoice_date`, and `invoice_amount` are automatically corrected to reflect the exact data from the Oracle report, effectively repairing any OCR typos.

@@ -8,11 +8,26 @@ wheels/
 
 # Virtual environments
 .venv
+venv/
 
-# Environment files
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environment files (.env.example is the committed template and must stay visible)
 .env
 .env.*
+!.env.example
 
 # PII and Live Data
 Customers.txt
 Real Test Cases/
+
+# Deployment and editor noise
+.vercel/
+.idea/
+.vscode/
+*.log
