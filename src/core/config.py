@@ -1,17 +1,22 @@
 from urllib.parse import urlparse
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    # Declared before ORACLE_URL because validate_oracle_url reads it through
+    # ValidationInfo.data, which only holds the fields validated so far.
+    ALLOW_INSECURE_ORACLE_HTTP: bool = False
+
     ORACLE_URL: str
     ORACLE_USER: str
-    ORACLE_PASS: str
+    # repr=False keeps the password out of str(settings), repr(settings) and the
+    # "input_value" of any ValidationError, all of which can reach the logs.
+    ORACLE_PASS: str = Field(repr=False)
     CORS_ORIGINS: str = ""
-    ALLOW_INSECURE_ORACLE_HTTP: bool = False
     REDIS_URL: str | None = None
 
     @field_validator("ORACLE_URL", mode="after")
