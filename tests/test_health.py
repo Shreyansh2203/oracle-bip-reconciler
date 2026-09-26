@@ -5,15 +5,18 @@ from src.main import app
 
 client = TestClient(app)
 
+
 def test_root_endpoint_no_auth():
     response = client.get("/")
     assert response.status_code == 200
     assert "Oracle BIP Reconciler" in response.text
 
+
 def test_health_check():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
 
 def test_readiness_check():
     response = client.get("/ready")
@@ -22,3 +25,25 @@ def test_readiness_check():
     else:
         assert response.status_code == 200
         assert response.json() == {"status": "ready"}
+
+
+def test_cors_fails_closed_when_no_origins_configured():
+    # CORS_ORIGINS is unset in CI, so no origin may be echoed back. Browsers then refuse to
+    # expose the response body to the calling page, which is the documented fail-closed path.
+    if settings.CORS_ORIGINS:
+        return
+
+    response = client.get("/health", headers={"Origin": "https://attacker.example"})
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
+
+    preflight = client.options(
+        "/v1/reconcile/batch",
+        headers={
+            "Origin": "https://attacker.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert preflight.status_code == 400
+    assert "access-control-allow-origin" not in preflight.headers

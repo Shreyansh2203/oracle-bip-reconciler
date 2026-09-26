@@ -4,7 +4,6 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from src.core.config import settings
-from src.core.dependencies import limiter
 
 router = APIRouter()
 

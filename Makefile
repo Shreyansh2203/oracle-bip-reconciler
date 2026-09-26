@@ -1,4 +1,4 @@
-.PHONY: setup dev build test lint check clean
+.PHONY: setup dev build test lint deadcode check clean
 
 # Install dependencies using uv
 setup:
@@ -6,7 +6,7 @@ setup:
 
 # Run the local development server
 dev:
-	uv run taskipy run start
+	uv run task start
 
 # Build the docker container
 build:
@@ -14,16 +14,21 @@ build:
 
 # Run unit tests
 test:
-	uv run taskipy run test
+	uv run task test
 
 # Run code linter
 lint:
-	uv run taskipy run lint
+	uv run task lint
+
+# Report unreferenced code
+deadcode:
+	uv run task deadcode
 
 # Run all code quality checks (linting, deadcode, tests)
 check:
-	uv run taskipy run check_all
+	uv run task check_all
 
-# Clean cache directories
+# Remove caches and byte-compiled files
 clean:
-	rm -rf .pytest_cache .ruff_cache .mypy_cache __pycache__
+	rm -rf .pytest_cache .ruff_cache .mypy_cache
+	find . -type d -name __pycache__ -prune -exec rm -rf {} +

@@ -60,14 +60,51 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.vulture]
-ignore_names = ["cls", "mock_*", "request", "root", "health_check", "readiness_check", "reconcile_data_batch", "model_config", "validate_oracle_url", "global_exception_handler", "line_id", "description", "match_phase", "confidence_score", "sanitize_strings", "sanitize_floats", "_set_invoice_count", "add_warning", "fusion_currency", "fusion_receipt_status_code", "fusion_customer_number", "fusion_customer_name"]
+# Assessed entry by entry: every name below is only ever reached through a framework
+# hook, so vulture cannot find a static reference to it.
+#   FastAPI route/exception handlers, and handler parameters:
+#     root, health_check, readiness_check, reconcile_data_batch, global_exception_handler,
+#     request
+#   Pydantic internals resolved by the model metaclass:
+#     cls, model_config, validate_oracle_url, sanitize_strings, sanitize_floats,
+#     _set_invoice_count
+#   Pydantic fields that exist purely to serialise the request/response contract and
+#   are never read or written in application code:
+#     line_id, description, confidence_score, fusion_currency, fusion_customer_name,
+#     fusion_customer_number, fusion_receipt_status_code, match_phase
+# Removed from the previous list: `mock_*` (no mocking is used in this repository) and
+# `add_warning` (genuinely unreachable; the method has been deleted).
+ignore_names = [
+    "cls",
+    "confidence_score",
+    "description",
+    "fusion_currency",
+    "fusion_customer_name",
+    "fusion_customer_number",
+    "fusion_receipt_status_code",
+    "global_exception_handler",
+    "health_check",
+    "line_id",
+    "match_phase",
+    "model_config",
+    "readiness_check",
+    "reconcile_data_batch",
+    "request",
+    "root",
+    "sanitize_floats",
+    "sanitize_strings",
+    "validate_oracle_url",
+    "_set_invoice_count",
+]
 
 [tool.taskipy.tasks]
 start = "uvicorn src.main:app --reload --host 127.0.0.1 --port 8000"
-lint = "ruff check src/ tests/"
-deadcode = "vulture src/ tests/ --min-confidence 80"
+lint = "ruff check src/ tests/ api/"
+types = "mypy src/ api/"
+security = "bandit -r src/ api/ -q"
+deadcode = "vulture src/ tests/ api/ --min-confidence 80"
 test = "pytest"
-check_all = "task lint && task deadcode && task test"
+check_all = "task lint && task types && task security && task deadcode && task test"
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]
