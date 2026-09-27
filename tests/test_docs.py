@@ -159,12 +159,29 @@ def _documented_fields(document: str) -> set[str]:
 
 
 
+def _wire_names(model) -> set[str]:
+    """Every name a caller can use for a field: the field name and its wire alias.
+
+    FastAPI serialises by alias, so `_meta` is the name on the wire and `meta_extra` is
+    only the name in Python. A field counts as documented under either, and a documented
+    name that is neither is still an invention.
+    """
+    names: set[str] = set()
+    for name, field in model.model_fields.items():
+        names.add(name)
+        if field.alias:
+            names.add(field.alias)
+        if field.serialization_alias:
+            names.add(field.serialization_alias)
+    return names
+
+
 def test_every_documented_field_exists_on_a_model():
     # A field documented here but not on a model is the worst kind of documentation error:
     # it is wrong, and a caller who trusts it writes code against a field that is silently
     # discarded.
     documented = _documented_fields(_read("README.md"))
-    real = set(ReconciliationRequest.model_fields) | set(InvoiceItem.model_fields)
+    real = _wire_names(ReconciliationRequest) | _wire_names(InvoiceItem)
 
     invented = sorted(documented - real)
     assert not invented, f"README.md documents fields that do not exist: {invented}"
@@ -175,11 +192,212 @@ def test_every_model_field_is_documented():
     # is a field nobody can rely on, because they have no way to know it is there.
     documented = _documented_fields(_read("README.md"))
 
-    undocumented = sorted(set(ReconciliationRequest.model_fields) - documented)
-    assert not undocumented, f"ReconciliationRequest fields missing from the README: {undocumented}"
+    for model in (ReconciliationRequest, InvoiceItem):
+        undocumented = sorted(set(model.model_fields) - documented - _wire_names(model))
+        assert not undocumented, f"{model.__name__} fields missing from the README: {undocumented}"
 
-    undocumented = sorted(set(InvoiceItem.model_fields) - documented)
-    assert not undocumented, f"InvoiceItem fields missing from the README: {undocumented}"
+
+# ── the reference's types and bounds, not just its field names ─────────────────────────────
+
+# Comparing field NAMES is not enough, and the gap was not theoretical: `header_id` was
+# documented as `int | null` while the model said `int | str | null`, `_meta` was documented
+# under its Python name `meta_extra` rather than the alias FastAPI serialises, and
+# `confidence_score` was documented as an output when it is a bounded input. All three
+# passed a name-only comparison. So the type column and the bound claims are checked too.
+
+JSON_TYPE_ALIASES = {
+    str: "string",
+    float: "number",
+    bool: "boolean",
+    int: "int",
+}
+
+REFERENCE_HEADER = "field"
+
+
+def _normalise_type(cell: str) -> str:
+    """A documented JSON type reduced to a comparable form.
+
+    Backticks and the escaped pipes inside a markdown table cell carry no meaning, and
+    `number` is the JSON spelling of a Python float.
+    """
+    text = cell.replace("\\|", "|").replace("`", "").strip()
+    # Only pipes are separators. A comma appears inside `{"warnings": string[]}`, so
+    # splitting on one would shatter the object type.
+    parts = [part.strip() for part in text.split("|") if part.strip()]
+    return ", ".join(JSON_TYPE_ALIASES.get(part, part) for part in parts)
+
+
+def _declared_bounds(field) -> dict[str, object]:
+    """{bound name: value} for whatever pydantic actually attached to this field."""
+    bounds: dict[str, object] = {}
+    for constraint in field.metadata or ():
+        for name in ("max_length", "min_length", "ge", "le"):
+            value = getattr(constraint, name, None)
+            if value is not None:
+                bounds[name] = value
+    return bounds
+
+
+def _split_row(row: str) -> list[str]:
+    """Split a markdown table row on its *unescaped* pipes.
+
+    A documented type is written `` `string \\| null` ``, so splitting on every pipe
+    shatters it into `string \\` and `null`.
+    """
+    return [cell.strip() for cell in re.split(r"(?<!\\)\|", row.strip().strip("|"))]
+
+
+def _render_annotation(annotation) -> str:
+    """A model annotation reduced to the same form as `_normalise_type`."""
+    import types
+    from typing import Literal, Union, get_args, get_origin
+
+    if annotation is type(None):
+        return "null"
+    origin = get_origin(annotation)
+    # `str | None` and `Optional[str]` are the same union written two ways, and pydantic
+    # keeps whichever the declaration used, so both spellings have to be recognised.
+    if origin is Union or origin is types.UnionType:
+        return ", ".join(_render_annotation(arg) for arg in get_args(annotation))
+    if origin is Literal:
+        return ", ".join(f'"{arg}"' for arg in get_args(annotation))
+    if origin is list:
+        return "InvoiceItem[]"
+    if origin is dict or annotation is dict:
+        return "dict"
+    if hasattr(annotation, "model_fields"):
+        return '{"warnings": string[]}'
+    return JSON_TYPE_ALIASES.get(annotation, str(annotation))
+
+
+def _reference_tables(document: str) -> list[list[str]]:
+    """The complete `| Field | JSON type | Direction | Notes |` tables, in document order.
+
+    Selected by the full header rather than by the first cell, so the narrower
+    `| Field | JSON type | Contract |` table of `fusion_*` fields is not mistaken for one
+    of them.
+    """
+    selected = []
+    for table in _tables(document):
+        if not table:
+            continue
+        header = [cell.strip().strip("`").lower() for cell in _split_row(table[0])]
+        if header[:4] == ["field", "json type", "direction", "notes"]:
+            selected.append(table)
+    return selected
+
+
+def _reference_rows(table: list[str]) -> dict[str, tuple[str, str]]:
+    """{field: (documented type, notes)} for one reference table."""
+    rows: dict[str, tuple[str, str]] = {}
+    for row in table[2:]:
+        cells = _split_row(row)
+        if len(cells) < 4:
+            continue
+        rows[cells[0].strip("`")] = (cells[1], cells[-1])
+    return rows
+
+
+def test_the_documented_json_type_matches_the_model_for_every_field():
+    document = _read("README.md")
+    tables = _reference_tables(document)
+    assert len(tables) == 2, f"expected the two complete field reference tables, found {len(tables)}"
+
+    for table, model in zip(tables, (ReconciliationRequest, InvoiceItem)):
+        rows = _reference_rows(table)
+        for name, field in model.model_fields.items():
+            row_name = field.alias or name
+            assert row_name in rows, (
+                f"{model.__name__}.{name} is documented as {row_name!r} but the table has no "
+                f"such row; it has {sorted(rows)}"
+            )
+            documented, _notes = rows[row_name]
+            expected = _render_annotation(field.annotation)
+            assert _normalise_type(documented) == expected, (
+                f"{model.__name__}.{name} is documented as {_normalise_type(documented)!r} but the "
+                f"model says {expected!r}"
+            )
+
+
+def test_the_documented_reference_tables_cover_each_model_exactly():
+    document = _read("README.md")
+    tables = _reference_tables(document)
+    assert len(tables) == 2
+    for table, model in zip(tables, (ReconciliationRequest, InvoiceItem)):
+        # One row per field, named the way it appears on the wire, so an aliased field is
+        # documented under its alias rather than its Python name.
+        expected = {field.alias or name for name, field in model.model_fields.items()}
+        assert set(_reference_rows(table)) == expected, (
+            f"the reference table for {model.__name__} does not list exactly its fields, "
+            f"each once, by wire name"
+        )
+
+
+BOUND_SPELLING_RE = re.compile(r"`(ge|le|max_length|min_length)=([^`]+)`")
+
+
+def _normalise_bound_spelling(notes: str) -> str:
+    """Rewrite the compact `ge=0.0` form to `ge` 0.0, so either phrasing satisfies a bound.
+
+    Both are readable ways to write a bound in a notes column, and the test is about the
+    bound being stated at all, not about which of the two spellings the author picked.
+    """
+    return BOUND_SPELLING_RE.sub(r"`\1` \2", notes)
+
+
+def test_every_bound_a_model_declares_is_stated_in_the_reference():
+    # A bound the reader cannot see is a bound they will trip over. `invoices` capped at
+    # 2500 while no individual field was bounded at all is what this catches.
+    document = _read("README.md")
+    tables = _reference_tables(document)
+    for table, model in zip(tables, (ReconciliationRequest, InvoiceItem)):
+        rows = _reference_rows(table)
+        for name, field in model.model_fields.items():
+            notes = _normalise_bound_spelling(rows[field.alias or name][1])
+            for bound, declared in _declared_bounds(field).items():
+                assert f"`{bound}` {declared}" in notes, (
+                    f"{model.__name__}.{name} declares {bound}={declared} and the reference "
+                    f"notes do not say so: {notes!r}"
+                )
+
+
+def test_the_response_alias_is_documented_as_the_alias_fastapi_serialises():
+    # FastAPI serialises by alias, so the key on the wire is `_meta` and the Python field
+    # name `meta_extra` is only ever what a caller writes in their own code.
+    rows = _reference_rows(_reference_tables(_read("README.md"))[0])
+    assert "_meta" in rows, "the reference documents no _meta row"
+    assert "meta_extra" not in rows, "the reference documents the Python name, not the wire name"
+
+
+def test_the_status_table_lists_the_statuses_the_service_actually_returns():
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    document = _read("README.md")
+    section = next(
+        table
+        for table in _tables(document)
+        if table and table[0].split("|")[1].strip().lower() == "status"
+    )
+    documented = {row.split("|")[1].strip().strip("`") for row in section[2:]}
+
+    observed = set()
+    with TestClient(app) as http:
+        observed.add(str(http.get("/").status_code))
+        observed.add(str(http.get("/health").status_code))
+        observed.add(str(http.post("/v1/reconcile/batch", json={"confidence_score": 9}).status_code))
+        # A payload the model rejects, and a payload the model accepts but cannot reconcile.
+        observed.add(str(http.post("/v1/reconcile/batch", json={}).status_code))
+    assert {"200", "422"} <= documented, f"the status table omits a status the service returns: {documented}"
+    # 503 is the fail-closed refusal and 502 the upstream failure; both are load-bearing
+    # contract states, so neither may be undocumented.
+    for required in ("200", "422", "429", "500", "502", "503"):
+        assert required in documented, f"the status table does not document {required}"
+    assert observed <= documented | {"404", "405"}, (
+        f"the service returns {sorted(observed - documented)} but the status table does not say so"
+    )
 
 
 def test_the_schema_fix_is_documented_as_a_number():

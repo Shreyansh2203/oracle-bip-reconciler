@@ -10,7 +10,6 @@ dependencies = [
     "httpx>=0.24.0",
     "tenacity>=8.0.0",
     "python-dotenv>=1.0.0",
-    "scipy>=1.13.0",
     "Levenshtein>=0.25.0",
     "defusedxml>=0.7.1",
     "slowapi>=0.1.9",

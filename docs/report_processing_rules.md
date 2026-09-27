@@ -64,11 +64,11 @@ Skip Steps 1 and 2 entirely. **Go directly to Step 3** and use the Invoice Detai
 
 ## Receipt Mapping Logic
 For the final ledger reconciliation step, the receipt is mapped to an Oracle receipt record using the following priority:
-1. **Payment Reference**: If the JSON payload provides a `payment_reference`, it must be a substring match (case-insensitive) with the Oracle `RECEIPT_NUMBER`.
+1. **Payment Reference**: If the JSON payload provides a `payment_reference`, it must be a substring match (case-insensitive) with the Oracle `RECEIPT_NUMBER`. **Both sides must be at least 5 characters** — the same floor the invoice number uses. Below it, `payment_reference` `"1"` is a substring of every receipt in the ledger, and the first row would be reported as this payment's. Ties are broken by ledger order.
 2. **Amount and Date Fallback**: If the `payment_reference` is missing or null, the receipt maps successfully if both the `total_amount` and `payment_date` match an Oracle receipt's `RECEIPT_AMOUNT` and `RECEIPT_DATE` respectively. The date is compared using the same date normalization logic as invoices.
 
 **Receipt Backfill:**
-Once successfully mapped, the payload's `payment_reference`, `payment_date`, `total_amount`, and `customer_name` are automatically backfilled using the truthful data from the Oracle report if they were originally missing or incorrect. Additional fields like `fusion_customer_number`, `fusion_currency`, and `fusion_receipt_status_code` are also populated.
+Once successfully mapped, the payload's `payment_reference`, `payment_date`, `total_amount`, and `customer_name` are automatically backfilled using the truthful data from the Oracle report if they were originally missing or incorrect. Additional fields like `fusion_customer_number`, `fusion_currency`, and `fusion_receipt_status_code` are also populated. A backfill only fills a field that arrived empty, and only from a row that actually matched — which is why the length floor above is a correctness requirement rather than a nicety.
 
 ---
 
@@ -82,19 +82,21 @@ The first tier that produces a match wins, and a match is only accepted when it 
 1. **3-Way Match (Highest Priority)**: Invoice Number, Date, and Amount all match.
 2. **2-Way Match**: Two out of three fields match (Number + Date, or Number + Amount).
 3. **1-Way Match**: Only one field matches. An **exact** number hit is accepted when exactly one unmapped row shares that number. A Date-only or Amount-only hit is accepted only when exactly one unmapped row agrees; two rows sharing a date or an amount leaves the line `UNMATCHED` rather than guessing.
-4. **Fuzzy Number Match (Lowest Priority)**: Runs only when the number is not an exact dictionary hit. Candidates are split into two buckets: a fuzzy number *plus* a Date or Amount agreement outranks the 1-way Date-only and Amount-only tiers, while a fuzzy number on its own is used only if nothing above it matched. Ties within a bucket are broken by ledger order.
+4. **Fuzzy Number Match (Lowest Priority)**: Runs only when the number is not an exact dictionary hit. Candidates are split into two buckets: a fuzzy number *plus* a Date or Amount agreement outranks the 1-way Date-only and Amount-only tiers, while a fuzzy number on its own is used only if nothing above it matched **and exactly one row is a candidate**. A tie inside the bare bucket is left `UNMATCHED` rather than broken by ledger order, the same as the amount-only and date-only tiers.
 
-*Note: Invoice Number fuzzy matching accepts an equal string, a substring in either direction, and a bounded Levenshtein distance. Both the substring rule and the typo budget key off the **shorter** of the two numbers, so a truncated OCR input cannot hand a short Oracle number the slack of a long one. To prevent risky mappings, **1-Way Matches on the Invoice Number require an EXACT string match**.*
+*Note: Invoice Number fuzzy matching accepts an equal string, a substring in either direction, and a bounded Levenshtein distance. Both the substring rule and the typo budget key off the **shorter** of the two numbers, so a truncated OCR input cannot hand a short Oracle number the slack of a long one. To prevent risky mappings, **1-Way Matches on the Invoice Number require an EXACT string match**, and an exact number shared by two rows is refused.*
 
 **Invoice Backfill:**
 Once successfully mapped, the payload's `invoice_number`, `invoice_date`, and `invoice_amount` are automatically corrected to reflect the exact data from the Oracle report, effectively repairing any OCR typos.
 
 ### Date Normalization
 Dates from the JSON payload and Oracle are normalized to a canonical `YYYY-MM-DD` format before comparison. This handles industry-standard variations including:
-- **Separators**: slashes, dashes, dots (`2026/10/05`, `2026-10-05`, `05.10.2026`)
-- **Orderings**: `YYYY-MM-DD`, `DD-MM-YYYY`, `MM-DD-YYYY`
+- **Separators**: slashes, dashes, dots (`2026/10/05`, `2026-10-05`, `13.06.2026`)
+- **Orders**: `YYYY-MM-DD`, `DD-MM-YYYY`, `MM-DD-YYYY`
 - **Month names**: `05-Jan-2026`, `January 5 2026`, `5 Jan 2026`
 - **Compact**: `20261005`
 - **Timestamps**: trailing time portions are stripped (`2026-10-05T00:00:00`)
 
-If a date cannot be parsed by any known format, the system falls back to a raw string comparison.
+**The two orders are not co-equal, and a numeric order that reads two ways is refused.** `05-06-2026` is either 6 May or 5 June, and the string carries nothing that decides it. Rather than resolve it by the order of the format list — which is an implementation detail, and which previously gave *different answers for the same field depending on whether the year had four digits* — `format_oracle_date` returns `None` for any numeric `DD-MM` / `MM-DD` order where both numbers are valid months and days and they differ. The engine then falls back to a raw string comparison, which can only fail to match, so a refused date costs an agreement it might have had rather than binding the line to whichever row the guess hit. The refusal is logged.
+
+To be accepted, a numeric date must be **unambiguous**: a year-first ISO spelling (`2026-06-05`), a field above 12 in the day position (`13-06-2026`), a day and month that are equal (`05-05-2026`), or a month name (`05-Jun-2026`). Prefer sending ISO `YYYY-MM-DD`; it is the format Oracle itself returns.
