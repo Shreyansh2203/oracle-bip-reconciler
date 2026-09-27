@@ -8,7 +8,12 @@ import logging
 import os
 from typing import Any
 
-import defusedxml.ElementTree as ET  # type: ignore
+# defusedxml only re-exports the parsing half of ElementTree, and the request builder needs
+# the serialising half. The SOAP envelope is assembled from our own parameters and only ever
+# written out, never parsed; the untrusted Oracle response is parsed by defusedxml below.
+from xml.etree.ElementTree import Element, SubElement, register_namespace, tostring  # nosec B405
+
+import defusedxml.ElementTree as DET  # type: ignore
 import httpx
 from cachetools import TTLCache
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -74,7 +79,7 @@ def _get_cache_key(report_type: str, parameters: list[dict[str, Any]]) -> str:
 
 def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
     report_bytes_b64 = None
-    for _event, elem in ET.iterparse(io.StringIO(response_text), events=("end",)):
+    for _event, elem in DET.iterparse(io.StringIO(response_text), events=("end",)):
         if elem.tag.endswith("}reportBytes") or elem.tag == "reportBytes":
             report_bytes_b64 = elem.text
             break
@@ -130,41 +135,41 @@ async def _run_bip_report(
 
     soap_ns = "http://www.w3.org/2003/05/soap-envelope"
     pub_ns = "http://xmlns.oracle.com/oxp/service/PublicReportService"
-    ET.register_namespace("soap", soap_ns)
-    ET.register_namespace("pub", pub_ns)
+    register_namespace("soap", soap_ns)
+    register_namespace("pub", pub_ns)
 
     for report_path in valid_paths:
-        envelope = ET.Element(f"{{{soap_ns}}}Envelope")
-        ET.SubElement(envelope, f"{{{soap_ns}}}Header")
-        body = ET.SubElement(envelope, f"{{{soap_ns}}}Body")
-        run_report = ET.SubElement(body, f"{{{pub_ns}}}runReport")
+        envelope = Element(f"{{{soap_ns}}}Envelope")
+        SubElement(envelope, f"{{{soap_ns}}}Header")
+        body = SubElement(envelope, f"{{{soap_ns}}}Body")
+        run_report = SubElement(body, f"{{{pub_ns}}}runReport")
 
-        report_req = ET.SubElement(run_report, f"{{{pub_ns}}}reportRequest")
-        attr_format = ET.SubElement(report_req, f"{{{pub_ns}}}attributeFormat")
+        report_req = SubElement(run_report, f"{{{pub_ns}}}reportRequest")
+        attr_format = SubElement(report_req, f"{{{pub_ns}}}attributeFormat")
         attr_format.text = "csv"
 
         if valid_parameters:
-            param_names_values = ET.SubElement(report_req, f"{{{pub_ns}}}parameterNameValues")
+            param_names_values = SubElement(report_req, f"{{{pub_ns}}}parameterNameValues")
             for param in valid_parameters:
-                item = ET.SubElement(param_names_values, f"{{{pub_ns}}}item")
-                name = ET.SubElement(item, f"{{{pub_ns}}}name")
+                item = SubElement(param_names_values, f"{{{pub_ns}}}item")
+                name = SubElement(item, f"{{{pub_ns}}}name")
                 name.text = param["name"]
-                values = ET.SubElement(item, f"{{{pub_ns}}}values")
-                val_item = ET.SubElement(values, f"{{{pub_ns}}}item")
+                values = SubElement(item, f"{{{pub_ns}}}values")
+                val_item = SubElement(values, f"{{{pub_ns}}}item")
                 val_item.text = str(param["values"][0])
 
-        report_path_el = ET.SubElement(report_req, f"{{{pub_ns}}}reportAbsolutePath")
+        report_path_el = SubElement(report_req, f"{{{pub_ns}}}reportAbsolutePath")
         report_path_el.text = report_path.strip()
 
-        size = ET.SubElement(report_req, f"{{{pub_ns}}}sizeOfDataChunkDownload")
+        size = SubElement(report_req, f"{{{pub_ns}}}sizeOfDataChunkDownload")
         size.text = str(BIP_CHUNK_DOWNLOAD_SIZE)
 
-        user_el = ET.SubElement(run_report, f"{{{pub_ns}}}userID")
+        user_el = SubElement(run_report, f"{{{pub_ns}}}userID")
         user_el.text = username
-        pass_el = ET.SubElement(run_report, f"{{{pub_ns}}}password")
+        pass_el = SubElement(run_report, f"{{{pub_ns}}}password")
         pass_el.text = password
 
-        xml_payload = ET.tostring(envelope, encoding="utf-8", xml_declaration=False).decode("utf-8")
+        xml_payload = tostring(envelope, encoding="utf-8", xml_declaration=False).decode("utf-8")
 
         try:
             response = await client.post(
