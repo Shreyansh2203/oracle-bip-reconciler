@@ -331,11 +331,25 @@ is ~300 MB and the host's virtualenv overwrites the one in the image.
 
 ### Render
 
-`render.yaml` defines a Python web service: `uv sync` at build, `uvicorn src.main:app`
-bound to `$PORT` with two workers. Set `ORACLE_URL`, `ORACLE_USER`, `ORACLE_PASS` and
-`CORS_ORIGINS` in the dashboard. The `MAX_CONCURRENCY`, `ORACLE_LIMIT` and
-`ORACLE_MAX_PAGES` entries in the blueprint are vestigial and are not read by the code —
-remove them from the dashboard if you see them.
+`render.yaml` defines a Python web service: `uv sync --frozen --no-dev` at build, then
+`.venv/bin/uvicorn src.main:app` bound to `$PORT` with two workers. Three details are
+deliberate:
+
+- **`--frozen`** so the build installs exactly what `uv.lock` pins and never re-resolves, and
+  **`--no-dev`** so the test and lint tooling is not in the production image.
+- **The interpreter is named explicitly.** Render does not promise to put `.venv/bin` on
+  `PATH` for a custom build command, and a bare `uvicorn` is a build that succeeds followed by
+  a runtime that cannot start.
+- **`ORACLE_URL`, `ORACLE_USER` and `ORACLE_PASS` use `sync: false`**, because `Settings` has
+  no default for them and Render should prompt rather than start with a placeholder. The six
+  optional settings carry their documented default instead, so a deploy is not blocked on a
+  prompt for a value the service does not need.
+
+The blueprint declares exactly the nine variables the code reads — six through `Settings`, three
+through `os.getenv` — and nothing else. The earlier `ENV`, `MAX_CONCURRENCY`, `ORACLE_LIMIT` and
+`ORACLE_MAX_PAGES` entries were read by nothing at all; if they still exist in your Render
+dashboard, delete them there. `tests/test_deploy_contract.py` fails if the blueprint and the
+code drift apart again.
 
 ### Vercel
 
@@ -349,7 +363,18 @@ from src.main import app  # noqa: F401
 This is deliberate, not duplication. Vercel's Python builder only discovers an ASGI app
 from a module inside `api/`, and `vercel.json` rewrites `/(.*)` to that module — the
 rewrite is required, without it every path 404s. `requirements.txt` is the `uv export`
-pin set that the Vercel runtime installs.
+pin set that the Vercel runtime installs, regenerated with:
+
+```bash
+uv export --no-dev --no-emit-project --format requirements-txt -o requirements.txt
+```
+
+Regenerate it whenever `pyproject.toml`'s runtime dependencies or `uv.lock` change. A drift
+here is silent until a deploy, and that is exactly how the last one failed: the export was
+missing `pydantic-settings` and `redis`, both declared runtime dependencies, so the runtime
+could not import the app. `tests/test_deploy_contract.py` asserts that every declared
+runtime dependency is pinned, that no dev-only package leaked in, and that the blueprint,
+`vercel.json` and `api/index.py` still agree.
 
 ### Self-hosted
 

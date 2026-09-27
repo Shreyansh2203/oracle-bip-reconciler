@@ -4,22 +4,36 @@ services:
     env: python
     region: ohio
     plan: free
-    buildCommand: "pip install uv && uv sync"
-    startCommand: "uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 2"
+    # --frozen so the build installs exactly what uv.lock pins and never silently
+    # re-resolves; --no-dev because pytest, ruff, mypy, bandit, vulture and pip-audit
+    # have no business in a production image.
+    buildCommand: "pip install --no-cache-dir uv && uv sync --frozen --no-dev"
+    # The interpreter is addressed through the venv explicitly. Render does not promise to
+    # put .venv/bin on PATH, and a bare `uvicorn` that cannot be resolved is a deploy that
+    # builds cleanly and then fails to start.
+    startCommand: ".venv/bin/uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 2"
+    # Every key below is read by src/core/config.py (Settings) or by os.getenv in
+    # src/constants.py and src/services/oracle_bip.py. Keep this list and the README
+    # configuration table in step -- tests/test_deploy_contract.py enforces it.
     envVars:
+      # Required: Settings has no default for these, so Render prompts at deploy time.
+      - key: ORACLE_URL
+        sync: false
       - key: ORACLE_USER
         sync: false
       - key: ORACLE_PASS
         sync: false
-      - key: ORACLE_URL
-        sync: false
+      # Optional, carrying the documented default so a deploy is not blocked on a prompt
+      # for a value the service does not require.
       - key: CORS_ORIGINS
-        sync: false
-      - key: ENV
-        sync: false
-      - key: MAX_CONCURRENCY
-        sync: false
-      - key: ORACLE_LIMIT
-        sync: false
-      - key: ORACLE_MAX_PAGES
-        sync: false
+        value: ""
+      - key: ALLOW_INSECURE_ORACLE_HTTP
+        value: "false"
+      - key: REDIS_URL
+        value: ""
+      - key: ORACLE_BIP_INVOICE_PATH
+        value: ""
+      - key: ORACLE_BIP_RECEIPT_PATH
+        value: ""
+      - key: BIP_CACHE_TTL_SECONDS
+        value: "60"

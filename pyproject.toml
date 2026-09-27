@@ -30,6 +30,9 @@ dev = [
     "vulture>=2.16",
     "bandit>=1.7.9",
     "mypy>=1.11.1",
+    # tests/test_deploy_contract.py parses pyproject.toml. tomllib is stdlib from 3.11, and
+    # the project still supports 3.9+, so the test needs a backport on older interpreters.
+    "tomli>=2.0.1; python_version < '3.11'",
 ]
 
 [tool.ruff]
