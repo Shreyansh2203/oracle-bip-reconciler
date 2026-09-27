@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 import httpx
@@ -93,7 +94,7 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
                 return await fetch_bip_invoices(client, user, pwd, **kw_args)
 
         import itertools
-        def chunked_iterable(iterable, size):
+        def chunked_iterable(iterable: Iterable[dict[str, Any]], size: int) -> Iterator[tuple[dict[str, Any], ...]]:
             it = iter(iterable)
             while True:
                 chunk = tuple(itertools.islice(it, size))

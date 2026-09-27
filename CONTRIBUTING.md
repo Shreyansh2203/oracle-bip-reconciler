@@ -51,7 +51,9 @@ constraint loud rather than to make reordering impossible.
 
 ## Getting set up
 
-Requires [uv](https://docs.astral.sh/uv/). `make` is not needed; the tasks are run through uv.
+Requires [uv](https://docs.astral.sh/uv/) and **Python 3.12 or newer** — that is the floor in
+`requires-python`, and the same version `.python-version`, CI and the Dockerfile use. 3.9 and
+3.10 are no longer resolved at all. `make` is not needed; the tasks are run through uv.
 
 ```bash
 uv sync                 # install, including the dev group
@@ -59,7 +61,9 @@ uv run task check_all   # every gate: lint, types, security, deadcode, test
 uv run task start       # serve on http://127.0.0.1:8000
 ```
 
-`uv run task check_all` must exit 0 before you open a pull request. The individual gates:
+`uv run task check_all` must exit 0 before you open a pull request.
+
+## The gates
 
 | Task | Tool | Enforces |
 |---|---|---|
@@ -70,14 +74,21 @@ uv run task start       # serve on http://127.0.0.1:8000
 | `uv run task test` | pytest | the suite, plus the count and coverage floors |
 | `uv run task audit` | pip-audit | known vulnerabilities (needs network; not in `check_all`) |
 
-Two floors are enforced and both are real gates — they exit non-zero, not just print:
+Two floors are enforced and both are real gates — they exit non-zero, not just print. The
+numbers below are quoted in exactly these words in
+[README.md](README.md#the-two-floors) and asserted against each other *and* against this
+run by `tests/test_docs.py`, so they cannot quietly go stale in one document while the other
+keeps claiming to be right:
 
-- **coverage ≥ 98 %** (`fail_under` in `pyproject.toml`, currently 99.71 %)
-- **≥ 170 tests collected** (`MIN_TESTS` in `tests/conftest.py`, currently 187)
+- **Coverage** of `src/` and `api/`: measured **100.00 %**, floor **98 %**
+  (`fail_under` in `[tool.coverage.report]`).
+- **Tests collected**: measured **298**, floor **280** (`MIN_TESTS` in `tests/conftest.py`).
 
-To raise either one, add the tests that earn it in the same commit. Never reach a number by
-adding `# pragma: no cover`, an exclusion, a `skip` or an `xfail`; there are none in this
-repository and there should not be.
+To raise either one, add the tests that earn it in the same commit, then update both
+documents with the new measurement. Never reach a number by adding `# pragma: no cover`, an
+exclusion, a `skip` or an `xfail`; `tests/test_docs.py` fails if a `# pragma: no cover`
+directive appears anywhere in the tree, and fails if any `[tool.coverage.report].exclude_also`
+pattern actually matches a line in `src/` or `api/`.
 
 ## Adding a matching tier
 
@@ -93,8 +104,11 @@ Before adding one:
    in waiting, which is the performance problem that restructure fixed.
 3. **Handle ambiguity explicitly.** A tier that can match on a non-unique field has to decide
    what to do when two rows agree, and the answer must be in a test. The amount-only and
-   date-only tiers both require `len(...) == 1`; the fuzzy bucket does not, which is a
-   known open question rather than an oversight.
+   date-only tiers both require `len(...) == 1`, and so does the bare fuzzy bucket:
+   `matches_fuzzy_num` is only taken when exactly one row is a candidate. (It used not to be,
+   which let the fuzzy tier undo the 1-way exact-number guard — see
+   [README.md](README.md#a-number-two-rows-share-is-not-a-match). Ledger order alone is not
+   evidence, and "the fuzzy bucket is exempt" is not an answer, it is the bug.)
 4. **Write the test first, for the disagreement case.** For every tier, test what happens
    when the distinguishing field matches two rows. A tier that has only a happy-path test is
    a tier nobody has checked.

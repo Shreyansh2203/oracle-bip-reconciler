@@ -12,13 +12,8 @@ Nothing in this module reaches the network or reads a real credential.
 import ast
 import json
 import re
-import sys
+import tomllib
 from pathlib import Path
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # pragma: no cover - the pinned toolchain is 3.12; this keeps 3.9/3.10 dev boxes working
-    import tomli as tomllib
 
 from src.core.config import Settings
 

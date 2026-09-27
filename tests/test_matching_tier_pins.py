@@ -9,7 +9,6 @@ rather than changed.
 """
 
 import pathlib
-
 import tomllib
 
 from src.models import InvoiceItem, ReconciliationRequest

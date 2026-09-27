@@ -28,3 +28,15 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     open-pull-requests-limit: 5
+
+  # The Dockerfile pins both of its base images by digest, which is the point -- a floating
+  # tag is a supply-chain opening -- but it also means nothing moves them forward on its own.
+  # This is what does. The `python:3.13.7-slim-bookworm` FROM lines are what this updates; the
+  # `COPY --from=ghcr.io/astral-sh/uv` line is not reliably parsed, so the uv pin inside it
+  # is a manual bump and the two SHAs should be moved in the same commit.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"

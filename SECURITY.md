@@ -151,6 +151,12 @@ Out of scope for this service, by design:
 
 In scope and enforced:
 
+- **The container runs as a non-root user on a digest-pinned base.** The `Dockerfile` builds
+  in two stages on `python:3.13.7-slim-bookworm` pinned by SHA-256 digest, drops the wheel
+  toolchain and the uv cache before the runtime image is assembled, and runs as uid/gid
+  `10001` rather than root. Its `HEALTHCHECK` calls the real `GET /health` over `urllib` from
+  the standard library, so the liveness signal does not depend on a package that could itself
+  carry a CVE.
 - **The reconciliation endpoint fails closed.** `POST /v1/reconcile/batch` returns `503` to
   everyone while `ALLOW_UNAUTHENTICATED_ACCESS` is unset, which is the default. This matters
   because the endpoint takes a caller-supplied `customer_name` and hands back that

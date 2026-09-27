@@ -38,13 +38,16 @@ logger = logging.getLogger(__name__)
 BIP_MAX_CACHE_ENTRIES = 1000
 
 class AsyncCache:
-    def __init__(self):
-        self.local = TTLCache(maxsize=BIP_MAX_CACHE_ENTRIES, ttl=BIP_CACHE_TTL_SECONDS)
-        self.redis = None
-        if getattr(settings, 'REDIS_URL', None):
+    def __init__(self) -> None:
+        self.local: TTLCache[str, Any] = TTLCache(maxsize=BIP_MAX_CACHE_ENTRIES, ttl=BIP_CACHE_TTL_SECONDS)
+        self.redis: Any = None
+        # Read through a local so the type narrowing applies to from_url as well: REDIS_URL
+        # is `str | None` and the guard is the only thing that proves it is a str here.
+        redis_url = settings.REDIS_URL
+        if redis_url:
             try:
                 import redis.asyncio as redis
-                self.redis = redis.from_url(settings.REDIS_URL)
+                self.redis = redis.from_url(redis_url)
                 logger.info("Redis cache initialized for Oracle BIP")
             except ImportError:
                 logger.warning("Redis is configured but redis package is not installed. Falling back to local cache.")

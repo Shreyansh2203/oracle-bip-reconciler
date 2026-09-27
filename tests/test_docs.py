@@ -10,16 +10,12 @@ Extending tests/test_deploy_contract.py would have buried these among the deploy
 assertions, where a reader would not think to look. Nothing here reaches the network.
 """
 
+import ast
 import re
-import sys
+import tomllib
 from pathlib import Path
 
 import pytest
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # pragma: no cover - the pinned toolchain is 3.12
-    import tomli as tomllib
 
 from src.models import InvoiceItem, ReconciliationRequest
 
@@ -304,7 +300,7 @@ def test_the_documented_json_type_matches_the_model_for_every_field():
     tables = _reference_tables(document)
     assert len(tables) == 2, f"expected the two complete field reference tables, found {len(tables)}"
 
-    for table, model in zip(tables, (ReconciliationRequest, InvoiceItem)):
+    for table, model in zip(tables, (ReconciliationRequest, InvoiceItem), strict=True):
         rows = _reference_rows(table)
         for name, field in model.model_fields.items():
             row_name = field.alias or name
@@ -324,7 +320,7 @@ def test_the_documented_reference_tables_cover_each_model_exactly():
     document = _read("README.md")
     tables = _reference_tables(document)
     assert len(tables) == 2
-    for table, model in zip(tables, (ReconciliationRequest, InvoiceItem)):
+    for table, model in zip(tables, (ReconciliationRequest, InvoiceItem), strict=True):
         # One row per field, named the way it appears on the wire, so an aliased field is
         # documented under its alias rather than its Python name.
         expected = {field.alias or name for name, field in model.model_fields.items()}
@@ -351,7 +347,7 @@ def test_every_bound_a_model_declares_is_stated_in_the_reference():
     # 2500 while no individual field was bounded at all is what this catches.
     document = _read("README.md")
     tables = _reference_tables(document)
-    for table, model in zip(tables, (ReconciliationRequest, InvoiceItem)):
+    for table, model in zip(tables, (ReconciliationRequest, InvoiceItem), strict=True):
         rows = _reference_rows(table)
         for name, field in model.model_fields.items():
             notes = _normalise_bound_spelling(rows[field.alias or name][1])
@@ -425,6 +421,175 @@ def test_the_readme_does_not_claim_a_coverage_or_test_number_it_cannot_have():
     assert f"{floor} %" in _read("README.md") or f"**{floor} %**" in _read("README.md")
 
 
+# ── the two floors: one number, stated identically everywhere ──────────────────────────────
+
+# The defect this exists to stop is not one stale sentence, it is three documents carrying
+# three different numbers for the same two facts. The README claimed 100.00 % and 294 tests,
+# CONTRIBUTING claimed 99.71 % and 187, and the floor in pyproject.toml cited 99.71 % as the
+# measured value. All of it was plausible, none of it agreed, and nothing failed.
+#
+# So the numbers are parsed rather than trusted, and the parse is deliberately strict: the
+# marker is the literal "measured **X**, floor **Y**" pair, which appears exactly once per
+# document. Rephrasing a bullet into prose makes the test fail with a message naming the
+# file, which is the point -- a number nobody can find is a number nobody will update.
+COVERAGE_CLAIM_RE = re.compile(r"measured \*\*(\d+(?:\.\d+)?) %\*\*, floor \*\*(\d+(?:\.\d+)?) %\*\*")
+TEST_COUNT_CLAIM_RE = re.compile(r"measured \*\*(\d+)\*\*, floor \*\*(\d+)\*\*")
+
+# The documents that have to agree. SECURITY.md carries no gate numbers and is not one of
+# them; adding a fourth here is the point at which the guard starts paying for itself.
+NUMBERED_DOCS = ("README.md", "CONTRIBUTING.md")
+
+
+def _claims(document: str, pattern: re.Pattern[str]) -> list[tuple[str, str]]:
+    return pattern.findall(document)
+
+
+def test_the_documented_coverage_is_one_number_and_it_clears_the_floor():
+    pyproject = tomllib.loads(_read("pyproject.toml"))
+    report = pyproject["tool"]["coverage"]["report"]
+    floor, precision = report["fail_under"], report["precision"]
+
+    seen: dict[str, tuple[str, str]] = {}
+    for name in NUMBERED_DOCS:
+        found = _claims(_read(name), COVERAGE_CLAIM_RE)
+        assert len(found) == 1, (
+            f"{name} must state the coverage exactly once, as 'measured **X %**, floor **Y %**'; "
+            f"found {found}"
+        )
+        seen[name] = found[0]
+
+    distinct = set(seen.values())
+    assert len(distinct) == 1, f"the documents disagree on the coverage figure: {seen}"
+
+    measured, documented_floor = distinct.pop()
+    assert documented_floor == str(floor), (
+        f"the documents state a coverage floor of {documented_floor} % but fail_under is {floor}"
+    )
+    assert float(measured) >= floor, (
+        f"the documents claim {measured} % measured coverage, which is below the {floor} % the "
+        "gate enforces. Either the number is stale or the gate has been raised past it."
+    )
+    # A figure quoted with more decimals than `precision` produces are is a figure nobody
+    # read off a coverage report, and precision is exactly what makes the floor comparable.
+    assert len(measured.split(".")[-1]) <= precision, (
+        f"the documents quote {measured} %, which has more decimals than precision = {precision}. "
+        "coverage.py compares the rounded display value, so that is not a real measurement."
+    )
+
+
+def _min_tests() -> int:
+    """The MIN_TESTS floor, read from the conftest source rather than imported.
+
+    `import tests.conftest` would execute the module a second time under a different name --
+    pytest already imported it as the top-level `conftest` -- and conftest has import-time
+    side effects. The value is a single module-level integer, so the parse is unambiguous and
+    a rename makes this fail rather than quietly report something else.
+    """
+    for node in ast.parse(_read("tests/conftest.py")).body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "MIN_TESTS" for target in node.targets
+        ):
+            return ast.literal_eval(node.value)
+    raise AssertionError("tests/conftest.py no longer defines MIN_TESTS")
+
+
+def test_the_documented_test_count_is_one_number_and_it_clears_the_floor():
+    min_tests = _min_tests()
+
+    seen: dict[str, tuple[str, str]] = {}
+    for name in NUMBERED_DOCS:
+        found = _claims(_read(name), TEST_COUNT_CLAIM_RE)
+        assert len(found) == 1, (
+            f"{name} must state the test count exactly once, as 'measured **X**, floor **Y**'; "
+            f"found {found}"
+        )
+        seen[name] = found[0]
+
+    distinct = set(seen.values())
+    assert len(distinct) == 1, f"the documents disagree on the test count: {seen}"
+
+    measured, documented_floor = distinct.pop()
+    assert documented_floor == str(min_tests), (
+        f"the documents state a floor of {documented_floor} tests but MIN_TESTS is {min_tests}"
+    )
+    assert int(measured) >= min_tests, (
+        f"the documents claim {measured} tests collected, below the MIN_TESTS floor of {min_tests}"
+    )
+
+
+def test_the_documented_test_count_is_the_number_this_run_collected(request):
+    # The static checks above prove the documents agree with each other and with the floors.
+    # Only this one compares them to reality: a number copied faithfully into two documents
+    # can still be a number that stopped being true three refactors ago.
+    #
+    # Skipped for a narrowed run on the same grounds as MIN_TESTS in conftest.py -- `-k`, `-m`
+    # and `--collect-only` shrink the collection on purpose, and holding the documentation to a
+    # deliberately partial run is how this kind of guard gets switched off.
+    config = request.config
+    if config.option.keyword or config.option.markexpr or config.option.collectonly:
+        pytest.skip("narrowed run: the collected count is only meaningful for a full collection")
+
+    collected = len(request.session.items)
+    for name in NUMBERED_DOCS:
+        measured = _claims(_read(name), TEST_COUNT_CLAIM_RE)[0][0]
+        assert int(measured) == collected, (
+            f"{name} says the suite collects {measured} tests; this run collected {collected}. "
+            "Update the stated figure in README.md and CONTRIBUTING.md, and raise MIN_TESTS in "
+            "tests/conftest.py in the same commit if the count went up."
+        )
+
+
+def test_the_readme_claims_no_coverage_exclusions_and_there_are_none():
+    # The README states outright that this repository has no coverage-suppression directive
+    # of any kind and no exclusions. That is a claim about the whole tree, and it is the kind
+    # that decays: the two tomllib/tomli fallbacks carried one, and
+    # `[tool.coverage.report].exclude_also` is an exclusion list that has been sitting in
+    # pyproject.toml the whole time. A reader who trusts the sentence is reading a 100 % that
+    # may have been bought.
+    #
+    # exclude_also is allowed to exist -- excluding `if TYPE_CHECKING:` and `__main__` guards
+    # is ordinary hygiene, not a loophole. What is not allowed is for an entry to be *doing*
+    # work, because that is what turns a measured number into a filtered one. So each pattern
+    # is compiled and run against every line of every measured file: all of them have to miss.
+    #
+    # The needle is assembled rather than written out, because a literal here would make this
+    # module its own first finding and the check would be permanently red.
+    needle = "# " + "pragma" + ": no cover"
+    assert needle not in Path(__file__).read_text(encoding="utf-8"), (
+        "this module has stopped hiding its own needle; the scan below would find itself"
+    )
+    pragmas = [
+        f"{path.relative_to(REPO_ROOT)}"
+        for path in sorted(REPO_ROOT.rglob("*.py"))
+        if ".venv" not in path.parts and "__pycache__" not in path.parts
+        and needle in path.read_text(encoding="utf-8")
+    ]
+    assert not pragmas, (
+        f"a coverage-suppression directive is present in {pragmas}, which contradicts the "
+        "README. Either delete the directive or withdraw the claim -- do not leave them "
+        "disagreeing."
+    )
+
+    measured = [
+        path
+        for directory in ("src", "api")
+        for path in sorted((REPO_ROOT / directory).rglob("*.py"))
+    ]
+    patterns = tomllib.loads(_read("pyproject.toml"))["tool"]["coverage"]["report"].get("exclude_also", [])
+    for pattern in patterns:
+        compiled = re.compile(pattern)
+        hits = [
+            f"{path.relative_to(REPO_ROOT)}:{number}"
+            for path in measured
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+            if compiled.search(line)
+        ]
+        assert not hits, (
+            f"the coverage exclusion {pattern!r} suppresses {hits}. The README promises the "
+            "number is measured, not filtered; delete the line, or withdraw the promise."
+        )
+
+
 def test_the_readme_does_not_document_environment_variables_that_do_not_exist():
     # A configuration table that has drifted from the code is the same defect as a blueprint
     # that has: it implies a knob that does nothing.
@@ -482,7 +647,7 @@ def test_the_readme_and_the_processing_rules_agree_on_the_tier_list():
             lowered = lowered.replace(f"{digit}-way", f"{word}-way")
         return re.sub(r"[^a-z -]", "", lowered).strip()
 
-    for (_number, title), rule_title in zip(readme_tiers[1:], rule_titles):
+    for (_number, title), rule_title in zip(readme_tiers[1:], rule_titles, strict=True):
         # "Three-way match — number + date + amount *(highest confidence)*" is compared on its
         # leading phrase. The dash is matched as a character class rather than a literal so the
         # test does not depend on which dash codepoint the file happens to use.

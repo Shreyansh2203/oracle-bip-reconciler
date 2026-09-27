@@ -1,6 +1,6 @@
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
 
     @field_validator("ORACLE_URL", mode="after")
     @classmethod
-    def validate_oracle_url(cls, v: str, info) -> str:
+    def validate_oracle_url(cls, v: str, info: ValidationInfo) -> str:
         url = v.strip()
         if not url:
             raise ValueError("ORACLE_URL environment variable is missing!")

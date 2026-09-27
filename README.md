@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Shreyansh2203/oracle-bip-reconciler/actions/workflows/ci.yml/badge.svg)](https://github.com/Shreyansh2203/oracle-bip-reconciler/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python: 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](pyproject.toml)
+[![Python: 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](pyproject.toml)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688.svg)](https://fastapi.tiangolo.com)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
@@ -358,7 +358,8 @@ uv run task start          # or: make dev
 ```
 
 `uv` and `taskipy` are the only prerequisites — there is no need for a virtualenv to exist
-first, `uv` creates it.
+first, `uv` creates it. **Python 3.12 or newer** is required and is what the gates run on;
+3.9–3.11 are end-of-life or unsupported and are no longer resolved by `uv.lock`.
 
 ### Quality gates
 
@@ -378,15 +379,35 @@ runs, in order:
 
 `uv run task lint`, `types`, `security`, `deadcode` and `test` can be run individually.
 
+All five run as one `test` job in CI. Alongside it:
+
+| Workflow | What it enforces |
+|---|---|
+| `ci.yml` → `test` | `check_all`, plus `uv lock --check` so a hand-edited lockfile cannot ship |
+| `ci.yml` → `dependency-audit` | `pip-audit` over `requirements.txt` and over the dev toolchain, separately |
+| `ci.yml` → `dependency-review` | `dependency-review-action` on the pull request diff, failing at `moderate` |
+| `codeql.yml` | CodeQL for `python` and `actions`, on push, on pull request, and weekly |
+
+Every action in both workflows is pinned to a full commit SHA with the tag kept as a
+trailing comment, and every job carries a `timeout-minutes`, so a hung step is a red X
+rather than a job that quietly occupies a runner.
+
 ### The two floors
 
-Coverage is currently **100.00 %** of `src/` and `api/`; the floor is **98 %**
-(`fail_under` in `[tool.coverage.report]`). The suite collects **294** tests; the floor is
-**280** (`MIN_TESTS` in `tests/conftest.py`). Both floors are set just under what the suite
-genuinely achieves, so they catch a regression rather than a rounding difference:
+Both floors are set just below what the suite genuinely achieves, so they catch a
+regression rather than a rounding difference, and both are stated in exactly these words
+here and in [CONTRIBUTING.md](CONTRIBUTING.md#the-gates) — the gate and the measurement
+travel together, and `tests/test_docs.py` fails if the two documents ever part company:
 
-- a run that collects fewer than 280 tests exits non-zero with an explanation;
-- a `fail_under` above 100 exits non-zero with a coverage failure.
+- **Coverage** of `src/` and `api/`: measured **100.00 %**, floor **98 %**
+  (`fail_under` in `[tool.coverage.report]`).
+- **Tests collected**: measured **298**, floor **280** (`MIN_TESTS` in `tests/conftest.py`).
+
+`tests/test_docs.py` reads both numbers out of this file, and also reads the real collected
+count out of the running pytest session, so a figure that stops being true fails a gate
+rather than sitting here looking authoritative. Change `fail_under` and `MIN_TESTS` in the
+commit that earns the new number, and quote the new measurement here and in
+CONTRIBUTING.md in that same commit.
 
 `precision = 2` is required and load-bearing, because coverage.py compares the *rounded
 display value*. At the default precision of 0 a 99.5 % run displays as `100` and a
@@ -396,7 +417,12 @@ floor, because narrowing is deliberate; a plain `pytest tests/some_file.py` is n
 that is how a refactor quietly deletes tests while every other gate stays green.
 
 To raise either floor, add the tests that earn it in the same commit. There are no
-`# pragma: no cover` directives and no exclusions anywhere in this repository.
+`# pragma: no cover` directives anywhere in this repository, and
+`[tool.coverage.report].exclude_also` — which excludes only `if TYPE_CHECKING:`,
+`if __name__ == "__main__":` and `raise NotImplementedError` — matches **no line at all** in
+`src/` or `api/`. So the 100.00 % above is a measurement, not a filtered one.
+`tests/test_docs.py` asserts both halves of that sentence, so neither can start being false
+without a gate failing.
 
 ### Dependency audit
 
@@ -446,10 +472,27 @@ docker build -t oracle-reconciliation-api .
 docker run --env-file .env -p 8000:8000 oracle-reconciliation-api
 ```
 
-The image is a `python:3.12-slim` base with `uv sync --no-dev --frozen` into `/app/.venv`,
-which is put on `PATH` so the `uvicorn` entry point resolves. `.dockerignore` keeps the
-host virtualenv, `.git` and caches out of the build context — without it the build context
-is ~300 MB and the host's virtualenv overwrites the one in the image.
+The image is a two-stage build on a digest-pinned
+`python:3.13.7-slim-bookworm` base. The **builder** stage runs `uv sync --frozen --no-dev`
+into `/app/.venv` and is then discarded, so neither the wheel toolchain nor the uv cache
+reaches the shipped image. The **runtime** stage copies that venv in whole, along with `src/`
+and `api/`, and runs as uid/gid **10001** — never root. uv comes from a digest-pinned
+`ghcr.io/astral-sh/uv` image rather than `pip install uv`, which resolved to whatever was
+newest on the day the image happened to be built.
+
+`PYTHONPATH=/app` and `PATH="/app/.venv/bin:$PATH"` are set explicitly, so the uvicorn
+workers import `src.main` and resolve the `uvicorn` entry point regardless of the working
+directory the image is started from.
+
+`HEALTHCHECK` hits the real `GET /health` using `urllib` from the standard library — no
+`curl`, no extra package, and exec form so there is no shell to inject through. It points
+at `/health` rather than `/ready` deliberately: `/ready` returns `503` until the Oracle
+credentials are configured, and an operator who has not set them yet should see a *running*
+container, not an unhealthy one.
+
+`.dockerignore` keeps the host virtualenv, `.git` and caches out of the build context —
+without it the build context is ~300 MB and the host's virtualenv overwrites the one in the
+image.
 
 ---
 

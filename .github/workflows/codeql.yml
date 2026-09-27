@@ -1,0 +1,60 @@
+name: "CodeQL Security Scan"
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  schedule:
+    # Weekly, Sunday 01:30 UTC. Advisories for *newly published query* land continuously and
+    # a query that did not exist at the last push is exactly the one a push-only scan misses.
+    # The default CodeQL schedule is Monday 00:00 UTC; this is off both that and the CI
+    # dependency-audit slot (Monday 06:17) so the two do not contend for the same runner pool.
+    - cron: "30 1 * * 0"
+
+# Cancel superseded runs on the same ref. Without this, a burst of pushes leaves a queue of
+# scans that report on a commit nobody cares about any more.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: read the source, and write the SARIF results. Nothing else is granted,
+# and in particular no `contents: write` -- a code-scanning workflow does not need one, and
+# granting it would widen the blast radius of a compromised action in this file.
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      # One language failing must not hide the other's results, so the matrix is not
+      # fail-fast: a repository with a Python service and GitHub Actions has two independent
+      # attack surfaces and they should report independently.
+      fail-fast: false
+      matrix:
+        language: [ 'python', 'actions' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
+      with:
+        languages: ${{ matrix.language }}
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
+      with:
+        # A category is what keeps the two languages in separate code-scanning views, so a
+        # Python finding and a workflow finding do not overwrite each other's history.
+        category: "/language:${{ matrix.language }}"
