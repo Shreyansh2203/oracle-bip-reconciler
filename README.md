@@ -235,6 +235,54 @@ date can ignore the `fusion_*` pair entirely.
 after-validator that re-enters itself on every assignment recurses. Its float fields are
 coerced at their single assignment site instead.
 
+#### Complete field reference
+
+The examples above are abridged. This is the whole surface, and
+`tests/test_docs.py` fails if the two ever disagree.
+
+**`ReconciliationRequest` — request *and* response.** A field you send is echoed back; a
+field the engine fills in arrives populated.
+
+| Field | JSON type | Direction | Notes |
+|---|---|---|---|
+| `customer_name` | `string \| null` | in | Discovery Step 2. Blank is treated as absent. |
+| `payment_reference` | `string \| int \| null` | in | Discovery Step 1. The primary key for the receipt. |
+| `payment_date` | `string \| null` | in | Receipt fallback when there is no reference. |
+| `total_amount` | `number \| null` | in | Receipt fallback, and the first thing the response carries. |
+| `header_id` | `int \| null` | in | Echoed only. Carried for the caller's own bookkeeping. |
+| `invoices` | `InvoiceItem[]` | in | 1–2500. See below. |
+| `meta_data` | `{"warnings": string[]}` \| `null` | out | Non-fatal notes about the run. |
+| `meta_extra` | `dict` | out | Reserved; currently always `{}`. |
+| `invoice_count` | `int \| null` | out | Server-set from `len(invoices)`; whatever you send is overwritten. |
+| `fusion_customer_name` | `string \| null` | out | The customer the ledger answered with. |
+| `fusion_receipt_number` | `string \| null` | out | See the `fusion_*` table above. |
+| `fusion_receipt_date` | `string \| null` | out | Verbatim. |
+| `fusion_applied_amount` | `number \| null` | out | Coerced. |
+| `fusion_currency` | `string \| null` | out | Verbatim. |
+| `fusion_receipt_status_code` | `string \| null` | out | Verbatim, e.g. `APPLIED`. |
+| `fusion_customer_number` | `string \| null` | out | Verbatim. |
+| `match_phase` | `"MATCHED" \| "UNMATCHED" \| null` | out | Batch-level roll-up. |
+| `match_rule` | `string \| null` | out | Which tier decided it. |
+| `confidence_label` | `string \| null` | out | Reserved; currently always `null`. |
+| `confidence_score` | `number \| null` | out | Reserved; currently always `null`. |
+
+**`InvoiceItem`** — one per invoice, nested in `invoices` on both sides.
+
+| Field | JSON type | Direction | Notes |
+|---|---|---|---|
+| `line_id` | `int \| string \| null` | in | Your row id. Echoed back untouched. |
+| `invoice_number` | `string \| int \| null` | in | May be OCR-damaged; the engine overwrites it on a match. |
+| `invoice_date` | `string \| null` | in | Any format `format_oracle_date` understands. |
+| `invoice_amount` | `number \| null` | in | Coerced on the way in. |
+| `customer_invoice_number` | `string \| int \| null` | in | Your own reference for the line. |
+| `store_no` | `int \| string \| null` | in | Echoed back untouched. |
+| `description` | `string \| null` | out | Not currently populated. |
+| `fusion_invoice_number` | `string \| null` | out | The ledger's number, verbatim. |
+| `fusion_invoice_date` | `string \| null` | out | The ledger's date string, verbatim. |
+| `fusion_invoice_amount` | `number \| null` | out | A JSON number, not a string. |
+| `match_phase` | `"MATCHED" \| "UNMATCHED" \| null` | out | Per line. `null` until the line is processed. |
+| `match_rule` | `string \| null` | out | Which tier matched it. |
+
 | Status | Meaning |
 |---|---|
 | `200` | Reconciled. **A `null` body means the customer could not be identified** — not an error. |
@@ -320,10 +368,10 @@ runs, in order:
 ### The two floors
 
 Coverage is currently **99.71 %** of `src/` and `api/`; the floor is **98 %**
-(`fail_under` in `[tool.coverage.report]`). The test count is **187**; the floor is **170**
-(`MIN_TESTS` in `tests/conftest.py`). Both are set just under what the suite genuinely
-achieves, so they catch a regression rather than a rounding difference, and both were
-verified to fail when breached:
+(`fail_under` in `[tool.coverage.report]`). The suite collects **200** tests; the floor is
+**170** (`MIN_TESTS` in `tests/conftest.py`). Both floors are set just under what the suite
+genuinely achieves, so they catch a regression rather than a rounding difference, and both
+were verified to fail when breached:
 
 - raising the coverage floor to 99.99 fails the run with
   `Coverage failure: total of 99.71 is less than fail-under=99.99`;
@@ -483,11 +531,30 @@ Design notes:
 
 ## Contributing
 
+[CONTRIBUTING.md](CONTRIBUTING.md) has the full version: how to run the gates, how to add a
+matching tier, conventional commits, and the rule that no test may point at a real Oracle
+tenant. The short version:
+
 1. `uv sync`
 2. `uv run task check_all` must pass before you push.
 3. Keep changes focused. If you touch `map_ledger_to_payload`, add or update the cases in
    `tests/test_reconciliation_mapping.py` — the tier ordering is load-bearing behaviour,
    not an implementation detail.
+
+## Portfolio
+
+Other repositories in the same portfolio, by the same author. Each is a separate project with
+its own scope; they share nothing but an owner.
+
+| Repository | What it is |
+|---|---|
+| [Merge-TIFF](https://github.com/Shreyansh2203/Merge-TIFF) | Next.js and a Python/Pillow serverless function that merge several TIFF files into one multi-page TIFF. |
+| [OTL-Voice](https://github.com/Shreyansh2203/OTL-Voice) | Voice timesheet assistant — FastAPI and a React/TypeScript client that turns spoken overtime entries into a timesheet. |
+| [Product-Comparison-Advisor-AI-Agent](https://github.com/Shreyansh2203/Product-Comparison-Advisor---AI-Agent) | Agent configuration and orchestrator for Oracle Fusion SCM product-comparison workflows. |
+| [Scraping-Bot](https://github.com/Shreyansh2203/Scraping-Bot) | Telegram bot that downloads media behind Instagram and Twitter/X links. |
+
+The Oracle theme is shared by this service and the product-comparison agent; the other two
+are unrelated.
 
 ## License
 
