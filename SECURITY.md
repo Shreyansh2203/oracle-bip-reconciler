@@ -139,8 +139,15 @@ Out of scope for this service, by design:
 - **No API key.** Authentication is the caller's or the gateway's responsibility. The
   service exposes a rate limit instead of a shared secret, and must not be exposed
   directly to the public internet.
-- **No customer data in issues or pull requests.** The gitignore excludes `Customers.txt`
-  and `Real Test Cases/` for this reason.
+- **No customer data in issues or pull requests.** `.gitignore` excludes `Customers.txt`,
+  `Real Test Cases/`, `reports/`, `data/`, `Prompts/` and `.agents/` — the directories that
+  actually receive Oracle Fusion BI Publisher extracts, so a routine export cannot be
+  committed by accident.
+
+  These paths **were** committed before they were ignored. Real client ERP extracts, and the
+  customer's corporate domain, remain reachable in this repository's git history. Purging
+  history does not retract what was cloned, so the exposure is treated as reportable rather
+  than remediated. See "Known exposure" above.
 
 In scope and enforced:
 
