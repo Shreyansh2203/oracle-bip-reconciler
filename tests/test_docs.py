@@ -34,7 +34,6 @@ LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 JSONC_BLOCK_RE = re.compile(r"```jsonc\n(.*?)```", re.S)
 FIELD_KEY_RE = re.compile(r'^\s*"([a-z_]+)"\s*:', re.M)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$", re.M)
-BACKTICK_FIELD_RE = re.compile(r"`([a-z][a-z0-9_]+)`")
 
 # Fields that exist on a model but are not part of the wire contract a caller cares about.
 IGNORED_FIELD_NAMES = set()
