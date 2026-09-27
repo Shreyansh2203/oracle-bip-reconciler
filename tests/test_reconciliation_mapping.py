@@ -4,6 +4,7 @@ import time
 
 from fastapi.testclient import TestClient
 
+from src.api.routers import reconciliation as router_mod
 from src.main import app
 from src.models import InvoiceItem, ReconciliationRequest
 from src.services import reconciliation as recon
@@ -187,6 +188,155 @@ def test_receipt_falls_back_to_amount_and_date_when_reference_missing():
     assert payload.fusion_receipt_number == "RCPT-1"
 
 
+def test_receipt_backfills_a_customer_name_the_payload_never_supplied():
+    # The caller may not know who they paid. The ledger row is authoritative, and the response
+    # has to carry the name back so the next request can short-circuit discovery at step 1.
+    payload = ReconciliationRequest(payment_reference="RCPT-45021")
+    receipts = [
+        {
+            "BILL_CUSTOMER_NAME": "Acme Corp",
+            "RECEIPT_NUMBER": "RCPT-45021",
+            "RECEIPT_DATE": "2026-08-14",
+            "RECEIPT_AMOUNT": "4,750.50",
+        }
+    ]
+
+    map_ledger_to_payload(payload, "Acme Corp", receipts, [])
+
+    assert payload.customer_name == "Acme Corp"
+    assert payload.fusion_receipt_number == "RCPT-45021"
+    assert payload.total_amount == 4750.50
+
+
+def test_receipt_reference_match_is_a_case_insensitive_substring():
+    # OCR and the ledger disagree on a reference's punctuation far more often than on its
+    # content, and one side is routinely a prefix of the other.
+    payload = ReconciliationRequest(payment_reference="rcpt-4502")
+    receipts = [{"BILL_CUSTOMER_NAME": "Acme Corp", "RECEIPT_NUMBER": "RCPT-45021"}]
+
+    map_ledger_to_payload(payload, "Acme Corp", receipts, [])
+
+    assert payload.fusion_receipt_number == "RCPT-45021"
+
+
+# --- the lower tiers ----------------------------------------------------------------------
+
+
+def test_two_way_match_on_number_and_amount():
+    # Exact number, amount agrees, date does not. The number has already pinned the row to a
+    # small candidate set, so one agreeing field is enough.
+    payload = _payload(InvoiceItem(invoice_number="INV-0001", invoice_date="2026-01-01", invoice_amount=100.0))
+
+    map_ledger_to_payload(payload, "Acme Corp", [], [_oracle_row("INV-0001", "2026-05-05", "100.00")])
+
+    assert payload.invoices[0].match_phase == "MATCHED"
+    # The Oracle date wins over the payload's, which is the whole point of the backfill.
+    assert payload.invoices[0].invoice_date == "2026-05-05"
+
+
+def test_one_way_match_on_a_unique_exact_number():
+    # Both date and amount disagree, but the number is exact and exactly one unmapped row
+    # carries it, so the OCR read of the number is the most trustworthy thing available.
+    payload = _payload(InvoiceItem(invoice_number="INV-0001", invoice_date="2026-01-01", invoice_amount=999.0))
+
+    map_ledger_to_payload(payload, "Acme Corp", [], [_oracle_row("INV-0001", "2026-05-05", "100.00")])
+
+    assert payload.invoices[0].match_phase == "MATCHED"
+    assert payload.invoices[0].invoice_amount == 100.0
+
+
+def test_an_exact_number_shared_by_two_rows_falls_through_to_the_fuzzy_bucket():
+    # Recorded as current behaviour, not endorsed. The 1-way tier correctly refuses an exact
+    # number that two unmapped rows share, because the amount could belong to either. But
+    # _is_num_ok also accepts an exact string, so the same row reaches the fuzzy bucket
+    # immediately afterwards and matches_fuzzy_num[0] takes the first row in ledger order.
+    #
+    # The guard therefore does not do what the docs imply for exact numbers, only for fuzzy
+    # ones. This is a question about intended semantics, not a typo, and the tier ordering is
+    # load-bearing, so it is pinned here rather than changed. See the open item in the report.
+    payload = _payload(InvoiceItem(invoice_number="INV-0001", invoice_date="2026-01-01", invoice_amount=999.0))
+    oracle = [_oracle_row("INV-0001", "2026-05-05", "100.00"), _oracle_row("INV-0001", "2026-06-06", "200.00")]
+
+    map_ledger_to_payload(payload, "Acme Corp", [], oracle)
+
+    assert payload.invoices[0].match_phase == "MATCHED"
+    assert payload.invoices[0].fusion_invoice_number == "INV-0001"
+    # Ledger order decides, not the amount: 999.00 matches neither row and the first one wins.
+    assert payload.invoices[0].invoice_amount == 100.0
+
+
+def test_a_fuzzy_number_shared_by_two_rows_takes_ledger_order():
+    # The fuzzy bucket has no uniqueness guard of its own. It is reached only when the number
+    # is not an exact hit, so this is the one path where ledger order alone picks the row.
+    payload = _payload(InvoiceItem(invoice_number="INV-0001234", invoice_date="2026-01-01", invoice_amount=999.0))
+    oracle = [_oracle_row("INV-0001235", "2020-01-01", "5.00"), _oracle_row("INV-0001236", "2020-01-02", "6.00")]
+
+    map_ledger_to_payload(payload, "Acme Corp", [], oracle)
+
+    assert payload.invoices[0].match_phase == "MATCHED"
+    assert payload.invoices[0].fusion_invoice_number == "INV-0001235"
+
+
+def test_fuzzy_number_alone_is_used_only_as_a_last_resort():
+    # One misread character and nothing else agreeing. This is the weakest tier, reached only
+    # because nothing stronger matched.
+    payload = _payload(InvoiceItem(invoice_number="INV-0001234", invoice_date="2026-01-01", invoice_amount=100.0))
+
+    map_ledger_to_payload(payload, "Acme Corp", [], [_oracle_row("INV-0001235", "2020-01-01", "5.00")])
+
+    assert payload.invoices[0].match_phase == "MATCHED"
+    assert payload.invoices[0].fusion_invoice_number == "INV-0001235"
+
+
+def test_fuzzy_number_outranks_a_bare_amount_match():
+    # The number identifies a document; an amount does not. Ordering these the other way round
+    # is how a customer with a repeated invoice amount gets handed somebody else's row.
+    payload = _payload(InvoiceItem(invoice_number="INV-0001234", invoice_date="2026-01-01", invoice_amount=100.0))
+    oracle = [_oracle_row("INV-0001235", "2020-01-01", "5.00"), _oracle_row("INV-OTHER", "2020-01-01", "100.00")]
+
+    map_ledger_to_payload(payload, "Acme Corp", [], oracle)
+
+    assert payload.invoices[0].fusion_invoice_number == "INV-0001235"
+
+
+def test_amount_only_match_is_accepted_only_when_exactly_one_row_agrees():
+    payload = _payload(InvoiceItem(invoice_number="INV-ZZZZ", invoice_date="2026-01-01", invoice_amount=100.0))
+    oracle = [_oracle_row("INV-A", "2020-01-01", "5.00"), _oracle_row("INV-B", "2020-01-02", "100.00")]
+
+    map_ledger_to_payload(payload, "Acme Corp", [], oracle)
+
+    assert payload.invoices[0].fusion_invoice_number == "INV-B"
+
+
+def test_amount_only_match_is_refused_when_two_rows_share_the_amount():
+    # Two rows at the same amount means the amount says nothing about which one this is, and a
+    # coin flip here silently corrupts a reconciliation.
+    payload = _payload(InvoiceItem(invoice_number="INV-ZZZZ", invoice_date="2026-01-01", invoice_amount=100.0))
+    oracle = [_oracle_row("INV-A", "2020-01-01", "100.00"), _oracle_row("INV-B", "2020-01-02", "100.00")]
+
+    map_ledger_to_payload(payload, "Acme Corp", [], oracle)
+
+    assert payload.invoices[0].match_phase == "UNMATCHED"
+
+
+def test_date_only_match_is_accepted_only_when_exactly_one_row_agrees():
+    payload = _payload(InvoiceItem(invoice_number="INV-ZZZZ", invoice_date="2026-01-01", invoice_amount=999.0))
+    oracle = [_oracle_row("INV-A", "2026-01-01", "5.00"), _oracle_row("INV-B", "2020-01-02", "100.00")]
+
+    map_ledger_to_payload(payload, "Acme Corp", [], oracle)
+
+    assert payload.invoices[0].fusion_invoice_number == "INV-A"
+
+
+def test_date_only_match_is_refused_when_two_rows_share_the_date():
+    payload = _payload(InvoiceItem(invoice_number="INV-ZZZZ", invoice_date="2026-01-01", invoice_amount=999.0))
+    oracle = [_oracle_row("INV-A", "2026-01-01", "5.00"), _oracle_row("INV-B", "2026-01-01", "100.00")]
+
+    map_ledger_to_payload(payload, "Acme Corp", [], oracle)
+
+    assert payload.invoices[0].match_phase == "UNMATCHED"
+
+
 # --- information disclosure -----------------------------------------------------
 
 SECRET_LEAK = "ORA-00942: table APPS.XX_CUSTOM_GL does not exist at erp.internal.acme.corp:8080"
@@ -229,6 +379,53 @@ def test_ledger_fetch_failure_does_not_leak_oracle_internals(monkeypatch, caplog
     assert err == recon.CLIENT_UPSTREAM_ERROR
     assert SECRET_LEAK not in err
     assert SECRET_LEAK in caplog.text
+
+
+def test_reconcile_endpoint_turns_a_service_error_into_the_declared_status(monkeypatch):
+    # The router's own error path, as opposed to the exception path above: when the service
+    # layer reports an upstream failure rather than raising, the status has to come from that
+    # tuple and the body has to be the fixed message.
+    async def failed(*_args, **_kwargs):
+        return None, recon.CLIENT_UPSTREAM_ERROR, 502
+
+    monkeypatch.setattr(router_mod, "process_reconciliation_batch", failed)
+
+    with TestClient(app) as http:
+        response = http.post("/v1/reconcile/batch", json={"customer_name": "Acme Corp"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == recon.CLIENT_UPSTREAM_ERROR
+
+
+def test_reconcile_endpoint_falls_back_to_500_when_no_status_is_supplied(monkeypatch):
+    # status or 500, not a TypeError: an error without a code still has to produce a response.
+    async def failed(*_args, **_kwargs):
+        return None, "something went wrong", None
+
+    monkeypatch.setattr(router_mod, "process_reconciliation_batch", failed)
+
+    with TestClient(app) as http:
+        response = http.post("/v1/reconcile/batch", json={"customer_name": "Acme Corp"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "something went wrong"
+
+
+def test_unexpected_internal_error_returns_a_fixed_500(monkeypatch):
+    # The catch-all handler exists so a bug in this service cannot leak a traceback or an
+    # internal path to the caller. It also has to actually run, which nothing else exercises.
+    async def boom(*_args, **_kwargs):
+        raise RuntimeError("psycopg2 OperationalError at db.internal:5432")
+
+    monkeypatch.setattr(router_mod, "process_reconciliation_batch", boom)
+
+    with TestClient(app, raise_server_exceptions=False) as http:
+        response = http.post("/v1/reconcile/batch", json={"customer_name": "Acme Corp"})
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "An unexpected internal server error occurred."}
+    assert "db.internal" not in response.text
+    assert "psycopg2" not in response.text
 
 
 def test_undiscovered_customer_returns_no_error(monkeypatch):

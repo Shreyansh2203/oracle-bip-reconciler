@@ -444,6 +444,36 @@ def test_discovery_asks_for_one_report_per_invoice_number(monkeypatch):
     assert {call["invoice_number"] for call in recorder.invoice_calls} == set(numbers)
 
 
+def test_nothing_resolvable_reports_no_customer_and_no_error(monkeypatch):
+    # (None, None) is the public "I could not identify this customer" answer. The API turns it
+    # into a 200 with a null body, which is a different thing from a 502, so the two paths must
+    # stay distinguishable all the way through discovery.
+    FetchRecorder().install(monkeypatch)
+    payload = ReconciliationRequest(
+        customer_name="A Customer With No Receipts",
+        payment_reference="RCPT-0000",
+        invoices=[InvoiceItem(invoice_number="INV-NOT-IN-LEDGER")],
+    )
+
+    name, cached = run_discovery(payload)
+
+    assert (name, cached) == (None, None)
+
+
+def test_discover_by_receipt_refuses_an_empty_reference_without_calling_oracle(monkeypatch):
+    # The guard at the top of the private helper. It is unreachable through the public entry
+    # point, which only calls it with a reference in hand, so it is asserted here to keep the
+    # helper safe for a future caller.
+    recorder = FetchRecorder(invoices=[INVOICE_ROW]).install(monkeypatch)
+
+    async def _call():
+        async with httpx.AsyncClient() as client:
+            return await discovery._discover_by_receipt(client, "svc-account", "svc-password", "")
+
+    assert asyncio.run(_call()) is None
+    assert recorder.receipt_calls == []
+
+
 def test_a_whitespace_only_customer_name_is_treated_as_absent(monkeypatch):
     # sanitize_string_val already turns " " into None on the way in, so this asserts the
     # discovery layer agrees rather than querying Oracle for a blank customer.

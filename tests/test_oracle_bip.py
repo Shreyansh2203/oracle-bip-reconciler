@@ -12,6 +12,7 @@ import base64
 import binascii
 import csv
 import logging
+import sys
 import xml.etree.ElementTree as ET
 
 import httpx
@@ -454,6 +455,129 @@ def test_a_500_without_a_not_found_body_is_treated_as_transient():
         router.post(SOAP_URL).mock(return_value=httpx.Response(500, text="java.sql.SQLException: ORA-01555"))
         with pytest.raises(OracleBIPTransientError):
             run(_run_bip_report, "svc-account", "svc-password", ["/Some Report.xdo"], [], "invoice")
+
+
+def test_a_throttled_response_that_also_says_not_found_falls_through():
+    # There are two "not found" guards. The first catches any status whose body says
+    # "Report definition not found". This exercises the second, weaker one: a 429 or 5xx whose
+    # body only says "not found" in some other phrasing. It looks transient but is not, and
+    # treating it as transient would spend the whole retry budget on a path that will never
+    # work.
+    with respx.mock as router:
+        route = router.post(SOAP_URL).mock(
+            side_effect=[
+                httpx.Response(503, text="Runtime error: report job not found"),
+                httpx.Response(200, text=soap_envelope(INVOICE_CSV)),
+            ]
+        )
+        rows = run(
+            _run_bip_report,
+            "svc-account",
+            "svc-password",
+            ["/Missing Report.xdo", "/Good Report.xdo"],
+            [],
+            "invoice",
+        )
+
+    assert len(rows) == 1
+    assert route.call_count == 2
+
+
+def test_a_throttled_response_that_says_nothing_useful_is_transient():
+    # The other side of the same guard: a 503 with no "not found" phrasing at all has to stay
+    # retryable, or a genuinely overloaded Oracle would be reported as a missing report.
+    with respx.mock as router:
+        route = router.post(SOAP_URL).mock(return_value=httpx.Response(503, text="upstream busy"))
+        with pytest.raises(OracleBIPTransientError):
+            run(_run_bip_report, "svc-account", "svc-password", ["/Some Report.xdo"], [], "invoice")
+
+    assert route.call_count == 1
+
+
+# ── the shared cache ─────────────────────────────────────────────────────────────────────────
+
+
+class FakeRedis:
+    """Enough of redis.asyncio to exercise the fallback paths without a server."""
+
+    def __init__(self, get_error=False, set_error=False):
+        self.store = {}
+        self.get_error = get_error
+        self.set_error = set_error
+        self.set_calls = []
+
+    async def get(self, key):
+        if self.get_error:
+            raise ConnectionError("redis is down")
+        return self.store.get(key)
+
+    async def set(self, key, value, ex=None):
+        self.set_calls.append((key, value, ex))
+        if self.set_error:
+            raise ConnectionError("redis is down")
+        self.store[key] = value.encode("utf-8") if isinstance(value, str) else value
+
+
+def test_the_cache_defaults_to_the_in_process_ttl_cache(monkeypatch):
+    monkeypatch.setattr(oracle_bip.settings, "REDIS_URL", None)
+    cache = oracle_bip.AsyncCache()
+    assert cache.redis is None
+
+    asyncio.run(cache.set("k", [{"A": "1"}]))
+    assert asyncio.run(cache.get("k")) == [{"A": "1"}]
+    assert asyncio.run(cache.get("absent")) is None
+
+
+def test_a_configured_redis_backs_the_shared_cache(monkeypatch):
+    monkeypatch.setattr(oracle_bip.settings, "REDIS_URL", "redis://cache.invalid:6379/0")
+    cache = oracle_bip.AsyncCache()
+    assert cache.redis is not None
+
+    # Two workers on two hosts share the ledger through Redis, so the TTL has to travel with
+    # the value rather than living only in the local cache's own expiry.
+    cache.redis = FakeRedis()
+    asyncio.run(cache.set("k", [{"A": "1"}]))
+    assert cache.redis.set_calls == [("k", '[{"A": "1"}]', oracle_bip.BIP_CACHE_TTL_SECONDS)]
+    assert asyncio.run(cache.get("k")) == [{"A": "1"}]
+
+
+def test_a_redis_read_failure_falls_back_to_the_local_cache(monkeypatch):
+    monkeypatch.setattr(oracle_bip.settings, "REDIS_URL", "redis://cache.invalid:6379/0")
+    cache = oracle_bip.AsyncCache()
+    cache.redis = FakeRedis(get_error=True)
+    cache.local["k"] = [{"A": "local"}]
+
+    assert asyncio.run(cache.get("k")) == [{"A": "local"}]
+
+
+def test_a_missing_redis_package_falls_back_to_the_local_cache(monkeypatch):
+    # redis is a declared runtime dependency, but a slimmed-down deployment image can still
+    # not have it. The service has to keep working on an in-process cache rather than refuse
+    # to import, and the operator has to be told the sharing is off.
+    monkeypatch.setattr(oracle_bip.settings, "REDIS_URL", "redis://cache.invalid:6379/0")
+    # Setting a sys.modules entry to None makes `import` raise ImportError for that name.
+    monkeypatch.setitem(sys.modules, "redis.asyncio", None)
+
+    cache = oracle_bip.AsyncCache()
+    assert cache.redis is None
+
+    asyncio.run(cache.set("k", [{"A": "1"}]))
+    assert asyncio.run(cache.get("k")) == [{"A": "1"}]
+
+
+def test_a_redis_write_failure_falls_back_to_the_local_cache(monkeypatch):
+    monkeypatch.setattr(oracle_bip.settings, "REDIS_URL", "redis://cache.invalid:6379/0")
+    cache = oracle_bip.AsyncCache()
+    cache.redis = FakeRedis(set_error=True)
+
+    asyncio.run(cache.set("k", [{"A": "1"}]))
+    # Losing the shared cache must degrade to a per-process cache, not to no cache at all.
+    assert cache.local["k"] == [{"A": "1"}]
+    assert cache.redis.set_calls, "the write should be attempted against Redis before degrading"
+
+    # A later read still finds it: the local copy is what answers once Redis is unreachable.
+    cache.redis.get_error = True
+    assert asyncio.run(cache.get("k")) == [{"A": "1"}]
 
 
 def test_fetch_retries_a_transient_failure_and_then_succeeds(monkeypatch):

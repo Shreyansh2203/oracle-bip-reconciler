@@ -31,6 +31,7 @@ dev = [
     "bandit>=1.7.9",
     "mypy>=1.11.1",
     "pip-audit>=2.7.3",
+    "pytest-cov>=5.0.0",
     # tests/test_deploy_contract.py parses pyproject.toml. tomllib is stdlib from 3.11, and
     # the project still supports 3.9+, so the test needs a backport on older interpreters.
     "tomli>=2.0.1; python_version < '3.11'",
@@ -57,6 +58,30 @@ select = [
 ]
 ignore = [
     "E501", # line too long (handled by formatting)
+]
+
+[tool.coverage.run]
+branch = false
+source = ["src", "api"]
+
+[tool.coverage.report]
+# The floor is set just below what the suite genuinely achieves (99.71% on the pinned
+# toolchain) rather than at a round aspirational number, so it fails on a real coverage
+# regression and not on a platform difference. Raise it in the same commit that adds the
+# tests that earn it, never on its own.
+fail_under = 98
+# Without this the floor is compared against a total rounded to whole percent, so 99.71%
+# compares as 100% and a fail-under of 99.99 would silently pass. coverage.py compares the
+# rounded display value, not the real one.
+precision = 2
+# Name the files that drag the number down, so a missed branch is a to-do rather than a
+# mystery. The whole point of a floor is that it points at something.
+skip_covered = false
+show_missing = true
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
 ]
 
 [tool.pytest.ini_options]
@@ -117,7 +142,7 @@ lint = "ruff check src/ tests/ api/"
 types = "mypy src/ api/"
 security = "bandit -r src/ api/ -q"
 deadcode = "vulture src/ tests/ api/ --min-confidence 80"
-test = "pytest"
+test = "pytest --cov=src --cov=api --cov-report=term-missing --cov-fail-under=98"
 # Needs network access to the advisory database, so it is deliberately NOT part of
 # check_all: a local gate that cannot run offline is a gate people learn to skip.
 # The CI dependency-audit job is the gate; this is the same command for local use.

@@ -295,9 +295,31 @@ runs, in order:
 | `types` | mypy | static types across `src/` and `api/` |
 | `security` | bandit | common security anti-patterns |
 | `deadcode` | vulture | unreachable code at ≥ 80 % confidence |
-| `test` | pytest | the full suite, against a test-count and coverage floor |
+| `test` | pytest | the full suite, against a test-count and a coverage floor |
 
 `uv run task lint`, `types`, `security`, `deadcode` and `test` can be run individually.
+
+### The two floors
+
+Coverage is currently **99.71 %** of `src/` and `api/`; the floor is **98 %**
+(`fail_under` in `[tool.coverage.report]`). The test count is **187**; the floor is **170**
+(`MIN_TESTS` in `tests/conftest.py`). Both are set just under what the suite genuinely
+achieves, so they catch a regression rather than a rounding difference, and both were
+verified to fail when breached:
+
+- raising the coverage floor to 99.99 fails the run with
+  `Coverage failure: total of 99.71 is less than fail-under=99.99`;
+- a run that collects fewer than 170 tests exits non-zero with an explanation.
+
+Two details are load-bearing. `precision = 2` is required, because coverage.py compares the
+*rounded display value* — at the default precision of 0, 99.71 % compares as 100 % and a
+fail-under of 99.99 silently passes. And a narrowed run (`-k`, `-m`, `--collect-only`) is
+allowed below the count floor, because narrowing is deliberate; a plain
+`pytest tests/some_file.py` is not, because that is how a refactor quietly deletes tests
+while every other gate stays green.
+
+To raise either floor, add the tests that earn it in the same commit. There are no
+`# pragma: no cover` directives and no exclusions anywhere in this repository.
 
 ### Dependency audit
 

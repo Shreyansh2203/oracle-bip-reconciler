@@ -35,6 +35,15 @@ def test_readiness_check():
         assert response.json() == {"status": "ready"}
 
 
+def test_readiness_check_fails_when_a_credential_is_missing(monkeypatch):
+    # The 503 branch is the one an orchestrator acts on, so it is asserted directly rather
+    # than only through the branch the CI environment happens to take.
+    monkeypatch.setattr(settings, "ORACLE_PASS", "")
+    response = client.get("/ready")
+    assert response.status_code == 503
+    assert "missing required configuration" in response.json()["detail"]
+
+
 def test_cors_fails_closed_when_no_origins_configured():
     # CORS_ORIGINS is unset in CI, so no origin may be echoed back. Browsers then refuse to
     # expose the response body to the calling page, which is the documented fail-closed path.
