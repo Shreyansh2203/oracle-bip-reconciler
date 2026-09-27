@@ -1,9 +1,17 @@
 from fastapi.testclient import TestClient
 
+from api.index import app as vercel_app
 from src.core.config import settings
 from src.main import app
 
 client = TestClient(app)
+
+
+def test_vercel_shim_reexports_the_one_app_object():
+    # vercel.json builds and routes to api/index.py, and that module is only allowed to
+    # re-export the app. If it ever grows its own copy, the serverless deployment and the
+    # local one would drift apart silently.
+    assert vercel_app is app
 
 
 def test_root_endpoint_no_auth():

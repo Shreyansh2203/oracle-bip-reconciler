@@ -72,8 +72,18 @@ pythonpath = ["."]
 #   are never read or written in application code:
 #     line_id, description, confidence_score, fusion_currency, fusion_customer_name,
 #     fusion_customer_number, fusion_receipt_status_code, match_phase
-# Removed from the previous list: `mock_*` (no mocking is used in this repository) and
+# Removed from the previous list: `mock_*` (no `mock_*` name is defined anywhere) and
 # `add_warning` (genuinely unreachable; the method has been deleted).
+#
+# Re-audited at --min-confidence 60 after adding the process_reconciliation_batch tests.
+# That pass reports ten more names and none of them is dead code, so none were removed and
+# none were added to this list:
+#   - customer_invoice_number, store_no, match_rule, warnings, header_id, confidence_label,
+#     meta_data, meta_extra are the same category as the Pydantic contract fields above --
+#     they exist to serialise the request/response schema and are not read in application
+#     code. Deleting them would be a breaking API change, not a dead-code fix.
+#   - clear_bip_cache is a pytest autouse fixture, reached through the framework like the
+#     FastAPI handlers above rather than by name.
 ignore_names = [
     "cls",
     "confidence_score",
