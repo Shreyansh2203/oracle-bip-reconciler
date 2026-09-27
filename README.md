@@ -341,6 +341,14 @@ startup unless `ALLOW_INSECURE_ORACLE_HTTP=true`.
 
 ## Security
 
+Read [SECURITY.md](SECURITY.md) first. A real Oracle BI Publisher service-account
+credential was once committed to this repository's history; it has been purged from the
+working tree and from git history, but **it must still be rotated in Oracle** — purging
+cannot un-leak it for anyone who cloned before the rewrite. `SECURITY.md` documents the
+incident and the exact rotation procedure.
+
+Design notes:
+
 - **No API key.** Authentication is the responsibility of the caller or a gateway; the
   service exposes a rate limit rather than a shared secret.
 - **Fail-closed CORS** by default, and `allow_credentials=False` throughout.
@@ -351,7 +359,8 @@ startup unless `ALLOW_INSECURE_ORACLE_HTTP=true`.
 - **No internal error text crosses the wire.** Oracle exceptions are logged with their type
   and message; the client receives a fixed 502 message.
 - **Bounded memory** — the report cache is a `TTLCache` (or Redis), not an unbounded dict.
-- `bandit` runs in CI and locally via `make check`.
+- `bandit` runs in CI and locally via `uv run task check_all`, and dependencies are
+  scanned by `pip-audit` on every build.
 
 ---
 
