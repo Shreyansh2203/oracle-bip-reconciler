@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import csv
 import io
 import json
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import quote
 
 # defusedxml only re-exports the parsing half of ElementTree, and the request builder needs
 # the serialising half. The SOAP envelope is assembled from our own parameters and only ever
@@ -68,10 +71,64 @@ class AsyncCache:
 
 _bip_cache = AsyncCache()
 
+# One entry per cache key that is currently being fetched.
+_inflight: dict[str, asyncio.Future[list[dict[str, Any]]]] = {}
+
+
+async def _fetch_once(
+    key: str, factory: Callable[[], Awaitable[list[dict[str, Any]]]]
+) -> list[dict[str, Any]]:
+    """Run `factory` for `key`, or await the run another caller already started.
+
+    `_discover_by_invoice_sequence` fans out up to DEFAULT_CONCURRENCY fetches that all
+    share one cache key, and the cache is cold for a key nobody has asked for before, so
+    without this a cold start issues one BIP request per fan-out member. The lookup and the
+    registration happen with no await between them, so no lock is needed: this is
+    single-threaded asyncio and a yield would let a second caller in between.
+
+    A failure reaches the waiters too, because they would have received the same error had
+    they issued the request themselves. The entry is always removed, so a cancelled caller
+    cannot leave a future behind for a later event loop to await.
+    """
+    existing = _inflight.get(key)
+    if existing is not None:
+        return await asyncio.shield(existing)
+
+    owned: asyncio.Future[list[dict[str, Any]]] = asyncio.get_running_loop().create_future()
+    _inflight[key] = owned
+    try:
+        results = await factory()
+    except BaseException as error:
+        if not owned.done():
+            owned.set_exception(error)
+            # Consumed here so the loop does not log it as never retrieved. A waiter that
+            # awaits the future still sees it.
+            owned.exception()
+        raise
+    else:
+        if not owned.done():
+            owned.set_result(results)
+        return results
+    finally:
+        _inflight.pop(key, None)
+
+
 def _get_cache_key(report_type: str, parameters: list[dict[str, Any]]) -> str:
+    """Build an injective key from a report type and its parameters.
+
+    Every component is percent-encoded, so a value can never contain the `=` that joins a
+    name to a value or the `|` that joins two parameters. Without that, two different SOAP
+    requests map to one key: the two parameters `A=1, B=2` and the single parameter
+    `A=1|B=2` both rendered as `A=1|B=2` and shared a cache entry. `quote` is injective
+    over byte strings and the encoded names pin each field's position, so once every
+    component is escaped, distinct requests cannot share a key.
+    """
     sorted_params = sorted(parameters, key=lambda x: x["name"])
-    param_str = "|".join([f"{p['name']}={p['values'][0]}" for p in sorted_params])
-    return f"{report_type}::{param_str}"
+    param_str = "|".join(
+        f"{quote(str(p['name']), safe='')}={quote(str(p['values'][0]), safe='')}"
+        for p in sorted_params
+    )
+    return f"{quote(report_type, safe='')}::{param_str}"
 
 
 
@@ -123,6 +180,23 @@ async def _run_bip_report(
     if cached_val is not None:
         return cached_val
 
+    async def _fetch() -> list[dict[str, Any]]:
+        return await _post_bip_report(
+            client, username, password, candidate_paths, valid_parameters, report_type, cache_key
+        )
+
+    return await _fetch_once(cache_key, _fetch)
+
+
+async def _post_bip_report(
+    client: httpx.AsyncClient,
+    username: str,
+    password: str,
+    candidate_paths: list[str],
+    parameters: list[dict[str, Any]],
+    report_type: str,
+    cache_key: str,
+) -> list[dict[str, Any]]:
     last_error = None
     valid_paths = [p for p in candidate_paths if p and p.strip()]
     base_url = settings.ORACLE_URL.rstrip("/")
@@ -148,9 +222,9 @@ async def _run_bip_report(
         attr_format = SubElement(report_req, f"{{{pub_ns}}}attributeFormat")
         attr_format.text = "csv"
 
-        if valid_parameters:
+        if parameters:
             param_names_values = SubElement(report_req, f"{{{pub_ns}}}parameterNameValues")
-            for param in valid_parameters:
+            for param in parameters:
                 item = SubElement(param_names_values, f"{{{pub_ns}}}item")
                 name = SubElement(item, f"{{{pub_ns}}}name")
                 name.text = param["name"]
