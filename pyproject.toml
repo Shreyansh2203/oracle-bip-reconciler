@@ -30,6 +30,7 @@ dev = [
     "vulture>=2.16",
     "bandit>=1.7.9",
     "mypy>=1.11.1",
+    "pip-audit>=2.7.3",
     # tests/test_deploy_contract.py parses pyproject.toml. tomllib is stdlib from 3.11, and
     # the project still supports 3.9+, so the test needs a backport on older interpreters.
     "tomli>=2.0.1; python_version < '3.11'",
@@ -117,6 +118,10 @@ types = "mypy src/ api/"
 security = "bandit -r src/ api/ -q"
 deadcode = "vulture src/ tests/ api/ --min-confidence 80"
 test = "pytest"
+# Needs network access to the advisory database, so it is deliberately NOT part of
+# check_all: a local gate that cannot run offline is a gate people learn to skip.
+# The CI dependency-audit job is the gate; this is the same command for local use.
+audit = "pip-audit --strict --requirement requirements.txt"
 check_all = "task lint && task types && task security && task deadcode && task test"
 
 [tool.mypy]

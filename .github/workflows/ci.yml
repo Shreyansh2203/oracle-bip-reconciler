@@ -5,6 +5,12 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
+  schedule:
+    # Weekly dependency vulnerability scan, Monday 06:17 UTC. Off the hour on purpose:
+    # scheduled workflows queue behind everyone else's, and the top of the hour is the
+    # worst time to be in that queue. Advisories are published continuously, so a scan
+    # that only runs on push would miss one published for an already-merged dependency.
+    - cron: "17 6 * * 1"
 
 # Cancel superseded runs on the same ref so a push does not queue behind its own history.
 concurrency:
@@ -47,3 +53,37 @@ jobs:
 
     - name: Lint, typecheck, security scan, dead code, tests
       run: uv run task check_all
+
+  dependency-audit:
+    # A separate job so a vulnerable transitive dependency reports as its own failure
+    # instead of a red X on the test job, and so the scan can also run on a schedule.
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: "3.12"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+
+    - name: Install dependencies
+      run: uv sync --frozen --dev
+
+    - name: Audit the runtime dependency set
+      # Audits requirements.txt, which is the set Vercel and Render actually install, rather
+      # than whatever happens to be importable. --strict also fails on a pinned requirement
+      # that cannot be resolved, so a malformed export cannot pass as "no vulnerabilities".
+      # pip-audit exits 1 on a finding, which is what fails this job.
+      run: uv run pip-audit --strict --requirement requirements.txt
+
+    - name: Audit the development toolchain
+      # Separate from the line above on purpose: a CVE in a linter is not what ships, and
+      # folding the dev group into the runtime scan would let one block the other.
+      run: uv run pip-audit --strict --local

@@ -295,9 +295,34 @@ runs, in order:
 | `types` | mypy | static types across `src/` and `api/` |
 | `security` | bandit | common security anti-patterns |
 | `deadcode` | vulture | unreachable code at ≥ 80 % confidence |
-| `test` | pytest | the full suite |
+| `test` | pytest | the full suite, against a test-count and coverage floor |
 
 `uv run task lint`, `types`, `security`, `deadcode` and `test` can be run individually.
+
+### Dependency audit
+
+```bash
+uv run task audit        # pip-audit against requirements.txt
+```
+
+This one needs network access, which is why it is **not** in `check_all` — a gate that
+cannot run offline is a gate people learn to skip. It is a real gate in CI instead, as its
+own `dependency-audit` job:
+
+- runs on every push and pull request, and
+- runs on a schedule, **Mondays at 06:17 UTC**, because advisories are published
+  continuously and a scan that only ran on push would miss one published for a dependency
+  that is already merged.
+
+It audits `requirements.txt` — the exact set Vercel and Render install — and separately the
+development toolchain, so a CVE in a linter neither hides nor blocks a finding in a runtime
+package. `pip-audit` exits non-zero on a finding, and `--strict` also fails on a requirement
+it cannot resolve, so a malformed export cannot pass as "no known vulnerabilities". Both
+commands were verified to exit 1 against a deliberately vulnerable pin and exit 0 against
+this lockfile.
+
+Dependabot (`.github/dependabot.yml`) opens the PRs that keep the pinned action SHAs and
+`uv.lock` current.
 
 ### Testing notes
 
