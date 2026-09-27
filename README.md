@@ -132,6 +132,24 @@ tiers**:
 They never re-query Oracle. Every tier is a pure function over the ledger already in
 memory, which is what keeps a 2,500-line batch inside a single request.
 
+### One interaction worth knowing about
+
+`_is_num_ok` also returns true for an exact string, so the 1-way tier's uniqueness guard
+(§3) can be undone immediately afterwards by the fuzzy bucket (§4). If two unmapped rows
+share the *exact* invoice number and both date and amount disagree, the 1-way tier refuses
+the match — and then `matches_fuzzy_num[0]` takes the first row in ledger order. The
+uniqueness rule is therefore enforced for a genuinely fuzzy number, not for an exact one.
+This is the current behaviour and it is pinned by
+`test_an_exact_number_shared_by_two_rows_falls_through_to_the_fuzzy_bucket`; changing it is a
+semantics decision, not a bug fix. See [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-matching-tier).
+
+### Adding a tier
+
+The rules for extending this list are in
+[CONTRIBUTING.md](CONTRIBUTING.md#adding-a-matching-tier). The short version: the order is the
+feature, work from the candidate set rather than the ledger, decide what happens when two
+rows agree, and test that case.
+
 ---
 
 ## API reference
@@ -350,8 +368,10 @@ Dependabot (`.github/dependabot.yml`) opens the PRs that keep the pinned action 
 
 `Settings` requires `ORACLE_URL`, `ORACLE_USER` and `ORACLE_PASS` at import time, so the
 suite needs them present — CI sets throwaway values, and `http://localhost:8080` is accepted
-by the URL validator without any opt-in. Nothing in the suite reaches the network: the
-service layer is patched at the discovery seam.
+by the URL validator without any opt-in. Nothing in the suite reaches the network: Oracle is
+mocked at the HTTP transport with `respx` in `tests/test_oracle_bip.py` and
+`tests/test_reconciliation_batch.py`, and at the discovery seam elsewhere. `.invalid`
+hostnames are used throughout, never a real tenant.
 
 ```bash
 uv run pytest -q
