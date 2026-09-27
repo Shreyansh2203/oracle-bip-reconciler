@@ -19,6 +19,12 @@ logger = logging.getLogger("reconciliation_api")
 # echoed back; the underlying exception is only ever written to the server log.
 CLIENT_UPSTREAM_ERROR = "The reconciliation service is temporarily unable to reach the Oracle ERP ledger."
 
+# The shortest number either side of a substring comparison may be. Below this, "1" is a
+# substring of every receipt number in the ledger, which is not a match but a coincidence.
+# Both the invoice and the receipt side read this one constant so the floor cannot drift
+# apart again.
+MIN_NUMBER_MATCH_LENGTH = 5
+
 
 def _normalized_date(value: Any) -> str:
     return str(value).strip().lower()
@@ -46,12 +52,38 @@ def _dates_match(
 
 
 def _is_amount_equal(amt1: Any, amt2: Any) -> bool:
+    # sanitize_float_val no longer raises -- it returns None and logs -- so there is nothing
+    # here to catch. The guard that matters is the second one: two amounts that could not be
+    # read are not equal amounts, they are two unreadable cells. Comparing the sanitised
+    # values without it would make "not a number" equal to "not a number" and reconcile a
+    # line against a row on the strength of a parse failure.
     if amt1 is None or amt2 is None:
         return False
-    try:
-        return sanitize_float_val(amt1) == sanitize_float_val(amt2)
-    except (ValueError, TypeError):
+    sanitized = sanitize_float_val(amt1)
+    if sanitized is None:
         return False
+    return sanitized == sanitize_float_val(amt2)
+
+
+def _is_substring_num_ok(number_a: str, number_b: str, *, ignore_case: bool = True) -> bool:
+    """Bidirectional substring test, subject to the length floor.
+
+    Both sides must reach MIN_NUMBER_MATCH_LENGTH. A shorter side is an incidental
+    fragment -- a serial, a single digit, a fragment of a longer reference -- and treating
+    it as a match binds one document's data to another's.
+
+    The receipt reference is matched case-insensitively because a payment reference is read
+    off a remittance advice in whatever case the bank printed it. The invoice number is not:
+    case is a real difference between two references, so a case-differing pair is left to
+    the bounded Levenshtein budget rather than accepted outright.
+    """
+    if not number_a or not number_b:
+        return False
+    if len(number_a) < MIN_NUMBER_MATCH_LENGTH or len(number_b) < MIN_NUMBER_MATCH_LENGTH:
+        return False
+    if ignore_case:
+        number_a, number_b = number_a.lower(), number_b.lower()
+    return number_a in number_b or number_b in number_a
 
 
 def _is_num_ok(inv_num: str, o_num: str) -> bool:
@@ -61,12 +93,13 @@ def _is_num_ok(inv_num: str, o_num: str) -> bool:
         return True
 
     # The minimum length applies to BOTH sides: a 3-4 character Oracle number is within
-    # the typo tolerance of a 5 character OCR number, which produces false positives.
-    if len(inv_num) < 5 or len(o_num) < 5:
+    # the typo tolerance of a 5 character OCR number, which produces false positives. It
+    # gates the typo budget as well as the substring test, so a short pair is not rescued
+    # by falling through to Levenshtein.
+    if len(inv_num) < MIN_NUMBER_MATCH_LENGTH or len(o_num) < MIN_NUMBER_MATCH_LENGTH:
         return False
 
-    # Substring check for OCR truncation
-    if inv_num in o_num or o_num in inv_num:
+    if _is_substring_num_ok(inv_num, o_num, ignore_case=False):
         return True
 
     # Fuzzy matching using Levenshtein distance for OCR typos.
@@ -124,9 +157,14 @@ def map_ledger_to_payload(
 
     receipt_number = str(payload.payment_reference).strip() if payload.payment_reference else ""
     if receipt_number:
+        # Ledger order breaks a tie, as it does in the invoice tiers. The first
+        # reference-length match wins, so the floor in _is_substring_num_ok is what keeps
+        # a short fragment from selecting a row at all: without it "1" takes the first
+        # receipt in the ledger and reports its currency, status and amount as this
+        # payment's.
         for r in all_receipts_raw:
             cand_num = str(r.get("RECEIPT_NUMBER", "")).strip()
-            if cand_num and (receipt_number.lower() in cand_num.lower() or cand_num.lower() in receipt_number.lower()):
+            if _is_substring_num_ok(receipt_number, cand_num):
                 _apply_receipt_mapping(r)
                 break
     else:
@@ -239,7 +277,12 @@ def map_ledger_to_payload(
             elif matches_fuzzy_num_corroborated:
                 matched_o_inv = matches_fuzzy_num_corroborated[0]
                 match_rule = "FUZZY_NUMBER_AMOUNT_OR_DATE"
-            elif matches_fuzzy_num:
+            elif len(matches_fuzzy_num) == 1:
+                # This bucket has no corroboration of any kind, so it is held to the same
+                # uniqueness rule as the amount-only and date-only buckets. Ledger order
+                # alone is not evidence: two rows reached here on a number resemblance
+                # alone, and picking the first of them binds the line to a row that
+                # disagrees with it on both date and amount.
                 matched_o_inv = matches_fuzzy_num[0]
                 match_rule = "FUZZY_NUMBER_ALONE"
             elif len(matches_amt) == 1:

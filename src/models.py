@@ -6,6 +6,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from src.utils.validators import sanitize_float_val, sanitize_string_val
 
+# Upper bounds on the caller-supplied strings. Oracle BI Publisher parameter values are
+# carried in a SOAP envelope and in the report cache key, and both are sized by whatever
+# the caller sends, so the fields that reach them are bounded rather than trusted. The
+# fusion_* fields are deliberately left unbounded: they are read back out of the ledger,
+# they are not validated on assignment, and a ledger row longer than this would fail the
+# response rather than the request.
+MAX_TEXT_LENGTH = 512
+MAX_IDENTIFIER_LENGTH = 256
+
 
 class InvoiceItem(BaseModel):
     # validate_assignment makes the declared types load-bearing for writes as well as reads.
@@ -19,17 +28,18 @@ class InvoiceItem(BaseModel):
     model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
     line_id: int | str | None = Field(default=None, alias="line_id")
-    invoice_number: str | int | None = None
+    invoice_number: str | int | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
     fusion_invoice_number: str | None = None
-    invoice_date: str | None = None
+    invoice_date: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
     fusion_invoice_date: str | None = None
     invoice_amount: float | None = None
     fusion_invoice_amount: float | None = None
-    description: str | None = None
-    customer_invoice_number: str | int | None = None
-    store_no: str | int | None = Field(default=None, alias="store_no")
+    description: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
+    customer_invoice_number: str | int | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
+    store_no: int | str | None = Field(default=None, alias="store_no")
     match_phase: Literal["MATCHED", "UNMATCHED"] | None = None
     match_rule: str | None = None
+
 
     @field_validator("invoice_number", "invoice_date", "customer_invoice_number", mode="before")
     @classmethod
@@ -54,17 +64,20 @@ class MetaDataModel(BaseModel):
 class ReconciliationRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    customer_name: str | None = None
+    customer_name: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
     fusion_customer_name: str | None = None
-    payment_reference: str | int | None = None
+    payment_reference: str | int | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
     fusion_receipt_number: str | None = None
-    payment_date: str | None = None
+    payment_date: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
     fusion_receipt_date: str | None = None
     fusion_customer_number: str | None = None
     fusion_currency: str | None = None
     fusion_receipt_status_code: str | None = None
     fusion_applied_amount: float | None = None
     header_id: int | str | None = None
+    # 2500 caps the work a single request can ask for. Zero is legal: a receipt-only
+    # lookup carries no invoice lines and is reconciled entirely from payment_reference,
+    # payment_date and total_amount.
     invoices: list[InvoiceItem] = Field(default_factory=list, max_length=2500)
     total_amount: float | None = None
     confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)

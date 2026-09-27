@@ -178,7 +178,7 @@ def test_receipt_falls_back_to_amount_and_date_when_reference_missing():
     receipts = [
         {
             "RECEIPT_NUMBER": "RCPT-1",
-            "RECEIPT_DATE": "04-01-2026",
+            "RECEIPT_DATE": "2026-04-01",
             "RECEIPT_AMOUNT": "100.00",
         }
     ]
@@ -245,36 +245,35 @@ def test_one_way_match_on_a_unique_exact_number():
     assert payload.invoices[0].invoice_amount == 100.0
 
 
-def test_an_exact_number_shared_by_two_rows_falls_through_to_the_fuzzy_bucket():
-    # Recorded as current behaviour, not endorsed. The 1-way tier correctly refuses an exact
-    # number that two unmapped rows share, because the amount could belong to either. But
-    # _is_num_ok also accepts an exact string, so the same row reaches the fuzzy bucket
-    # immediately afterwards and matches_fuzzy_num[0] takes the first row in ledger order.
-    #
-    # The guard therefore does not do what the docs imply for exact numbers, only for fuzzy
-    # ones. This is a question about intended semantics, not a typo, and the tier ordering is
-    # load-bearing, so it is pinned here rather than changed. See the open item in the report.
+def test_an_exact_number_shared_by_two_rows_is_refused_rather_than_taking_the_first():
+    # The 1-way tier refuses an exact number that two unmapped rows share, because the
+    # amount could belong to either. It used to change nothing: _is_num_ok also accepts an
+    # exact string, so the same rows reached the bare fuzzy bucket immediately afterwards
+    # and matches_fuzzy_num[0] took the first in ledger order. That bucket now carries the
+    # same uniqueness guard as the amount-only and date-only tiers, so the 1-way guard does
+    # what README.md says it does.
     payload = _payload(InvoiceItem(invoice_number="INV-0001", invoice_date="2026-01-01", invoice_amount=999.0))
     oracle = [_oracle_row("INV-0001", "2026-05-05", "100.00"), _oracle_row("INV-0001", "2026-06-06", "200.00")]
 
     map_ledger_to_payload(payload, "Acme Corp", [], oracle)
 
-    assert payload.invoices[0].match_phase == "MATCHED"
-    assert payload.invoices[0].fusion_invoice_number == "INV-0001"
-    # Ledger order decides, not the amount: 999.00 matches neither row and the first one wins.
-    assert payload.invoices[0].invoice_amount == 100.0
+    # 999.00 matches neither row and 2026-01-01 matches neither, so nothing corroborates
+    # either candidate and ledger order is not evidence.
+    assert payload.invoices[0].match_phase == "UNMATCHED"
+    assert payload.invoices[0].fusion_invoice_number is None
+    assert payload.invoices[0].match_rule is None
 
 
-def test_a_fuzzy_number_shared_by_two_rows_takes_ledger_order():
-    # The fuzzy bucket has no uniqueness guard of its own. It is reached only when the number
-    # is not an exact hit, so this is the one path where ledger order alone picks the row.
+def test_a_fuzzy_number_shared_by_two_rows_matches_neither():
+    # The one path where a number resemblance alone is the entire basis for a candidate.
+    # Two rows are equally near, so neither is a match.
     payload = _payload(InvoiceItem(invoice_number="INV-0001234", invoice_date="2026-01-01", invoice_amount=999.0))
     oracle = [_oracle_row("INV-0001235", "2020-01-01", "5.00"), _oracle_row("INV-0001236", "2020-01-02", "6.00")]
 
     map_ledger_to_payload(payload, "Acme Corp", [], oracle)
 
-    assert payload.invoices[0].match_phase == "MATCHED"
-    assert payload.invoices[0].fusion_invoice_number == "INV-0001235"
+    assert payload.invoices[0].match_phase == "UNMATCHED"
+    assert payload.invoices[0].fusion_invoice_number is None
 
 
 def test_fuzzy_number_alone_is_used_only_as_a_last_resort():

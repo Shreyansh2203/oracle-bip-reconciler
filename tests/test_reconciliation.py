@@ -31,10 +31,13 @@ def test_format_oracle_date_iso():
     assert format_oracle_date("2026-10-05T12:00:00Z") == "2026-10-05"
 
 def test_format_oracle_date_variations():
-    assert format_oracle_date("10-05-2026") == "2026-10-05"
+    assert format_oracle_date("13-05-2026") == "2026-05-13"
     assert format_oracle_date("05-Oct-2026") == "2026-10-05"
     assert format_oracle_date("05 Oct 2026") == "2026-10-05"
     assert format_oracle_date("October 05, 2026") == "2026-10-05"
+    # 10-05-2026 reads as either 10 May or 5 October and the spelling does not say which,
+    # so it is refused rather than resolved by the order of the format list.
+    assert format_oracle_date("10-05-2026") is None
 
 def test_format_oracle_date_compact():
     assert format_oracle_date("20261005") == "2026-10-05"

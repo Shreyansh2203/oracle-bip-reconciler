@@ -150,26 +150,21 @@ def test_consuming_a_row_changes_what_counts_as_a_unique_amount():
 
 
 # ---------------------------------------------------------------------------
-# The 1-way exact-number tier's uniqueness guard.
+# The 1-way exact-number tier's uniqueness guard, which used to be inert.
 #
-# README.md: "Exact number with a single unmapped candidate takes it even when date and
-# amount both disagree. Date-only and amount-only matches are accepted only when exactly
-# one unmapped row agrees; if two rows share a date, or two share an amount, the line is
-# left UNMATCHED rather than guessed." No test pinned the "single candidate" half.
+# README.md describes the 1-way tier as refusing an exact number that two unmapped rows
+# share, and then used to document that `matches_fuzzy_num[0]` took the first of those same
+# rows immediately afterwards, so the refusal changed nothing. The bare fuzzy-number bucket
+# now carries the same `len(...) == 1` guard as the amount-only and date-only buckets, so
+# the 1-way guard does what the README says it does: a line whose exact number is shared and
+# whose date and amount both disagree goes to review.
 #
-# Break it with: change `if not matched_o_inv and len(candidates) == 1:` to
-# `if not matched_o_inv and candidates:`.
+# Break it with: change `elif len(matches_fuzzy_num) == 1:` back to
+# `elif matches_fuzzy_num:`.
 # ---------------------------------------------------------------------------
 
 
-def test_the_1_way_exact_number_guard_has_no_observable_effect():
-    # README.md describes the 1-way tier as refusing a shared exact number, and then
-    # documents that the fuzzy bucket takes `matches_fuzzy_num[0]` immediately
-    # afterwards. Because `_is_num_ok` accepts an exact string before it looks at length,
-    # the fuzzy bucket's candidates are exactly the rows the 1-way tier refused, so the
-    # refusal changes nothing: the line is matched to the first of them either way.
-    # The guard is therefore inert, and dropping `len(candidates) == 1` changes no result
-    # for any input, at any number length.
+def test_the_1_way_exact_number_guard_refuses_a_number_two_rows_share():
     for number in ("INV-0001", "AB1"):
         payload = _run(
             InvoiceItem(invoice_number=number, invoice_date="2026-05-05", invoice_amount=500.0),
@@ -178,17 +173,18 @@ def test_the_1_way_exact_number_guard_has_no_observable_effect():
                 _ledger_row(number, "2026-02-02", "20.00"),
             ],
         )
-        # README:137-144 names the long-number case and this exact outcome.
-        assert payload.invoices[0].match_phase == "MATCHED", number
-        assert payload.invoices[0].fusion_invoice_number == number
-        assert payload.invoices[0].fusion_invoice_date == "2026-01-01", number
-    # The single-candidate case is matched by the same path.
+        # 999.00 matches neither row and 2026-05-05 matches neither, so the two rows agree
+        # with the line on nothing at all and there is no evidence for either.
+        assert payload.invoices[0].match_phase == "UNMATCHED", number
+        assert payload.invoices[0].match_rule is None, number
+    # The single-candidate case is matched by the same path, and is unaffected.
     lone = _run(
         InvoiceItem(invoice_number="AB1", invoice_date="2026-05-05", invoice_amount=500.0),
         ledger=[_ledger_row("AB1", "2026-01-01", "10.00")],
     )
     assert lone.invoices[0].match_phase == "MATCHED"
     assert lone.invoices[0].fusion_invoice_number == "AB1"
+    assert lone.invoices[0].match_rule == "EXACT_NUMBER_UNIQUE"
 
 
 def test_the_1_way_exact_tier_takes_a_lone_candidate_whose_date_and_amount_both_disagree():
@@ -317,20 +313,20 @@ def test_a_receipt_reference_is_matched_case_insensitively():
 
 
 # ---------------------------------------------------------------------------
-# A receipt reference has no minimum length, unlike an invoice number.
+# A receipt reference used to have no minimum length, unlike an invoice number.
 #
-# `_is_num_ok` deliberately refuses a pair whose shorter side is under five characters,
-# "so that a short incidental fragment cannot be mistaken for a real match". The receipt
-# path applies no such floor, so a one-character payment reference matches any receipt
-# number containing it, and the matched row's currency and status are then reported as
-# this payment's.
+# The receipt comparison applied no floor, so a one-character payment reference matched any
+# receipt number containing it, and the matched row's currency, status, customer number and
+# applied amount were then reported as this payment's -- including as its `total_amount`,
+# which a caller sending only a fragment does not have. The floor in
+# `_is_substring_num_ok` now applies to both sides of both comparisons.
 #
-# Break it with: add the same length floor to the receipt comparison in
-# _apply_receipt_mapping.
+# Break it with: replace the `_is_substring_num_ok` call in the receipt loop with a bare
+# `receipt_number.lower() in cand_num.lower()`.
 # ---------------------------------------------------------------------------
 
 
-def test_a_one_character_payment_reference_matches_any_receipt_containing_it():
+def test_a_one_character_payment_reference_claims_no_receipt():
     payload = _run(
         payment_reference="1",
         receipts=[
@@ -344,36 +340,56 @@ def test_a_one_character_payment_reference_matches_any_receipt_containing_it():
             }
         ],
     )
-    assert payload.fusion_receipt_number == "RCP-999001"
-    # The wrong row's currency and status are reported as this payment's.
-    assert payload.fusion_currency == "EUR"
-    assert payload.fusion_receipt_status_code == "REVERSED"
-    # _is_num_ok would have refused the same pair.
+    assert payload.fusion_receipt_number is None
+    # The wrong row's currency and status are no longer reported as this payment's.
+    assert payload.fusion_currency is None
+    assert payload.fusion_receipt_status_code is None
+    assert payload.total_amount is None
+    # _is_num_ok refuses the same pair, and both sides now read the same floor.
     from src.services.reconciliation import _is_num_ok
 
     assert not _is_num_ok("1", "RCP-999001")
 
 
+def test_a_truncated_receipt_reference_still_claims_its_receipt():
+    # The floor is a floor, not a prohibition: six characters against a long reference is
+    # the OCR truncation the substring comparison exists to recover.
+    payload = _run(
+        payment_reference="RCP-999",
+        receipts=[{"RECEIPT_NUMBER": "RCP-999001", "RECEIPT_AMOUNT": "1.00"}],
+    )
+    assert payload.fusion_receipt_number == "RCP-999001"
+
+
 # ---------------------------------------------------------------------------
-# An ambiguous numeric date resolves month-first, and two different calendar dates can
-# normalise to the same value. date_formatter.py lists %m-%d before %d-%m, so
-# "05-06-2026" is 6 May, not 5 June.
+# An ambiguous numeric date is refused, and the refusal is logged.
 #
-# Break it with: move "%d-%m-%Y" ahead of "%m-%d-%Y" in DATE_FORMATS.
+# The order of FORMATS used to decide this, and it decided it differently depending on
+# whether the year had four digits: %m-%d-%Y came before %d-%m-%Y, but %d-%m-%y came
+# before %m-%d-%y. So "05-06-2026" was 6 May and "05-06-26" was 5 June -- the same field,
+# read two ways, chosen by list order. A payload then matched whichever ledger row the
+# guess landed on, and the response carried that row's number, date and amount.
+#
+# Neither reading is more correct than the other for an OCR corpus, so a numeric order
+# whose day and month are both valid and different is refused instead. The caller's
+# fallback for a refusal is a raw string comparison, which cannot match wrongly.
+#
+# Break it with: delete the is_ambiguous_numeric_date guard from format_oracle_date.
 # ---------------------------------------------------------------------------
 
 
-def test_an_ambiguous_numeric_date_resolves_month_first():
+def test_an_ambiguous_numeric_date_is_refused_at_both_year_widths():
     from src.utils.date_formatter import format_oracle_date
 
-    assert format_oracle_date("05-06-2026") == "2026-05-06"
+    assert format_oracle_date("05-06-2026") is None
+    assert format_oracle_date("05-06-26") is None
     assert format_oracle_date("2026-06-05") == "2026-06-05"
 
 
-def test_an_ambiguous_date_binds_the_wrong_ledger_row_on_a_date_only_match():
-    # The payload line is 5 June (dd-mm). The ledger holds a 5 June row and a 6 May row,
-    # both for 50.00. The amount is not unique, so the date is the deciding key, and it
-    # decides on 6 May.
+def test_an_ambiguous_date_binds_no_ledger_row_rather_than_the_wrong_one():
+    # The pinned behaviour was that a payload dated 05-06-2026 bound a 5 June row, and it
+    # bound it because the parse had guessed 6 May. With the date refused the line agrees
+    # with neither row and goes to review instead of to the wrong customer row.
     payload = _run(
         InvoiceItem(invoice_number="INV-ZZZZ", invoice_date="05-06-2026", invoice_amount=50.0),
         ledger=[
@@ -381,8 +397,8 @@ def test_an_ambiguous_date_binds_the_wrong_ledger_row_on_a_date_only_match():
             _ledger_row("INV-B", "2026-05-06", "50.00"),
         ],
     )
-    assert payload.invoices[0].match_phase == "MATCHED"
-    assert payload.invoices[0].fusion_invoice_number == "INV-B"
+    assert payload.invoices[0].match_phase == "UNMATCHED"
+    assert payload.invoices[0].fusion_invoice_number is None
 
 
 def test_the_day_first_formats_are_parsed_for_an_unambiguous_spelling():
