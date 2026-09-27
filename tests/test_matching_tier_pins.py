@@ -49,7 +49,7 @@ def _run(*invoices, receipts=(), ledger=(), customer="Acme", **fields):
 # ---------------------------------------------------------------------------
 
 
-def test_the_amount_and_date_bucket_takes_a_row_with_an_unrelated_number():
+def test_the_amount_and_date_bucket_refuses_a_row_with_an_unrelated_number():
     payload = _run(
         InvoiceItem(invoice_number="INV-0001234", invoice_date="2026-01-01", invoice_amount=100.0),
         ledger=[
@@ -59,31 +59,34 @@ def test_the_amount_and_date_bucket_takes_a_row_with_an_unrelated_number():
     )
     matched = payload.invoices[0]
     assert matched.match_phase == "MATCHED"
-    # INV-0001235 is a one-edit fuzzy hit on the payload's number and is available, but
-    # the number-blind bucket is tried first and wins.
-    assert matched.fusion_invoice_number == "INV-9000-XYZ"
-    # The correct row is left unmapped and therefore available to nothing else.
-    assert matched.invoice_amount == 100.0
+    # INV-9000-XYZ agrees on amount and date but its number shares nothing with the
+    # payload's, so it is not a candidate: binding a payment to it would reconcile
+    # against an unrelated invoice. INV-0001235 is a one-edit fuzzy hit on the number
+    # corroborated by the date, and is what a human would have chosen.
+    assert matched.fusion_invoice_number == "INV-0001235"
+    assert matched.match_rule == "FUZZY_NUMBER_AMOUNT_OR_DATE"
 
 
-def test_the_amount_and_date_bucket_takes_the_first_agreeing_row_in_ledger_order():
+def test_the_amount_and_date_bucket_does_not_bind_a_different_invoice_on_row_order():
+    request = {"invoice_number": "INV-AAA-777", "invoice_date": "2026-01-01", "invoice_amount": 99.0}
     first = _run(
-        InvoiceItem(invoice_number="INV-AAA-777", invoice_date="2026-01-01", invoice_amount=99.0),
+        InvoiceItem(**request),
         ledger=[
             _ledger_row("INV-BBB-001", "2026-01-01", "99.00"),
             _ledger_row("INV-CCC-002", "2026-01-01", "99.00"),
         ],
     )
     second = _run(
-        InvoiceItem(invoice_number="INV-AAA-777", invoice_date="2026-01-01", invoice_amount=99.0),
+        InvoiceItem(**request),
         ledger=[
             _ledger_row("INV-CCC-002", "2026-01-01", "99.00"),
             _ledger_row("INV-BBB-001", "2026-01-01", "99.00"),
         ],
     )
-    # Same request, same data, different BIP row order -> a different invoice is bound.
-    assert first.invoices[0].fusion_invoice_number == "INV-BBB-001"
-    assert second.invoices[0].fusion_invoice_number == "INV-CCC-002"
+    # Neither row has any relationship to INV-AAA-777, so both invoices go to manual
+    # review rather than one of them being bound according to BIP row order.
+    assert first.invoices[0].match_phase == "UNMATCHED"
+    assert second.invoices[0].match_phase == "UNMATCHED"
 
 
 def test_a_consumed_row_steers_a_duplicate_number_onto_an_unrelated_invoice():

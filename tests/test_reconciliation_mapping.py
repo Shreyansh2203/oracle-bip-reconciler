@@ -484,7 +484,7 @@ def test_matching_does_not_degrade_to_a_per_invoice_ledger_rescan():
     assert large < small * 25 + 1.0, f"{small:.2f}s for 200 invoices vs {large:.2f}s for 2000"
 
 
-def test_fuzzy_fallback_stays_bounded_for_a_large_tenant_ledger():
+def test_fuzzy_fallback_stays_bounded_for_a_large_tenant_ledger(monkeypatch):
     # No payload invoice has a number that exists in the ledger, so every one of them has
     # to walk the whole ledger through the fuzzy tier. This is the worst legitimate batch.
     payload = _payload(
@@ -495,8 +495,34 @@ def test_fuzzy_fallback_stays_bounded_for_a_large_tenant_ledger():
     )
     ledger = [_oracle_row(f"INV-{i:06d}", "2026-01-01", f"{i}.00") for i in range(5000)]
 
+    # The guard is a CALL COUNT, not a duration. The optimisation that matters hoisted
+    # per-row normalisation out of the inner loop, so these run once per ledger row
+    # (~5,000) rather than once per (invoice, row) pair (~1,000,000 here) — a 200x
+    # difference that no amount of machine load or clock resolution can move. A wall-clock
+    # bound on this workload is a ~9ms-to-~23s constant-factor difference, which a loaded
+    # CI runner can cross by accident; the call count cannot be crossed by accident.
+    # The duration below is only a coarse backstop against a gross regression.
+    calls = {"date": 0, "amount": 0}
+    real_date = recon.format_oracle_date
+    real_amount = recon.sanitize_float_val
+
+    def counting_date(value):
+        calls["date"] += 1
+        return real_date(value)
+
+    def counting_amount(value):
+        calls["amount"] += 1
+        return real_amount(value)
+
+    monkeypatch.setattr(recon, "format_oracle_date", counting_date)
+    monkeypatch.setattr(recon, "sanitize_float_val", counting_amount)
+
     start = time.perf_counter()
     map_ledger_to_payload(payload, "Acme Corp", [], ledger)
     elapsed = time.perf_counter() - start
 
-    assert elapsed < 5.0, f"fuzzy fallback took {elapsed:.2f}s"
+    # One pass over the ledger, plus a small per-invoice overhead. The old per-pair
+    # rescan was ~1,000,000 of each.
+    assert calls["date"] < len(ledger) * 2, f"format_oracle_date called {calls['date']} times for {len(ledger)} rows"
+    assert calls["amount"] < len(ledger) * 2, f"sanitize_float_val called {calls['amount']} times for {len(ledger)} rows"
+    assert elapsed < 30.0, f"fuzzy fallback took {elapsed:.2f}s"

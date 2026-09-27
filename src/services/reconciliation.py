@@ -148,11 +148,12 @@ def map_ledger_to_payload(
     for entry in ledger:
         inv_by_num.setdefault(entry.number, []).append(entry)
 
-    def _apply_invoice_mapping(inv_item: Any, o_inv: _OracleInvoice) -> None:
+    def _apply_invoice_mapping(inv_item: Any, o_inv: _OracleInvoice, match_rule: str | None = None) -> None:
         inv_item.fusion_invoice_number = o_inv.number_raw
         inv_item.fusion_invoice_date = o_inv.date_raw
         inv_item.fusion_invoice_amount = o_inv.amount_raw
         inv_item.match_phase = "MATCHED"
+        inv_item.match_rule = match_rule
 
         inv_item.invoice_number = inv_item.fusion_invoice_number
         inv_item.invoice_date = inv_item.fusion_invoice_date
@@ -171,6 +172,7 @@ def map_ledger_to_payload(
         inv_amt_cmp = sanitize_float_val(inv_amt) if inv_amt is not None else None
 
         matched_o_inv = None
+        match_rule: str | None = None
 
         # 1. Dictionary-based lookup for EXACT number matches
         if inv_num in inv_by_num:
@@ -180,6 +182,7 @@ def map_ledger_to_payload(
             for o_inv in candidates:
                 if _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp) and inv_amt_cmp == o_inv.amount:
                     matched_o_inv = o_inv
+                    match_rule = "EXACT_NUMBER_AMOUNT_DATE"
                     break
 
             # 2-Way Match Fallbacks (Num + Amt, Num + Date)
@@ -187,11 +190,13 @@ def map_ledger_to_payload(
                 for o_inv in candidates:
                     if inv_amt_cmp == o_inv.amount or _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp):
                         matched_o_inv = o_inv
+                        match_rule = "EXACT_NUMBER_AMOUNT_OR_DATE"
                         break
 
             # 1-Way Match Fallback (Num Exact)
             if not matched_o_inv and len(candidates) == 1:
                 matched_o_inv = candidates[0]
+                match_rule = "EXACT_NUMBER_UNIQUE"
 
         # 2. Fuzzy Matching Fallback (if exact num failed)
         if not matched_o_inv:
@@ -209,7 +214,7 @@ def map_ledger_to_payload(
                 date_ok = _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp)
                 amt_ok = inv_amt_cmp is not None and inv_amt_cmp == o_inv.amount
 
-                if date_ok and amt_ok:
+                if date_ok and amt_ok and _is_num_ok(inv_num, o_inv.number):
                     matches_date_amt.append(o_inv)
 
                 if amt_ok:
@@ -230,17 +235,22 @@ def map_ledger_to_payload(
 
             if matches_date_amt:
                 matched_o_inv = matches_date_amt[0]
+                match_rule = "NUMBER_AMOUNT_DATE"
             elif matches_fuzzy_num_corroborated:
                 matched_o_inv = matches_fuzzy_num_corroborated[0]
+                match_rule = "FUZZY_NUMBER_AMOUNT_OR_DATE"
             elif matches_fuzzy_num:
                 matched_o_inv = matches_fuzzy_num[0]
+                match_rule = "FUZZY_NUMBER_ALONE"
             elif len(matches_amt) == 1:
                 matched_o_inv = matches_amt[0]
+                match_rule = "AMOUNT_ALONE_UNIQUE"
             elif len(matches_date) == 1:
                 matched_o_inv = matches_date[0]
+                match_rule = "DATE_ALONE_UNIQUE"
 
         if matched_o_inv:
-            _apply_invoice_mapping(invoice, matched_o_inv)
+            _apply_invoice_mapping(invoice, matched_o_inv, match_rule)
         else:
             invoice.match_phase = "UNMATCHED"
 
