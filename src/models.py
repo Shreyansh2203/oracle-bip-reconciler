@@ -8,7 +8,15 @@ from src.utils.validators import sanitize_float_val, sanitize_string_val
 
 
 class InvoiceItem(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    # validate_assignment makes the declared types load-bearing for writes as well as reads.
+    # map_ledger_to_payload assigns the raw Oracle CSV cell straight onto fusion_invoice_amount
+    # ("9,500.25"), and without this the field would keep that str while claiming to be a
+    # float, so the declared type was a lie in every response the service produced.
+    # ReconciliationRequest deliberately does NOT set it: _set_invoice_count is a mode="after"
+    # model validator that assigns a field, and an after-validator that re-enters itself on
+    # every assignment recurses until the stack overflows. Its float fields are coerced at
+    # their single assignment site instead.
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
     line_id: int | str | None = Field(default=None, alias="line_id")
     invoice_number: str | int | None = None
@@ -32,6 +40,11 @@ class InvoiceItem(BaseModel):
     @classmethod
     def sanitize_floats(cls, v: float | str | None) -> float | None:
         return sanitize_float_val(v)
+
+
+# fusion_invoice_date is deliberately typed str | None and is NOT normalised: it carries the
+# Oracle ledger's own date string verbatim ("08/14/2026", "2026-08-14"), which is the point of
+# the field. Only the amount is a number, because only the amount is consumed as one.
 
 
 class MetaDataModel(BaseModel):

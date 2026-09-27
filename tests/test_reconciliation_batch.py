@@ -8,6 +8,7 @@ run the real discovery, filtering and mapping code and stop at the Oracle bounda
 
 import asyncio
 import base64
+import json
 import logging
 
 import httpx
@@ -157,22 +158,46 @@ def test_batch_maps_a_three_way_match_through_the_whole_flow():
         "UNMATCHED",
     ]
 
-    # fusion_* carries the Oracle value verbatim, including the US date format and the
-    # thousands separator; the plain fields carry the coerced value used for matching.
+    # fusion_invoice_number and fusion_invoice_date carry the Oracle value verbatim, including
+    # the US date format; fusion_invoice_amount is coerced to a float on assignment, because
+    # InvoiceItem sets validate_assignment and its declared type is float | None. The plain
+    # fields carry the same coerced value used for matching.
     assert exact.fusion_invoice_number == "INV-2026-00881"
     assert exact.fusion_invoice_date == "08/14/2026"
-    assert exact.fusion_invoice_amount == "9,500.25"
+    assert exact.fusion_invoice_amount == 9500.25
     assert exact.invoice_number == "INV-2026-00881"
     assert exact.invoice_date == "08/14/2026"
     assert exact.invoice_amount == 9500.25
 
     assert exact_again.fusion_invoice_number == "INV-2026-00882"
     assert exact_again.fusion_invoice_date == "2026-08-14"
-    assert exact_again.fusion_invoice_amount == "4,750.50"
+    assert exact_again.fusion_invoice_amount == 4750.50
     assert exact_again.invoice_amount == 4750.50
 
     assert absent.fusion_invoice_number is None
     assert absent.invoice_number == "INV-2026-00777"
+
+
+def test_response_serialises_the_oracle_amount_as_a_json_number():
+    # The declared type of fusion_invoice_amount is float | None, and InvoiceItem validates on
+    # assignment, so the value the service puts there is already a float. This is the boundary
+    # a client actually sees: mode="json" is what FastAPI's response_model serialises, and a
+    # regression to a str would show up here as a JSON string rather than a number.
+    mock, side_effect = bip_transport()
+    with mock as router:
+        router.post(SOAP_URL).mock(side_effect=side_effect)
+        result, err, status = run_batch(payment_payload())
+
+    assert (err, status) == (None, None)
+    wire = result.model_dump(mode="json")
+    amount = wire["invoices"][0]["fusion_invoice_amount"]
+
+    assert isinstance(amount, float)
+    assert amount == 9500.25
+    assert json.dumps(wire).count('"fusion_invoice_amount": 9500.25') == 1
+    # The date stays the Oracle string on purpose: fusion_invoice_date is typed str | None and
+    # carries the ledger's own formatting rather than a normalised one.
+    assert wire["invoices"][0]["fusion_invoice_date"] == "08/14/2026"
 
 
 def test_batch_drops_parameter_echo_rows_before_mapping(monkeypatch):

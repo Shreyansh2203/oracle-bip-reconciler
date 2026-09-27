@@ -180,17 +180,42 @@ the authoritative Oracle values, unmatched fields left alone:
   "invoices": [
     {
       "invoice_number": "INV-000123",      // repaired from "INV-00012"
-      "invoice_date": "2026-10-05",        // repaired from "05-Oct-2026"
+      "invoice_date": "2026-10-05",        // Oracle's own string, see below
       "invoice_amount": 1234.56,
       "fusion_invoice_number": "INV-000123",
       "fusion_invoice_date": "2026-10-05",
-      "fusion_invoice_amount": "1234.56",
+      "fusion_invoice_amount": 1234.56,    // a JSON number, not "1,234.56"
       "match_phase": "MATCHED"             // or "UNMATCHED"
     }
   ],
   "invoice_count": 1
 }
 ```
+
+#### Types of the `fusion_*` fields
+
+`fusion_*` is the Oracle record that won. Read these literally:
+
+| Field | JSON type | Contract |
+|---|---|---|
+| `fusion_invoice_number` | `string \| null` | The ledger's number, verbatim. |
+| `fusion_invoice_date` | `string \| null` | The ledger's date **string**, verbatim — `"08/14/2026"` if that is what Oracle returned. It is *not* normalised to `YYYY-MM-DD`; the normalised value only ever existed inside the matcher. Compare with `format_oracle_date` rather than parsing it yourself. |
+| `fusion_invoice_amount` | `number \| null` | Coerced to a JSON **number**. Oracle's `"9,500.25"` is serialised as `9500.25`, and a cell the engine cannot parse is `null`, never a string. |
+| `fusion_receipt_number` / `fusion_receipt_date` | `string \| null` | Verbatim from the receipt row. |
+| `fusion_applied_amount` | `number \| null` | Coerced, like the invoice amount. |
+| `fusion_currency` / `fusion_receipt_status_code` / `fusion_customer_number` | `string \| null` | Verbatim. |
+
+`InvoiceItem` sets `validate_assignment=True`, so these types are enforced on the writes the
+engine performs, not only on the request that came in. Before that was on,
+`fusion_invoice_amount` held the raw Oracle *string* behind a `float` annotation and clients
+doing arithmetic on it got a `TypeError`. `invoice_amount` and `invoice_date` are then
+overwritten with the same matched values, so a client that only needs the repaired number and
+date can ignore the `fusion_*` pair entirely.
+
+`ReconciliationRequest` deliberately does *not* set `validate_assignment`: its
+`_set_invoice_count` is a `mode="after"` model validator that assigns a field, and an
+after-validator that re-enters itself on every assignment recurses. Its float fields are
+coerced at their single assignment site instead.
 
 | Status | Meaning |
 |---|---|
