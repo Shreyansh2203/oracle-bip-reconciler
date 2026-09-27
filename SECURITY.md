@@ -136,21 +136,42 @@ response-time commitment; the maintainer aims to acknowledge a report within a f
 
 Out of scope for this service, by design:
 
-- **No API key.** Authentication is the caller's or the gateway's responsibility. The
-  service exposes a rate limit instead of a shared secret, and must not be exposed
-  directly to the public internet.
+- **No API key of its own.** Authentication is the caller's or the gateway's responsibility.
+  What *is* in scope is refusing to serve at all until somebody has decided where the
+  authentication happens — see below.
 - **No customer data in issues or pull requests.** `.gitignore` excludes `Customers.txt`,
   `Real Test Cases/`, `reports/`, `data/`, `Prompts/` and `.agents/` — the directories that
   actually receive Oracle Fusion BI Publisher extracts, so a routine export cannot be
   committed by accident.
 
-  These paths **were** committed before they were ignored. Real client ERP extracts, and the
-  customer's corporate domain, remain reachable in this repository's git history. Purging
+  These paths **were** committed before they were ignored. Real client ERP extracts, and
+  the customer's corporate domain, remain reachable in this repository's git history. Purging
   history does not retract what was cloned, so the exposure is treated as reportable rather
   than remediated. See "Known exposure" above.
 
 In scope and enforced:
 
+- **The reconciliation endpoint fails closed.** `POST /v1/reconcile/batch` returns `503` to
+  everyone while `ALLOW_UNAUTHENTICATED_ACCESS` is unset, which is the default. This matters
+  because the endpoint takes a caller-supplied `customer_name` and hands back that
+  customer's **entire** invoice and receipt ledger, and `ORACLE_USER`/`ORACLE_PASS` are one
+  tenant-wide service account — so the endpoint reads across every customer the account can
+  see. The rate limit is ten requests a minute; it is not authentication.
+  **This service must therefore sit behind an authenticating proxy**: a gateway, an ingress
+  with auth, or anything that checks a credential before the request arrives here. The
+  service is the reconciler; the proxy is the authentication. `vercel.json` and `render.yaml`
+  both produce a publicly reachable URL, which is why the refusal is the default rather than
+  a documented caveat. Turning the variable on is the operator accepting that the endpoint
+  is unauthenticated, and `.env.example` says so in those words.
+- **Caller-supplied strings are bounded.** Every value a caller controls that reaches the
+  BI Publisher SOAP envelope or the report cache key has a length bound, because both are
+  sized by whatever the caller sends.
+- **A rejected payload is not echoed back.** A `422` reports each error's type, location
+  and message but not the offending value, so refusing a 2,501-invoice batch does not return
+  2,501 invoices to the caller that sent them.
+- **The report cache key is injective.** Parameters are percent-encoded before they are
+  joined, so a caller-supplied invoice number cannot forge the separator and share a cache
+  entry with a different request.
 - Fail-closed CORS by default, with `allow_credentials=False` throughout.
 - `ORACLE_PASS` is declared with `repr=False`, so it cannot reach the logs through
   `str(settings)`, `repr(settings)` or a `ValidationError`.
@@ -158,7 +179,11 @@ In scope and enforced:
   mount an entity-expansion attack.
 - Plain `http://` to a non-loopback `ORACLE_URL` is refused at startup unless
   `ALLOW_INSECURE_ORACLE_HTTP=true` is set explicitly.
+- `X-Forwarded-For` is ignored for rate-limit bucketing unless `TRUSTED_PROXY_HEADERS=true`,
+  and then only its last entry is read. Trusting the header unconditionally — which is what
+  uvicorn's `--forwarded-allow-ips=*` does — would let any caller mint its own bucket.
 - Oracle exceptions, report paths, hostnames and ORA codes are logged server-side and
   never returned to the client; the client receives a fixed `502` message.
 - `bandit` and a weekly `pip-audit` scan run in CI. See
   [README.md](README.md#quality-gates) for the full gate list.
+

@@ -11,6 +11,11 @@ services:
     # The interpreter is addressed through the venv explicitly. Render does not promise to
     # put .venv/bin on PATH, and a bare `uvicorn` that cannot be resolved is a deploy that
     # builds cleanly and then fails to start.
+    # The 10/minute limit is per request.client.host, which behind Render's edge is the
+    # edge's own address, so every caller shares one bucket unless TRUSTED_PROXY_HEADERS
+    # is turned on below. Deliberately NOT solved with `--forwarded-allow-ips=*`, which
+    # makes uvicorn trust the leftmost X-Forwarded-For entry from anyone: that turns the
+    # rate limit into a no-op for any caller willing to set a header.
     startCommand: ".venv/bin/uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 2"
     # Every key below is read by src/core/config.py (Settings) or by os.getenv in
     # src/constants.py and src/services/oracle_bip.py. Keep this list and the README
@@ -28,6 +33,14 @@ services:
       - key: CORS_ORIGINS
         value: ""
       - key: ALLOW_INSECURE_ORACLE_HTTP
+        value: "false"
+      # The endpoint serves whole-customer ledgers and this service cannot authenticate the
+      # caller, so it refuses to serve until an operator turns this on behind a proxy.
+      - key: ALLOW_UNAUTHENTICATED_ACCESS
+        value: "false"
+      # Set to true only when the thing in front overwrites X-Forwarded-For, so that the
+      # rate limit counts callers rather than the edge.
+      - key: TRUSTED_PROXY_HEADERS
         value: "false"
       - key: REDIS_URL
         value: ""

@@ -19,6 +19,19 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = ""
     REDIS_URL: str | None = None
 
+    # ORACLE_USER/ORACLE_PASS are one tenant-wide BI Publisher service account, so anything
+    # that can reach the reconciliation endpoint can read the whole ledger of every customer
+    # that account can see, by naming a customer. Defaulting to False means a deploy that
+    # forgot to decide is a deploy that serves nobody; the operator has to set this to true
+    # once an authenticating proxy is in front of the service. See README.md#deployment.
+    ALLOW_UNAUTHENTICATED_ACCESS: bool = False
+
+    # Whether the reverse proxy in front of this service overwrites X-Forwarded-For. When it
+    # does not, the rate limiter falls back to the socket peer, which behind a shared edge
+    # is one address for every caller. Kept off by default because trusting the header
+    # without checking who set it hands the rate limit to whoever chooses to set it.
+    TRUSTED_PROXY_HEADERS: bool = False
+
     @field_validator("ORACLE_URL", mode="after")
     @classmethod
     def validate_oracle_url(cls, v: str, info) -> str:

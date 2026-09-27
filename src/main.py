@@ -7,6 +7,7 @@ from typing import Any, cast
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -46,6 +47,27 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, cast(Any, _rate_limit_exceeded_handler))
 app.add_middleware(SlowAPIMiddleware)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    # FastAPI's default 422 body repeats the offending input under every error, so a
+    # single rejection of a 2,501-invoice batch echoes all 2,501 objects back at a caller
+    # who has already been told the request was refused. The full detail is logged
+    # server-side; the response keeps the loc, message and type, which are what a client
+    # needs to fix the request, and drops the echoed value.
+    logger.error("Request validation failed: %s", exc.errors())
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": [
+                {key: item[key] for key in ("type", "loc", "msg") if key in item}
+                for item in exc.errors()
+            ]
+        },
+    )
 
 # Setup CORS
 origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
