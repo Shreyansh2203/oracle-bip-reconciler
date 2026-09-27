@@ -6,25 +6,41 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
+# Cancel superseded runs on the same ref so a push does not queue behind its own history.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: the gates need the checked-out source and nothing else.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
 
     env:
+      # Placeholders. Settings() is constructed at import time, so the suite needs these
+      # three values to collect. tests/conftest.py sets the same values for local runs, and
+      # http://localhost:8080 satisfies validate_oracle_url with no insecure-HTTP opt-in.
       ORACLE_URL: "http://localhost:8080"
       ORACLE_USER: "test"
       ORACLE_PASS: "test"
 
     steps:
-    - uses: actions/checkout@v4
+    # Every action is pinned to a full commit SHA. A mutable tag like @v4 can be repointed at
+    # a different commit at any time, which puts a supply-chain opening in the build that runs
+    # before any of the gates below. The tag is kept as a trailing comment for humans, and
+    # Dependabot (.github/dependabot.yml) opens the PR that moves the SHA forward.
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: "3.12"
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
 
     - name: Install dependencies
       run: uv sync --frozen --dev

@@ -1,0 +1,30 @@
+version: 2
+
+updates:
+  # The workflow pins every action to a full commit SHA, which means nothing moves them
+  # forward on its own. This is what moves them: Dependabot reads the tag from the trailing
+  # "# vX.Y.Z" comment and opens a PR that swaps the SHA. Without this, the pins silently rot.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+
+  # uv understands uv.lock and the dependency-groups table, so it updates runtime and dev
+  # dependencies in one place. Regenerate requirements.txt in the same PR when a runtime
+  # dependency moves -- CI fails the deploy-contract test otherwise.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+    groups:
+      dev-tooling:
+        dependency-type: "development"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
+    open-pull-requests-limit: 5
