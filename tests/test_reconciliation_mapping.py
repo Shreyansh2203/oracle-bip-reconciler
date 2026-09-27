@@ -478,7 +478,10 @@ def test_matching_does_not_degrade_to_a_per_invoice_ledger_rescan():
     # Ten times the batch size must stay close to linear. Rescanning the ledger once per
     # invoice (the previous behaviour) made this grow with the product of batch and
     # ledger size, and blocked the event loop while doing it.
-    assert large < small + 0.5, f"{small:.2f}s for 200 invoices vs {large:.2f}s for 2000"
+    # A ratio bound rather than an absolute slack: under load both runs inflate together,
+    # so a fixed budget fails on a busy machine even when the scaling is still linear.
+    # Linear growth is 10x here and the previous behaviour was ~100x, so 25x separates them.
+    assert large < small * 25 + 1.0, f"{small:.2f}s for 200 invoices vs {large:.2f}s for 2000"
 
 
 def test_fuzzy_fallback_stays_bounded_for_a_large_tenant_ledger():
