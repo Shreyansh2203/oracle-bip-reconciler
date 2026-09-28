@@ -12,6 +12,7 @@ assertions, where a reader would not think to look. Nothing here reaches the net
 
 import ast
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -20,11 +21,44 @@ import pytest
 from src.models import InvoiceItem, ReconciliationRequest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DOCS = sorted(
-    path
-    for path in REPO_ROOT.rglob("*.md")
-    if ".venv" not in path.parts and ".git" not in path.parts and "node_modules" not in path.parts
-)
+_TOOLING_DIRS = frozenset({".venv", ".git", "node_modules"})
+
+
+def _markdown_files() -> list[Path]:
+    """Every markdown file that belongs to this repository, sorted.
+
+    Ask git rather than globbing the tree. A glob cannot tell a tracked document from a
+    generated one, and here the distinction is load-bearing: a test below asserts the suite's
+    total collected count against a figure published in README.md, so the length of this list
+    is part of that number. The previous version globbed REPO_ROOT for `*.md` and filtered
+    `.venv`, `.git` and `node_modules`, which missed the one directory that matters most --
+    `.pytest_cache`, which pytest writes itself, and which contains a README.md. Running the
+    suite therefore created a file that changed the collection count the next run asserted:
+    a developer with a warm cache collected 298 tests and a clean CI checkout collected 297,
+    and no single published figure could satisfy both. Git is the authority on what this
+    repository contains, so ask it rather than infer it from the filesystem.
+    """
+    try:
+        listed = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files", "-z", "--", "*.md"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        # No git, or not a checkout. Fall back to the tree with the generated directories
+        # filtered out. This is less precise -- the count test will say so if the two
+        # disagree, which is the correct outcome, rather than a list that silently shrinks
+        # because git was missing.
+        return sorted(
+            path
+            for path in REPO_ROOT.rglob("*.md")
+            if not _TOOLING_DIRS.intersection(path.parts)
+        )
+    return sorted(REPO_ROOT / name for name in listed.split("\0") if name)
+
+
+DOCS = _markdown_files()
 
 LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 JSONC_BLOCK_RE = re.compile(r"```jsonc\n(.*?)```", re.S)

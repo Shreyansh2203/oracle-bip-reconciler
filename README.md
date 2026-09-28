@@ -401,7 +401,7 @@ travel together, and `tests/test_docs.py` fails if the two documents ever part c
 
 - **Coverage** of `src/` and `api/`: measured **100.00 %**, floor **98 %**
   (`fail_under` in `[tool.coverage.report]`).
-- **Tests collected**: measured **298**, floor **280** (`MIN_TESTS` in `tests/conftest.py`).
+- **Tests collected**: measured **297**, floor **280** (`MIN_TESTS` in `tests/conftest.py`).
 
 `tests/test_docs.py` reads both numbers out of this file, and also reads the real collected
 count out of the running pytest session, so a figure that stops being true fails a gate
