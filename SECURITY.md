@@ -13,7 +13,8 @@ What has been done:
 1. The `.env` file was removed from the working tree. `.env` and `.env.*` are now
    gitignored, and only `.env.example` (placeholders) is tracked.
 2. The history was rewritten with `git filter-repo` to purge the file, and every branch
-   was re-pointed at the rewritten commit. `main` and `master` are the same commit.
+   was re-pointed at the rewritten commit. The repository now has a single branch, `main`,
+   which is also the default branch on GitHub.
 
 **The credential must still be rotated. Purging the history does not un-leak it.**
 

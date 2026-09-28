@@ -2,9 +2,9 @@ name: "CodeQL Security Scan"
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   schedule:
     # Weekly, Sunday 01:30 UTC. Advisories for *newly published query* land continuously and
     # a query that did not exist at the last push is exactly the one a push-only scan misses.

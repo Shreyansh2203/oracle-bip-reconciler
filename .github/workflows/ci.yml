@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   schedule:
     # Weekly dependency vulnerability scan, Monday 06:17 UTC. Off the hour on purpose:
     # scheduled workflows queue behind everyone else's, and the top of the hour is the
