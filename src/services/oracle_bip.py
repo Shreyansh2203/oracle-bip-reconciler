@@ -154,7 +154,11 @@ def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
     results = []
     reader = csv.DictReader(io.StringIO(csv_text))
     for row in reader:
-        clean_row = {key.strip().upper().replace(" ", ""): (value or "").strip() for key, value in row.items() if key}
+        # The BOM strip is load-bearing: an Excel-exported report opens with U+FEFF on
+        # the first header, and str.strip() does not remove it. Left in place, the key
+        # becomes "\ufeffTRANSACTION_NUMBER", which every downstream lookup (matcher,
+        # receipt mapping) misses silently, reconciling the whole report to nothing.
+        clean_row = {key.lstrip("\ufeff").strip().upper().replace(" ", ""): (value or "").strip() for key, value in row.items() if key}
         if clean_row:
             results.append(clean_row)
     return results

@@ -1,6 +1,10 @@
+import importlib
+import logging
+
 import pytest
 from pydantic import ValidationError
 
+import src.constants as constants
 from src.core.config import Settings
 from src.utils.date_formatter import format_oracle_date
 from src.utils.validators import sanitize_float_val, sanitize_string_val
@@ -127,3 +131,20 @@ def test_format_oracle_date_rejects_impossible_values():
     # strptime raises rather than silently rolling over into a real date.
     assert format_oracle_date("2026-13-01") is None
     assert format_oracle_date("2026-02-30") is None
+
+
+def test_a_non_numeric_cache_ttl_warns_and_defaults_instead_of_crashing_import(
+    monkeypatch, caplog
+):
+    # BIP_CACHE_TTL_SECONDS is parsed at module import, outside Settings validation, so
+    # a value like "60s" used to kill startup with a bare ValueError before logging could
+    # frame it. The TTL now falls back to 60 with a warning the operator can find.
+    monkeypatch.setenv("BIP_CACHE_TTL_SECONDS", "sixty")
+    with caplog.at_level(logging.WARNING, logger="reconciliation_api.constants"):
+        importlib.reload(constants)
+    try:
+        assert constants.BIP_CACHE_TTL_SECONDS == 60
+        assert "sixty" in caplog.text
+    finally:
+        monkeypatch.delenv("BIP_CACHE_TTL_SECONDS")
+        importlib.reload(constants)

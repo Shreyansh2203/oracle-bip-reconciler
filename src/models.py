@@ -74,7 +74,9 @@ class ReconciliationRequest(BaseModel):
     fusion_currency: str | None = None
     fusion_receipt_status_code: str | None = None
     fusion_applied_amount: float | None = None
-    header_id: int | str | None = None
+    # header_id is caller-supplied and echoed verbatim by the response model, so it is
+    # bounded like the other caller-supplied strings even though it is not a fusion_* field.
+    header_id: int | str | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
     # 2500 caps the work a single request can ask for. Zero is legal: a receipt-only
     # lookup carries no invoice lines and is reconciled entirely from payment_reference,
     # payment_date and total_amount.
@@ -93,7 +95,11 @@ class ReconciliationRequest(BaseModel):
     def sanitize_strings(cls, v: str | int | None) -> str | int | None:
         return sanitize_string_val(v)
 
-    @field_validator("total_amount", "confidence_score", mode="before")
+    # fusion_applied_amount is an out-field by contract, but the model is dual-use
+    # (request and response share it), so the inbound edge gets the same coercion the
+    # outbound mapping already applies: "9,500.25" must not 422 here when total_amount
+    # accepts it.
+    @field_validator("total_amount", "confidence_score", "fusion_applied_amount", mode="before")
     @classmethod
     def sanitize_floats(cls, v: float | str | None) -> float | None:
         return sanitize_float_val(v)

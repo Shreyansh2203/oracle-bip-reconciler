@@ -131,13 +131,15 @@ def test_parse_pads_short_rows_and_drops_overflow_columns():
     assert all(None not in row for row in rows)
 
 
-def test_parse_keeps_a_bom_on_the_first_column_name():
-    # Excel-generated CSVs open with a BOM, and str.strip() does not remove U+FEFF. This is
-    # why _is_data_row lstrips it: without that, a parameter echo row whose first column is
-    # the BOM'd P_CUSTOMER_NAME would still look like a data row on a partial match.
+def test_parse_strips_a_bom_from_the_first_column_name():
+    # Excel-generated CSVs open with a BOM, and str.strip() does not remove U+FEFF. The
+    # BOM used to survive into the key, and every downstream lookup of the unprefixed
+    # name -- _OracleInvoice, _apply_receipt_mapping -- got None for the whole report,
+    # reconciling it to nothing with no error. The parser now owns the strip; the
+    # lstrip in _is_data_row stays as cheap defence in depth.
     csv_text = "\ufeffTRANSACTION_NUMBER,BILL_CUSTOMER_NAME\nINV-1,Acme Corp\n"
     rows = _parse_soap_response_sync(soap_envelope(csv_text))
-    assert rows[0]["\ufeffTRANSACTION_NUMBER"] == "INV-1"
+    assert rows == [{"TRANSACTION_NUMBER": "INV-1", "BILL_CUSTOMER_NAME": "Acme Corp"}]
 
 
 def test_every_row_of_a_parsed_report_shares_one_key_set():

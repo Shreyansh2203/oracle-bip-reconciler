@@ -20,6 +20,16 @@ def test_reconciliation_request_limits():
     assert req.total_amount == 123.45
     assert req.invoice_count == 0
 
+def test_inbound_fusion_applied_amount_coerces_like_total_amount():
+    # The model is dual-use: fusion_applied_amount is documented as an out-field, but
+    # nothing stops a client sending it. Without the before-validator, "9,500.25"
+    # 422ed here while the sibling total_amount coerced -- an asymmetry a client had
+    # no way to predict from the schema.
+    req = ReconciliationRequest(fusion_applied_amount="9,500.25")
+    assert req.fusion_applied_amount == 9500.25
+    assert isinstance(req.fusion_applied_amount, float)
+
+
 def test_reconciliation_request_invoice_limit():
     invoices = [InvoiceItem(invoice_number=f"INV-{i}") for i in range(2501)]
     with pytest.raises(ValidationError) as exc:
