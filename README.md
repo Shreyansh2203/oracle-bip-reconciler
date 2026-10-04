@@ -254,7 +254,7 @@ field the engine fills in arrives populated.
 | `payment_reference` | `string \| int \| null` | in | Discovery Step 1. The primary key for the receipt. `max_length` 256. |
 | `payment_date` | `string \| null` | in | Receipt fallback when there is no reference. `max_length` 512. |
 | `total_amount` | `number \| null` | in | Receipt fallback, and the first thing the response carries. |
-| `header_id` | `int \| string \| null` | in | Echoed only. Carried for the caller's own bookkeeping. |
+| `header_id` | `int \| string \| null` | in | Echoed only. Carried for the caller's own bookkeeping. `max_length` 256. |
 | `invoices` | `InvoiceItem[]` | in | `max_length` 2500. Zero is legal: a receipt-only lookup carries no lines. |
 | `meta_data` | `{"warnings": string[]}` \| `null` | out | Non-fatal notes about the run. |
 | `_meta` | `dict \| null` | out | Reserved; currently always `{}` or `null`. The **wire name is `_meta`**, not `meta_extra` — FastAPI serialises by alias, and the field's Python name is only `meta_extra`. |
