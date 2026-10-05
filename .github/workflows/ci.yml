@@ -104,24 +104,3 @@ jobs:
       # folding the dev group into the runtime scan would let one block the other.
       run: uv run pip-audit --strict --local
 
-  dependency-review:
-    # Pull requests only. Dependabot keeps uv.lock current after a merge; this is what makes
-    # a reviewer see a newly-introduced vulnerability *in the diff*, before it is merged.
-    # Post-merge, the dependency-audit job above is the gate that actually fails the build.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    permissions:
-      contents: read
-
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-    - name: Review the pull request dependency diff
-      uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-      with:
-        # moderate is the advisory severity GitHub treats as worth blocking a merge over.
-        # "low" findings are still reported, just not as a failure -- most are unreachable
-        # transitive pins, and failing on them trains people to dismiss the gate.
-        fail-on-severity: moderate

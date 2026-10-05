@@ -385,7 +385,6 @@ All five run as one `test` job in CI. Alongside it:
 |---|---|
 | `ci.yml` → `test` | `check_all`, plus `uv lock --check` so a hand-edited lockfile cannot ship |
 | `ci.yml` → `dependency-audit` | `pip-audit` over `requirements.txt` and over the dev toolchain, separately |
-| `ci.yml` → `dependency-review` | `dependency-review-action` on the pull request diff, failing at `moderate` |
 | `codeql.yml` | CodeQL for `python` and `actions`, on push, on pull request, and weekly |
 
 Every action in both workflows is pinned to a full commit SHA with the tag kept as a
