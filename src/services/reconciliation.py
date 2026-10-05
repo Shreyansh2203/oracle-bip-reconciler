@@ -213,7 +213,7 @@ def map_ledger_to_payload(
         match_rule: str | None = None
 
         # 1. Dictionary-based lookup for EXACT number matches
-        if inv_num in inv_by_num:
+        if inv_num and inv_num in inv_by_num:
             candidates = [o for o in inv_by_num[inv_num] if not o.mapped]
 
             # Exact 3-Way Match
