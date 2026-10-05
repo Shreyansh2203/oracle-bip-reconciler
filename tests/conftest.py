@@ -21,7 +21,7 @@ os.environ["ALLOW_UNAUTHENTICATED_ACCESS"] = "true"
 #
 # Set just below the current count so it catches a deletion rather than a rounding
 # difference, and raised only in the commit that adds the tests that earn it.
-MIN_TESTS = 282
+MIN_TESTS = 283
 
 
 def pytest_collection_modifyitems(config, items):

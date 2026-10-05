@@ -82,7 +82,7 @@ keeps claiming to be right:
 
 - **Coverage** of `src/` and `api/`: measured **100.00 %**, floor **98 %**
   (`fail_under` in `[tool.coverage.report]`).
-- **Tests collected**: measured **299**, floor **282** (`MIN_TESTS` in `tests/conftest.py`).
+- **Tests collected**: measured **300**, floor **283** (`MIN_TESTS` in `tests/conftest.py`).
 
 To raise either one, add the tests that earn it in the same commit, then update both
 documents with the new measurement. Never reach a number by adding `# pragma: no cover`, an

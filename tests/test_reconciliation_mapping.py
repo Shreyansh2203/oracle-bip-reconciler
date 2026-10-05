@@ -525,3 +525,16 @@ def test_fuzzy_fallback_stays_bounded_for_a_large_tenant_ledger(monkeypatch):
     assert calls["date"] < len(ledger) * 2, f"format_oracle_date called {calls['date']} times for {len(ledger)} rows"
     assert calls["amount"] < len(ledger) * 2, f"sanitize_float_val called {calls['amount']} times for {len(ledger)} rows"
     assert elapsed < 30.0, f"fuzzy fallback took {elapsed:.2f}s"
+
+def test_a_blank_invoice_number_is_not_an_exact_dictionary_hit():
+    # If the invoice number is blank, it was mapping to the "" key in inv_by_num.
+    # It would then match against all blank oracle rows using exact match rules.
+    payload = _payload(InvoiceItem(invoice_date="2026-01-01", invoice_amount=100.0))
+    oracle = [_oracle_row(None, "2020-01-01", "5.00"), _oracle_row(None, "2020-01-02", "100.00")]
+
+    map_ledger_to_payload(payload, "Acme Corp", [], oracle)
+
+    # Instead of matching EXACT_NUMBER_AMOUNT_OR_DATE against the second row, it should fall
+    # through to the fuzzy tiers and match on AMOUNT_ALONE_UNIQUE.
+    assert payload.invoices[0].match_phase == "MATCHED"
+    assert payload.invoices[0].match_rule == "AMOUNT_ALONE_UNIQUE"
