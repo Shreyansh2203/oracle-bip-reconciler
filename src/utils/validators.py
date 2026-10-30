@@ -54,9 +54,8 @@ def _reject(value: object) -> float | None:
     refused amount costs an agreement rather than binding the wrong row.
     """
     logger.warning(
-        "Refusing to read %r as a number. Accepted spellings are plain digits, an "
-        "accounting negative such as (1,234.56), and one of 1,234.56 / 1.234,56 / 1234,56.",
-        value,
+        "Refusing to read a value as a number. Accepted spellings are plain digits, an "
+        "accounting negative such as (1,234.56), and one of 1,234.56 / 1.234,56 / 1234,56."
     )
     return None
 
@@ -92,6 +91,8 @@ def sanitize_float_val(value: float | str | None) -> float | None:
     if not isinstance(value, str):
         if value is None:
             return None
+        if isinstance(value, bool):
+            return _reject(value)
         try:
             float_value = float(value)
         except (TypeError, ValueError):

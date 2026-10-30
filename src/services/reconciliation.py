@@ -35,8 +35,10 @@ def _is_date_equal(date1: Any, date2: Any) -> bool:
     n1 = format_oracle_date(date1)
     n2 = format_oracle_date(date2)
     if n1 is None or n2 is None:
-        # Fallback: raw string comparison (case-insensitive)
-        return _normalized_date(date1) == _normalized_date(date2)
+        # Empty or absent cells are not matching evidence. Preserve exact non-empty raw
+        # comparisons for Oracle date formats this service does not know how to parse.
+        raw1, raw2 = _normalized_date(date1), _normalized_date(date2)
+        return bool(raw1 and raw2 and raw1 == raw2)
     return n1 == n2
 
 
@@ -47,7 +49,7 @@ def _dates_match(
     raw2: str,
 ) -> bool:
     if norm1 is None or norm2 is None:
-        return raw1 == raw2
+        return bool(raw1.strip() and raw2.strip() and raw1.strip().casefold() == raw2.strip().casefold())
     return norm1 == norm2
 
 
@@ -141,7 +143,12 @@ def map_ledger_to_payload(
     def _apply_receipt_mapping(r: dict[str, Any]) -> None:
         payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
         payload.fusion_receipt_date = r.get("RECEIPT_DATE")
-        payload.fusion_applied_amount = sanitize_float_val(r.get("RECEIPT_AMOUNT")) if r.get("RECEIPT_AMOUNT") else None
+        receipt_amount = r.get("RECEIPT_AMOUNT")
+        payload.fusion_applied_amount = (
+            sanitize_float_val(receipt_amount)
+            if receipt_amount is not None and str(receipt_amount).strip()
+            else None
+        )
         payload.fusion_currency = r.get("CURRENCY")
         payload.fusion_receipt_status_code = r.get("RECEIPT_STATUS_CODE")
         payload.fusion_customer_number = r.get("BILL_CUSTOMER_NUMBER")
@@ -157,26 +164,35 @@ def map_ledger_to_payload(
 
     receipt_number = str(payload.payment_reference).strip() if payload.payment_reference else ""
     if receipt_number:
-        # Ledger order breaks a tie, as it does in the invoice tiers. The first
-        # reference-length match wins, so the floor in _is_substring_num_ok is what keeps
-        # a short fragment from selecting a row at all: without it "1" takes the first
-        # receipt in the ledger and reports its currency, status and amount as this
-        # payment's.
+        # An exact reference wins; otherwise a substring must identify exactly one row.
+        # Ledger ordering is not evidence that two candidate receipts are the same payment.
+        matching_receipts: list[dict[str, Any]] = []
+        exact_receipts: list[dict[str, Any]] = []
         for r in all_receipts_raw:
             cand_num = str(r.get("RECEIPT_NUMBER", "")).strip()
             if _is_substring_num_ok(receipt_number, cand_num):
-                _apply_receipt_mapping(r)
-                break
+                matching_receipts.append(r)
+                if receipt_number.casefold() == cand_num.casefold():
+                    exact_receipts.append(r)
+        receipt_candidates = exact_receipts if exact_receipts else matching_receipts
+        if len(receipt_candidates) == 1:
+            _apply_receipt_mapping(receipt_candidates[0])
+        elif len(receipt_candidates) > 1:
+            logger.warning("Payment reference matched multiple receipt rows; refusing to choose.")
     else:
         total_amt = payload.total_amount
         pay_date = payload.payment_date
         if total_amt is not None and pay_date:
+            matching_receipts = []
             for r in all_receipts_raw:
                 r_amt = r.get("RECEIPT_AMOUNT")
                 r_date = r.get("RECEIPT_DATE")
                 if _is_amount_equal(total_amt, r_amt) and _is_date_equal(pay_date, r_date):
-                    _apply_receipt_mapping(r)
-                    break
+                    matching_receipts.append(r)
+            if len(matching_receipts) == 1:
+                _apply_receipt_mapping(matching_receipts[0])
+            elif len(matching_receipts) > 1:
+                logger.warning("Receipt amount and date matched multiple rows; refusing to choose.")
 
     # ── STEP 4: Map Invoices (Tiered Matching) ──
     # Normalisation (date parsing, float coercion, number keying) is done once per Oracle
@@ -209,35 +225,56 @@ def map_ledger_to_payload(
         inv_date_cmp = _normalized_date(inv_date)
         inv_amt_cmp = sanitize_float_val(inv_amt) if inv_amt is not None else None
 
-        matched_o_inv = None
+        matched_o_inv: _OracleInvoice | None = None
         match_rule: str | None = None
 
         # 1. Dictionary-based lookup for EXACT number matches
-        if inv_num and inv_num in inv_by_num:
+        exact_number_hit = bool(inv_num and inv_num in inv_by_num)
+        if exact_number_hit:
             candidates = [o for o in inv_by_num[inv_num] if not o.mapped]
+            two_way_matches: list[_OracleInvoice] = []
 
             # Exact 3-Way Match
+            exact_matches = []
             for o_inv in candidates:
-                if _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp) and inv_amt_cmp == o_inv.amount:
-                    matched_o_inv = o_inv
-                    match_rule = "EXACT_NUMBER_AMOUNT_DATE"
-                    break
+                amount_ok = inv_amt_cmp is not None and o_inv.amount is not None and inv_amt_cmp == o_inv.amount
+                if _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp) and amount_ok:
+                    exact_matches.append(o_inv)
+            if len(exact_matches) == 1 or (
+                exact_matches
+                and all(
+                    (entry.number_raw, entry.date_raw, entry.amount_raw)
+                    == (exact_matches[0].number_raw, exact_matches[0].date_raw, exact_matches[0].amount_raw)
+                    for entry in exact_matches[1:]
+                )
+            ):
+                matched_o_inv = exact_matches[0]
+                match_rule = "EXACT_NUMBER_AMOUNT_DATE"
 
             # 2-Way Match Fallbacks (Num + Amt, Num + Date)
             if not matched_o_inv:
                 for o_inv in candidates:
-                    if inv_amt_cmp == o_inv.amount or _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp):
-                        matched_o_inv = o_inv
-                        match_rule = "EXACT_NUMBER_AMOUNT_OR_DATE"
-                        break
+                    amount_ok = inv_amt_cmp is not None and o_inv.amount is not None and inv_amt_cmp == o_inv.amount
+                    if amount_ok or _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp):
+                        two_way_matches.append(o_inv)
+                if len(two_way_matches) == 1 or (
+                    two_way_matches
+                    and all(
+                        (entry.number_raw, entry.date_raw, entry.amount_raw)
+                        == (two_way_matches[0].number_raw, two_way_matches[0].date_raw, two_way_matches[0].amount_raw)
+                        for entry in two_way_matches[1:]
+                    )
+                ):
+                    matched_o_inv = two_way_matches[0]
+                    match_rule = "EXACT_NUMBER_AMOUNT_OR_DATE"
 
             # 1-Way Match Fallback (Num Exact)
-            if not matched_o_inv and len(candidates) == 1:
+            if not matched_o_inv and not two_way_matches and len(candidates) == 1:
                 matched_o_inv = candidates[0]
                 match_rule = "EXACT_NUMBER_UNIQUE"
 
         # 2. Fuzzy Matching Fallback (if exact num failed)
-        if not matched_o_inv:
+        if not matched_o_inv and not exact_number_hit:
             available_o_invoices = [o for o in ledger if not o.mapped]
 
             matches_date_amt: list[_OracleInvoice] = []
@@ -271,13 +308,15 @@ def map_ledger_to_payload(
                     else:
                         matches_fuzzy_num.append(o_inv)
 
-            if matches_date_amt:
+            if len(matches_date_amt) == 1:
                 matched_o_inv = matches_date_amt[0]
                 match_rule = "NUMBER_AMOUNT_DATE"
-            elif matches_fuzzy_num_corroborated:
+            elif len(matches_date_amt) > 1:
+                logger.warning("Fuzzy number and both invoice fields matched multiple rows; refusing to choose.")
+            elif len(matches_fuzzy_num_corroborated) == 1:
                 matched_o_inv = matches_fuzzy_num_corroborated[0]
                 match_rule = "FUZZY_NUMBER_AMOUNT_OR_DATE"
-            elif len(matches_fuzzy_num) == 1:
+            elif not matches_fuzzy_num_corroborated and len(matches_fuzzy_num) == 1:
                 # This bucket has no corroboration of any kind, so it is held to the same
                 # uniqueness rule as the amount-only and date-only buckets. Ledger order
                 # alone is not evidence: two rows reached here on a number resemblance
@@ -285,10 +324,10 @@ def map_ledger_to_payload(
                 # disagrees with it on both date and amount.
                 matched_o_inv = matches_fuzzy_num[0]
                 match_rule = "FUZZY_NUMBER_ALONE"
-            elif len(matches_amt) == 1:
+            elif not matches_fuzzy_num_corroborated and len(matches_amt) == 1:
                 matched_o_inv = matches_amt[0]
                 match_rule = "AMOUNT_ALONE_UNIQUE"
-            elif len(matches_date) == 1:
+            elif not matches_fuzzy_num_corroborated and len(matches_date) == 1:
                 matched_o_inv = matches_date[0]
                 match_rule = "DATE_ALONE_UNIQUE"
 
@@ -305,7 +344,7 @@ async def process_reconciliation_batch(
     oracle_pass: str
 ) -> tuple[ReconciliationRequest | None, str | None, int | None]:
     request_id = str(uuid.uuid4())
-    logger.info(f"[{request_id}] Starting RECONCILIATION for payload")
+    logger.info("[%s] Starting reconciliation", request_id)
     start_time = time.time()
 
     user = oracle_user
@@ -314,30 +353,38 @@ async def process_reconciliation_batch(
     try:
         customer_name, cached_r_res = await discover_potential_customers(client, user, pwd, payload)
     except Exception as e:
-        logger.exception(f"[{request_id}] Oracle fetch failed during customer discovery: {type(e).__name__}: {e}")
+        from src.services.discovery import CustomerDiscoveryLimitError
+
+        if isinstance(e, CustomerDiscoveryLimitError):
+            return None, str(e), 422
+        logger.error("[%s] Customer discovery failed: %s", request_id, type(e).__name__)
         return None, CLIENT_UPSTREAM_ERROR, 502
 
     if not customer_name:
-        logger.warning(f"[{request_id}] Unable to determine customer name. Returning null.")
+        logger.warning("[%s] Unable to determine customer name.", request_id)
         return None, None, None
 
     payload.fusion_customer_name = customer_name
 
-    logger.info(f"[{request_id}] Fetching ledger to map columns for '{customer_name}'")
+    logger.info("[%s] Fetching ledger reports", request_id)
 
     i_task = fetch_bip_invoices(client, user, pwd, customer_name=customer_name)
 
     if cached_r_res is not None:
         logger.info(f"[{request_id}] Using cached Receipt Report from Step 2 discovery.")
         r_raw = cached_r_res
-        i_raw = await i_task
+        try:
+            i_raw = await i_task
+        except Exception as err:
+            logger.error("[%s] Invoice ledger fetch failed: %s", request_id, type(err).__name__)
+            return None, CLIENT_UPSTREAM_ERROR, 502
     else:
         r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
         i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)  # type: ignore
 
     if isinstance(i_raw, BaseException) or isinstance(r_raw, BaseException):
         err = i_raw if isinstance(i_raw, BaseException) else r_raw
-        logger.error(f"[{request_id}] Oracle fetch failed during ledger fetch: {type(err).__name__}: {err}", exc_info=err)
+        logger.error("[%s] Oracle ledger fetch failed: %s", request_id, type(err).__name__)
         return None, CLIENT_UPSTREAM_ERROR, 502
 
     all_invoices_raw = _filter_data_rows(i_raw)
@@ -346,5 +393,5 @@ async def process_reconciliation_batch(
     map_ledger_to_payload(payload, customer_name, all_receipts_raw, all_invoices_raw)
 
     duration = int((time.time() - start_time) * 1000)
-    logger.info(f"[{request_id}] RECON COMPLETE: Customer='{customer_name}'. Returning mapped payload in {duration}ms.")
+    logger.info("[%s] Reconciliation complete in %dms", request_id, duration)
     return payload, None, None

@@ -88,7 +88,7 @@ def test_the_amount_and_date_bucket_does_not_bind_a_different_invoice_on_row_ord
     assert second.invoices[0].match_phase == "UNMATCHED"
 
 
-def test_a_consumed_row_steers_a_duplicate_number_onto_an_unrelated_invoice():
+def test_a_consumed_exact_number_does_not_fall_through_to_an_unrelated_invoice():
     payload = _run(
         InvoiceItem(invoice_number="INV-0001", invoice_date="2026-01-01", invoice_amount=100.0),
         InvoiceItem(invoice_number="INV-0001", invoice_date="2026-01-01", invoice_amount=100.0),
@@ -98,10 +98,10 @@ def test_a_consumed_row_steers_a_duplicate_number_onto_an_unrelated_invoice():
         ],
     )
     assert payload.invoices[0].fusion_invoice_number == "INV-0001"
-    # The second line has no exact candidate left, so the number-blind bucket supplies
-    # one. This is the mapped-flag / tier-order interaction README.md does not describe.
-    assert payload.invoices[1].match_phase == "MATCHED"
-    assert payload.invoices[1].fusion_invoice_number == "INV-7777"
+    # The exact ledger row was consumed by the first line. The second line must not use a
+    # number-blind amount/date bucket to take a different invoice.
+    assert payload.invoices[1].match_phase == "UNMATCHED"
+    assert payload.invoices[1].fusion_invoice_number is None
 
 
 def test_a_lone_unique_amount_is_enough_on_its_own():

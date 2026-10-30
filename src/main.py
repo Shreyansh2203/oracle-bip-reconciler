@@ -18,6 +18,8 @@ from src.api.routers import health, reconciliation
 from src.constants import DEFAULT_TIMEOUT, MAX_CONNECTIONS
 from src.core.config import settings
 from src.core.dependencies import limiter
+from src.core.middleware import RequestBodyLimitMiddleware
+from src.services.oracle_bip import close_cache
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -32,9 +34,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.http_client = client
     logger.info("Initialized HTTP client in lifespan")
-    yield
-    logger.info("Shutting down HTTP client")
-    await client.aclose()
+    try:
+        yield
+    finally:
+        logger.info("Shutting down HTTP client")
+        await client.aclose()
+        await close_cache()
 
 
 app = FastAPI(
@@ -58,7 +63,13 @@ async def validation_exception_handler(
     # who has already been told the request was refused. The full detail is logged
     # server-side; the response keeps the loc, message and type, which are what a client
     # needs to fix the request, and drops the echoed value.
-    logger.error("Request validation failed: %s", exc.errors())
+    logger.warning(
+        "Request validation failed: %s",
+        [
+            {key: item[key] for key in ("type", "loc", "msg") if key in item}
+            for item in exc.errors()
+        ],
+    )
     return JSONResponse(
         status_code=422,
         content={
@@ -78,13 +89,14 @@ app.add_middleware(
     allow_origins=origins if origins else [],  # Fail closed if no origins provided
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-API-Key"],
+    allow_headers=["Content-Type"],
 )
+app.add_middleware(RequestBodyLimitMiddleware)
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.error(f"Unhandled internal error: {type(exc).__name__} - {str(exc)}")
+    logger.error("Unhandled internal error: %s", type(exc).__name__)
     return JSONResponse(
         status_code=500,
         content={"detail": "An unexpected internal server error occurred."},

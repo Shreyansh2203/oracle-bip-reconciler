@@ -172,10 +172,15 @@ def test_step_1_identifies_the_customer_from_the_payment_reference(monkeypatch):
     assert recorder.invoice_calls == []
 
 
-def test_step_1_takes_the_name_from_the_first_receipt_row(monkeypatch):
-    FetchRecorder(receipts=[RECEIPT_ROW, {"BILL_CUSTOMER_NAME": OTHER_CUSTOMER}]).install(monkeypatch)
+def test_step_1_rejects_receipts_for_multiple_customers(monkeypatch):
+    FetchRecorder(
+        receipts=[
+            RECEIPT_ROW,
+            {"BILL_CUSTOMER_NAME": OTHER_CUSTOMER, "RECEIPT_NUMBER": "RCPT-45021"},
+        ]
+    ).install(monkeypatch)
     name, _ = run_discovery(ReconciliationRequest(payment_reference="RCPT-45021"))
-    assert name == CUSTOMER
+    assert name is None
 
 
 def test_a_receipt_row_with_no_customer_name_is_not_an_identification(monkeypatch):
@@ -366,8 +371,9 @@ def test_a_batch_with_no_usable_invoices_skips_the_sequence_entirely(monkeypatch
     assert recorder.invoice_calls == []
 
 
-def test_a_failing_invoice_query_does_not_abort_the_sequence(monkeypatch):
-    # One unreachable invoice must not lose the customer that another line can identify.
+def test_a_failing_invoice_query_aborts_discovery_instead_of_claiming_uniqueness(monkeypatch):
+    # A failed query could hide a second customer, so a partial result is not proof of
+    # uniqueness.
     async def fake_invoices(_client, _user, _pwd, **kwargs):
         recorder.invoice_calls.append(kwargs)
         if kwargs["invoice_number"] == "INV-BAD":
@@ -380,10 +386,8 @@ def test_a_failing_invoice_query_does_not_abort_the_sequence(monkeypatch):
         invoices=[InvoiceItem(invoice_number="INV-BAD"), InvoiceItem(invoice_number="INV-2026-00882")]
     )
 
-    name, _ = run_discovery(payload)
-
-    assert name == CUSTOMER
-    assert len(recorder.invoice_calls) == 2
+    with pytest.raises(RuntimeError, match="ORA-01403"):
+        run_discovery(payload)
 
 
 def test_no_level_resolving_a_customer_reports_nothing(monkeypatch):
@@ -412,16 +416,11 @@ def test_a_conflict_never_resolves_to_an_arbitrary_customer(monkeypatch):
     assert name is None
 
 
-def test_a_conflict_inside_one_response_is_not_detected(monkeypatch):
-    # Recorded as current behaviour, not endorsed. _discover_by_invoice_sequence reads the
-    # customer name from rows[0] of each response, so a single report that returns two
-    # different customers is not seen as ambiguous -- only a disagreement *between* queries is.
-    # Whether that matters depends on whether a tenant can hold one invoice number under two
-    # customers, which is a question about the Oracle data model rather than about this code.
+def test_a_conflict_inside_one_response_is_detected(monkeypatch):
     FetchRecorder(invoices=[INVOICE_ROW, OTHER_INVOICE_ROW]).install(monkeypatch)
     name, _ = run_discovery(ReconciliationRequest(invoices=[InvoiceItem(invoice_number="INV-SHARED")]))
 
-    assert name == CUSTOMER
+    assert name is None
 
 
 def test_a_parameter_only_invoice_report_is_not_a_customer(monkeypatch):
@@ -430,18 +429,27 @@ def test_a_parameter_only_invoice_report_is_not_a_customer(monkeypatch):
     assert name is None
 
 
-def test_discovery_asks_for_one_report_per_invoice_number(monkeypatch):
-    # Phase 3 must be bounded by the batch, not by a ledger scan, or a 2,500-line batch
-    # becomes 2,500 Oracle calls.
+def test_invoice_only_discovery_rejects_batches_above_its_query_budget(monkeypatch):
     recorder = FetchRecorder(invoices=[INVOICE_ROW]).install(monkeypatch)
     numbers = [f"INV-{i:05d}" for i in range(250)]
     payload = ReconciliationRequest(invoices=[InvoiceItem(invoice_number=n) for n in numbers])
 
-    name, _ = run_discovery(payload)
+    with pytest.raises(discovery.CustomerDiscoveryLimitError, match="limited to 10 lines"):
+        run_discovery(payload)
 
+    assert recorder.invoice_calls == []
+
+
+def test_invoice_only_discovery_queries_at_most_the_configured_limit(monkeypatch):
+    recorder = FetchRecorder(invoices=[INVOICE_ROW]).install(monkeypatch)
+    from src.constants import BIP_MAX_DISCOVERY_INVOICES
+
+    numbers = [f"INV-{i:05d}" for i in range(BIP_MAX_DISCOVERY_INVOICES)]
+    name, _ = run_discovery(
+        ReconciliationRequest(invoices=[InvoiceItem(invoice_number=n) for n in numbers])
+    )
     assert name == CUSTOMER
-    assert len(recorder.invoice_calls) == 250
-    assert {call["invoice_number"] for call in recorder.invoice_calls} == set(numbers)
+    assert len(recorder.invoice_calls) == BIP_MAX_DISCOVERY_INVOICES
 
 
 def test_nothing_resolvable_reports_no_customer_and_no_error(monkeypatch):

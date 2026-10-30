@@ -16,6 +16,31 @@ async def reconcile_data_batch(
     client: httpx.AsyncClient = Depends(get_client),  # noqa: B008
     _: None = Depends(require_public_access_opt_in),  # noqa: B008
 ) -> ReconciliationRequest | None:
+    payload = payload.model_copy(
+        update={
+            "fusion_customer_name": None,
+            "fusion_receipt_number": None,
+            "fusion_receipt_date": None,
+            "fusion_customer_number": None,
+            "fusion_currency": None,
+            "fusion_receipt_status_code": None,
+            "fusion_applied_amount": None,
+            "match_phase": None,
+            "match_rule": None,
+            "invoices": [
+                invoice.model_copy(
+                    update={
+                        "fusion_invoice_number": None,
+                        "fusion_invoice_date": None,
+                        "fusion_invoice_amount": None,
+                        "match_phase": None,
+                        "match_rule": None,
+                    }
+                )
+                for invoice in payload.invoices
+            ],
+        }
+    )
     res, err, status = await process_reconciliation_batch(
         payload=payload,
         client=client,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import csv
+import hashlib
 import io
 import json
 import logging
@@ -24,6 +25,9 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from src.constants import (
     BIP_CACHE_TTL_SECONDS,
     BIP_CHUNK_DOWNLOAD_SIZE,
+    BIP_MAX_CACHE_ENTRIES,
+    BIP_MAX_CACHE_VALUE_BYTES,
+    BIP_MAX_RESPONSE_BYTES,
     BIP_MAX_RETRIES,
     BIP_MAX_WAIT_SECONDS,
     BIP_MIN_WAIT_SECONDS,
@@ -34,8 +38,6 @@ from src.constants import (
 from src.core.config import settings
 
 logger = logging.getLogger(__name__)
-
-BIP_MAX_CACHE_ENTRIES = 1000
 
 class AsyncCache:
     def __init__(self) -> None:
@@ -58,16 +60,19 @@ class AsyncCache:
                 val = await self.redis.get(key)
                 return json.loads(val) if val else None
             except Exception as e:
-                logger.error(f"Redis get error: {e}")
+                logger.error("Redis cache read failed: %s", type(e).__name__)
                 return self.local.get(key)
         return self.local.get(key)
 
     async def set(self, key: str, value: Any) -> None:
+        encoded = json.dumps(value)
+        if len(encoded.encode("utf-8")) > BIP_MAX_CACHE_VALUE_BYTES:
+            return
         if self.redis:
             try:
-                await self.redis.set(key, json.dumps(value), ex=BIP_CACHE_TTL_SECONDS)
+                await self.redis.set(key, encoded, ex=BIP_CACHE_TTL_SECONDS)
             except Exception as e:
-                logger.error(f"Redis set error: {e}")
+                logger.error("Redis cache write failed: %s", type(e).__name__)
                 self.local[key] = value
         else:
             self.local[key] = value
@@ -76,6 +81,11 @@ _bip_cache = AsyncCache()
 
 # One entry per cache key that is currently being fetched.
 _inflight: dict[str, asyncio.Future[list[dict[str, Any]]]] = {}
+
+
+async def close_cache() -> None:
+    if _bip_cache.redis is not None:
+        await _bip_cache.redis.aclose()
 
 
 async def _fetch_once(
@@ -134,6 +144,14 @@ def _get_cache_key(report_type: str, parameters: list[dict[str, Any]]) -> str:
     return f"{quote(report_type, safe='')}::{param_str}"
 
 
+def _cache_namespace(username: str, candidate_paths: list[str]) -> str:
+    identity = json.dumps(
+        [settings.ORACLE_URL.rstrip("/").lower(), username, candidate_paths],
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(identity).hexdigest()
+
+
 
 
 
@@ -168,6 +186,10 @@ class OracleBIPTransientError(Exception):
     pass
 
 
+class OracleBIPResponseTooLargeError(Exception):
+    pass
+
+
 async def _run_bip_report(
     client: httpx.AsyncClient,
     username: str,
@@ -182,14 +204,17 @@ async def _run_bip_report(
     # which may crash the query if they are invalid strings like 'null'.
     valid_parameters = parameters
 
-    cache_key = _get_cache_key(report_type, valid_parameters)
+    valid_paths = [
+        path for path in candidate_paths if path and path.strip()
+    ]
+    cache_key = f"{_cache_namespace(username, valid_paths)}::{_get_cache_key(report_type, valid_parameters)}"
     cached_val = await _bip_cache.get(cache_key)
     if cached_val is not None:
         return cached_val
 
     async def _fetch() -> list[dict[str, Any]]:
         return await _post_bip_report(
-            client, username, password, candidate_paths, valid_parameters, report_type, cache_key
+            client, username, password, valid_paths, valid_parameters, report_type, cache_key
         )
 
     return await _fetch_once(cache_key, _fetch)
@@ -253,34 +278,59 @@ async def _post_bip_report(
         xml_payload = tostring(envelope, encoding="utf-8", xml_declaration=False).decode("utf-8")
 
         try:
-            response = await client.post(
-                soap_url, content=xml_payload, headers=headers, auth=(username, password), timeout=BIP_TIMEOUT
-            )
-            response.raise_for_status()
+            async with client.stream(
+                "POST",
+                soap_url,
+                content=xml_payload,
+                headers=headers,
+                auth=(username, password),
+                timeout=BIP_TIMEOUT,
+            ) as response:
+                chunks: list[bytes] = []
+                body_size = 0
+                async for chunk in response.aiter_bytes():
+                    body_size += len(chunk)
+                    if body_size > BIP_MAX_RESPONSE_BYTES:
+                        raise OracleBIPResponseTooLargeError(
+                            f"Oracle report response exceeded {BIP_MAX_RESPONSE_BYTES} bytes."
+                        )
+                    chunks.append(chunk)
+                response_body = b"".join(chunks)
+                if response.status_code >= 400:
+                    error_text = response_body.decode("utf-8", errors="replace")
+                    status_error = httpx.HTTPStatusError(
+                        f"Oracle BIP returned HTTP {response.status_code}.",
+                        request=response.request,
+                        response=response,
+                    )
+                    if response.status_code == 404 or "Report definition not found" in error_text:
+                        last_error = status_error
+                        continue
+                    if response.status_code in [429, 500, 502, 503, 504]:
+                        if "not found" in error_text.lower():
+                            last_error = status_error
+                            continue
+                        raise OracleBIPTransientError(
+                            f"Transient Oracle BIP HTTP status {response.status_code}."
+                        ) from status_error
+                    raise status_error
 
             try:
-                results = _parse_soap_response_sync(response.text)
+                results = _parse_soap_response_sync(response_body.decode("utf-8", errors="replace"))
                 await _bip_cache.set(cache_key, results)
                 return results
             except Exception as parse_error:
-                logger.error(f"Failed to parse SOAP XML: {parse_error}")
-                raise Exception(f"Failed to parse SOAP response: {parse_error}") from parse_error
+                logger.error("Failed to parse Oracle BIP SOAP response: %s", type(parse_error).__name__)
+                raise Exception("Failed to parse SOAP response.") from parse_error
 
         except httpx.HTTPStatusError as error:
-            if error.response.status_code == 404 or "Report definition not found" in error.response.text:
-                last_error = error
+            if error.response.status_code == 404:
                 continue
-            if error.response.status_code in [429, 500, 502, 503, 504]:
-                if (
-                    "Report definition not found" in error.response.text
-                    or "not found" in error.response.text.lower()
-                ):
-                    last_error = error
-                    continue
-                raise OracleBIPTransientError(f"Transient BIP error {error}") from error
             raise
         except Exception as error:
-            logger.exception(f"Failed to execute BIP report for {report_type} match: {error}")
+            if isinstance(error, OracleBIPResponseTooLargeError):
+                raise
+            logger.error("Failed to execute Oracle BIP %s report: %s", report_type, type(error).__name__)
             raise
 
     if last_error:

@@ -245,8 +245,9 @@ The examples above are abridged. This is the whole surface, and
 `tests/test_docs.py` fails if the two ever disagree — on field names, on each field's JSON
 type, and on every bound a model declares.
 
-**`ReconciliationRequest` — request *and* response.** A field you send is echoed back; a
-field the engine fills in arrives populated.
+**`ReconciliationRequest` — request *and* response.** Caller fields are echoed back where
+not repaired. Any `fusion_*`, `match_phase`, `match_rule`, and `invoice_count` values
+supplied by the caller are discarded; those result fields are server-owned.
 
 | Field | JSON type | Direction | Notes |
 |---|---|---|---|
@@ -268,19 +269,19 @@ field the engine fills in arrives populated.
 | `fusion_customer_number` | `string \| null` | out | Verbatim. |
 | `match_phase` | `"MATCHED" \| "UNMATCHED" \| null` | out | Batch-level roll-up. |
 | `match_rule` | `string \| null` | out | Which tier decided it. |
-| `confidence_label` | `string \| null` | out | Reserved; currently always `null`. |
+| `confidence_label` | `string \| null` | out | Reserved; currently always `null`. `max_length` 512. |
 | `confidence_score` | `number \| null` | in | **Input**, bounded `ge` 0.0 and `le` 1.0. Echoed back; the engine never computes it. A value outside that range is a `422`. |
 
 **`InvoiceItem`** — one per invoice, nested in `invoices` on both sides.
 
 | Field | JSON type | Direction | Notes |
 |---|---|---|---|
-| `line_id` | `int \| string \| null` | in | Your row id. Echoed back untouched. |
+| `line_id` | `int \| string \| null` | in | Your row id. Echoed back untouched. `max_length` 256. |
 | `invoice_number` | `string \| int \| null` | in | May be OCR-damaged; the engine overwrites it on a match. `max_length` 256. |
 | `invoice_date` | `string \| null` | in | Any format `format_oracle_date` accepts. `max_length` 512. |
 | `invoice_amount` | `number \| null` | in | Coerced on the way in. |
 | `customer_invoice_number` | `string \| int \| null` | in | Your own reference for the line. `max_length` 256. |
-| `store_no` | `int \| string \| null` | in | Echoed back untouched. |
+| `store_no` | `int \| string \| null` | in | Echoed back untouched. `max_length` 256. |
 | `description` | `string \| null` | out | Not currently populated. `max_length` 512. |
 | `fusion_invoice_number` | `string \| null` | out | The ledger's number, verbatim. |
 | `fusion_invoice_date` | `string \| null` | out | The ledger's date string, verbatim. |
@@ -398,9 +399,9 @@ regression rather than a rounding difference, and both are stated in exactly the
 here and in [CONTRIBUTING.md](CONTRIBUTING.md#the-gates) — the gate and the measurement
 travel together, and `tests/test_docs.py` fails if the two documents ever part company:
 
-- **Coverage** of `src/` and `api/`: measured **100.00 %**, floor **98 %**
+- **Coverage** of `src/` and `api/`: measured **99.69 %**, floor **98 %**
   (`fail_under` in `[tool.coverage.report]`).
-- **Tests collected**: measured **300**, floor **283** (`MIN_TESTS` in `tests/conftest.py`).
+- **Tests collected**: measured **321**, floor **283** (`MIN_TESTS` in `tests/conftest.py`).
 
 `tests/test_docs.py` reads both numbers out of this file, and also reads the real collected
 count out of the running pytest session, so a figure that stops being true fails a gate
@@ -548,9 +549,11 @@ them. The only place is the dashboard:
 1. Open the project on Vercel → **Settings** → **Environment Variables**.
 2. Add `ORACLE_URL`, `ORACLE_USER` and `ORACLE_PASS`, for **all** environments
    (Production and Preview) or the preview URLs 500 too.
-3. Also add `ALLOW_UNAUTHENTICATED_ACCESS=true`. The endpoint serves whole-customer ledgers
-   and cannot authenticate the caller, so it refuses every request until you set this. See
-   [Security](#security).
+3. Keep `ALLOW_UNAUTHENTICATED_ACCESS=false` unless an authenticating gateway protects
+   **every public path to the deployment**, including the Vercel URL itself. A direct Vercel
+   deployment has no authentication in this repo; enabling the flag there exposes customer
+   ledgers to anyone who can reach the URL. Without a verified gateway, leave it false and
+   expect reconciliation requests to return `503`.
 4. Redeploy. Environment variable changes do not apply to an existing deployment.
 
 After changing anything here, check a **request**, not the build log. `GET /health`
@@ -618,16 +621,21 @@ Design notes:
   `TRUSTED_PROXY_HEADERS=true`, in which case it is the last `X-Forwarded-For` entry —
   the one the edge appended, so a caller who forges a leading entry is ignored. Behind a
   proxy that does not set the header, all callers share one bucket; the limit is a
-  protection against a single misbehaving client, not against a distributed one.
+  protection against a single misbehaving client, not against a distributed one. When
+  `REDIS_URL` is configured, SlowAPI uses that shared backend. Without it, buckets are
+  in-process and are multiplied across workers and reset on restart; do not treat that mode
+  as a hard security boundary.
 - **Safe XML parsing** — `defusedxml` for the SOAP envelope, so a hostile or malformed
   Oracle response cannot mount an entity-expansion attack.
 - **No internal error text crosses the wire.** Oracle exceptions are logged with their type
   and message; the client receives a fixed 502 message. A `422` reports each error's type,
   location and message but not the rejected value, so a refused batch does not come back
   with the whole batch attached.
-- **Bounded memory and bounded input** — the report cache is a `TTLCache` (or Redis), not
-  an unbounded dict, and every caller-supplied string has a length bound because it
-  reaches both the SOAP envelope and the cache key.
+- **Bounded memory and bounded input** — request bodies are limited to 2 MiB, invoice-only
+  customer discovery is capped at 10 invoice lines (larger batches must supply a customer
+  or payment reference), Oracle SOAP responses are capped at 20 MiB, and cached report
+  values are individually capped at 256 KiB. Smaller TTL caches are per process; larger
+  report values are returned but not cached.
 - `bandit` runs in CI and locally via `uv run task check_all`, and dependencies are
   scanned by `pip-audit` on every build.
 

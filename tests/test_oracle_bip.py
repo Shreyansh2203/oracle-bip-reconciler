@@ -177,6 +177,14 @@ def test_parse_rejects_a_body_that_is_not_base64_csv():
         _parse_soap_response_sync(broken)
 
 
+def test_report_response_size_is_capped(monkeypatch):
+    monkeypatch.setattr(oracle_bip, "BIP_MAX_RESPONSE_BYTES", 10)
+    with respx.mock as router:
+        router.post(SOAP_URL).mock(return_value=httpx.Response(200, content=b"x" * 11))
+        with pytest.raises(oracle_bip.OracleBIPResponseTooLargeError):
+            run(fetch_bip_invoices, "svc-account", "svc-password")
+
+
 # ── cache keys ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -193,6 +201,19 @@ def test_cache_key_separates_report_types_and_parameter_values():
     other = [{"name": "P_CUSTOMER_NAME", "values": ["Globex"]}]
     assert _get_cache_key("invoice", params) != _get_cache_key("receipt", params)
     assert _get_cache_key("invoice", params) != _get_cache_key("invoice", other)
+
+
+def test_cache_namespace_separates_tenants_and_users():
+    paths = ["/Some Report.xdo"]
+    first = oracle_bip._cache_namespace("svc-a", paths)
+    assert first != oracle_bip._cache_namespace("svc-b", paths)
+    assert first != oracle_bip._cache_namespace("svc-a", ["/Other Report.xdo"])
+    original = oracle_bip.settings.ORACLE_URL
+    try:
+        oracle_bip.settings.ORACLE_URL = "https://other.example"
+        assert first != oracle_bip._cache_namespace("svc-a", paths)
+    finally:
+        oracle_bip.settings.ORACLE_URL = original
 
 
 # ── request building ────────────────────────────────────────────────────────────────────────
@@ -580,6 +601,24 @@ def test_a_redis_write_failure_falls_back_to_the_local_cache(monkeypatch):
     # A later read still finds it: the local copy is what answers once Redis is unreachable.
     cache.redis.get_error = True
     assert asyncio.run(cache.get("k")) == [{"A": "1"}]
+
+
+def test_cache_skips_oversized_values_and_closes_redis(monkeypatch):
+    cache = oracle_bip.AsyncCache()
+    monkeypatch.setattr(oracle_bip, "BIP_MAX_CACHE_VALUE_BYTES", 4)
+    asyncio.run(cache.set("large", [{"A": "too large"}]))
+    assert cache.local.get("large") is None
+
+    class RedisCloser:
+        closed = False
+
+        async def aclose(self):
+            self.closed = True
+
+    redis = RedisCloser()
+    monkeypatch.setattr(oracle_bip._bip_cache, "redis", redis)
+    asyncio.run(oracle_bip.close_cache())
+    assert redis.closed
 
 
 def test_fetch_retries_a_transient_failure_and_then_succeeds(monkeypatch):

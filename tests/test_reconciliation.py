@@ -55,11 +55,10 @@ def test_is_date_equal_normalises_before_comparing():
     assert not _is_date_equal("08/14/2026", "2026-08-15")
 
 
-def test_is_date_equal_falls_back_to_raw_comparison_when_unparseable():
-    # A date the engine cannot parse still has to be compared with *something*. Two identical
-    # junk strings are treated as equal so a consistently formatted ledger column still
-    # matches; a junk string never matches a real date.
+def test_is_date_equal_falls_back_to_nonempty_raw_comparison_when_unparseable():
+    # A non-empty identical raw value can be compared; two absent cells are never evidence.
     assert _is_date_equal("sometime in August", "sometime in August")
+    assert not _is_date_equal("", "")
     assert not _is_date_equal("sometime in August", "2026-08-14")
     assert not _is_date_equal("", "2026-08-14")
 
