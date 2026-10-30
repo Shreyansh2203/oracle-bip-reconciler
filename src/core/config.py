@@ -55,5 +55,21 @@ class Settings(BaseSettings):
 
         return url.rstrip("/")
 
+    @field_validator("REDIS_URL", mode="after")
+    @classmethod
+    def require_tls_for_remote_redis(cls, value: str | None) -> str | None:
+        if not value:
+            return value
+        parsed = urlparse(value)
+        if parsed.scheme not in {"redis", "rediss"} or not parsed.hostname:
+            raise ValueError("REDIS_URL must be a valid redis:// or rediss:// URL.")
+        if parsed.scheme == "redis" and parsed.hostname.lower() not in {
+            "localhost",
+            "127.0.0.1",
+            "::1",
+        }:
+            raise ValueError("Remote Redis connections must use rediss:// TLS.")
+        return value
+
 
 settings = Settings()

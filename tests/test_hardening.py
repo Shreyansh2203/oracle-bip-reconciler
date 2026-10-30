@@ -16,8 +16,10 @@ import pytest
 import respx
 from fastapi.testclient import TestClient
 
+from src.api.routers import reconciliation as router_mod
 from src.core.config import Settings, settings
 from src.core.dependencies import PUBLIC_ACCESS_DISABLED, rate_limit_key
+from src.core.middleware import RequestBodyLimitMiddleware
 from src.main import app
 from src.models import InvoiceItem, ReconciliationRequest
 from src.services import oracle_bip
@@ -28,6 +30,53 @@ from src.utils.date_formatter import format_oracle_date
 from src.utils.validators import sanitize_float_val
 
 SOAP_URL = f"{settings.ORACLE_URL.rstrip('/')}/xmlpserver/services/ExternalReportWSSService"
+
+
+def test_request_body_middleware_rejects_declared_and_streamed_oversize_payloads():
+    async def invoke(headers, messages):
+        sent = []
+        app_called = False
+
+        async def receive():
+            return messages.pop(0)
+
+        async def send(message):
+            sent.append(message)
+
+        async def downstream(_scope, downstream_receive, downstream_send):
+            nonlocal app_called
+            app_called = True
+            await downstream_receive()
+            await downstream_receive()
+            await downstream_send(
+                {"type": "http.response.start", "status": 200, "headers": []}
+            )
+
+        middleware = RequestBodyLimitMiddleware(downstream, max_bytes=3)
+        await middleware({"type": "http", "headers": headers}, receive, send)
+        return app_called, sent
+
+    async def verify():
+        declared_called, declared_response = await invoke(
+            [(b"content-length", b"4")],
+            [{"type": "http.request", "body": b""}],
+        )
+        invalid_called, invalid_response = await invoke(
+            [(b"content-length", b"invalid")],
+            [{"type": "http.request", "body": b""}],
+        )
+        streamed_called, streamed_response = await invoke(
+            [],
+            [{"type": "http.request", "body": b"four", "more_body": False}],
+        )
+
+        assert not declared_called and declared_response[0]["status"] == 413
+        assert not invalid_called and invalid_response[0]["status"] == 413
+        assert streamed_called
+        assert streamed_response[0]["status"] == 413
+        assert all(message.get("status") != 200 for message in streamed_response)
+
+    asyncio.run(verify())
 
 
 @pytest.fixture(autouse=True)
@@ -110,6 +159,65 @@ def test_opting_in_restores_the_reconciliation_path(monkeypatch):
         response = http.post("/v1/reconcile/batch", json={"customer_name": "Acme Corp"})
 
     assert response.status_code == 502
+
+
+def test_request_cannot_spoof_server_owned_reconciliation_fields(monkeypatch):
+    monkeypatch.setattr(settings, "ALLOW_UNAUTHENTICATED_ACCESS", True)
+
+    async def echo_payload(*, payload, **_kwargs):
+        return payload, None, None
+
+    monkeypatch.setattr(router_mod, "process_reconciliation_batch", echo_payload)
+    request = {
+        "customer_name": "Acme Corp",
+        "invoice_count": 999,
+        "fusion_customer_name": "Forged",
+        "fusion_receipt_number": "FORGED",
+        "fusion_applied_amount": 999.0,
+        "invoices": [
+            {
+                "invoice_number": "INV-1",
+                "fusion_invoice_number": "FORGED",
+                "fusion_invoice_amount": 999.0,
+                "match_phase": "MATCHED",
+                "match_rule": "FORGED",
+            }
+        ],
+    }
+
+    with TestClient(app) as http:
+        response = http.post("/v1/reconcile/batch", json=request)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["invoice_count"] == 1
+    assert body["fusion_customer_name"] is None
+    assert body["fusion_receipt_number"] is None
+    assert body["fusion_applied_amount"] is None
+    assert body["invoices"][0]["fusion_invoice_number"] is None
+    assert body["invoices"][0]["fusion_invoice_amount"] is None
+    assert body["invoices"][0]["match_phase"] is None
+
+
+def test_declared_oversized_request_body_is_rejected_before_parsing():
+    from src.core.middleware import MAX_REQUEST_BODY_BYTES
+
+    with TestClient(app) as http:
+        response = http.post(
+            "/v1/reconcile/batch",
+            content=b"{}",
+            headers={"content-length": str(MAX_REQUEST_BODY_BYTES + 1)},
+        )
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Request body exceeds the 2 MiB limit."
+
+
+def test_validation_logs_do_not_include_rejected_customer_data(caplog):
+    sensitive = "SensitiveCustomerName" * 30
+    with TestClient(app) as http:
+        response = http.post("/v1/reconcile/batch", json={"customer_name": sensitive})
+    assert response.status_code == 422
+    assert sensitive not in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +487,23 @@ def test_a_fuzzy_number_agreed_by_two_rows_matches_neither():
     assert payload.invoices[0].match_rule is None
 
 
+def test_a_unique_bare_fuzzy_candidate_cannot_override_ambiguous_corroborated_candidates():
+    payload = _payload(
+        invoices=[InvoiceItem(invoice_number="INV-0001234", invoice_date="2026-01-01", invoice_amount=100.0)]
+    )
+    map_ledger_to_payload(
+        payload,
+        "Acme Corp",
+        [],
+        [
+            _row("INV-0001235", "2026-01-01", "5.00"),
+            _row("INV-0001236", "2020-01-02", "100.00"),
+            _row("INV-0001244", "2020-01-03", "6.00"),
+        ],
+    )
+    assert payload.invoices[0].match_phase == "UNMATCHED"
+
+
 def test_a_lone_fuzzy_number_still_matches_on_its_own():
     # The gate must not cost the tier that exists: one near-miss number and nothing else
     # agreeing is the last-resort case it was written for.
@@ -402,6 +527,39 @@ def test_an_exact_number_two_rows_share_now_refuses_instead_of_taking_the_first(
         "Acme Corp",
         [],
         [_row("INV-0001", "2026-05-05", "100.00"), _row("INV-0001", "2026-06-06", "200.00")],
+    )
+    assert payload.invoices[0].match_phase == "UNMATCHED"
+
+
+def test_conflicting_exact_number_two_way_candidates_are_not_resolved_by_ledger_order():
+    payload = _payload(
+        invoices=[InvoiceItem(invoice_number="INV-0001234", invoice_date="2026-01-01", invoice_amount=100.0)]
+    )
+    map_ledger_to_payload(
+        payload,
+        "Acme Corp",
+        [],
+        [
+            _row("INV-0001234", "2026-01-01", "5.00"),
+            _row("INV-0001234", "2026-01-02", "100.00"),
+        ],
+    )
+    assert payload.invoices[0].match_phase == "UNMATCHED"
+
+
+def test_an_exact_number_hit_cannot_fall_through_to_an_unrelated_amount_match():
+    payload = _payload(
+        invoices=[InvoiceItem(invoice_number="INV-0001234", invoice_date="2026-01-01", invoice_amount=100.0)]
+    )
+    map_ledger_to_payload(
+        payload,
+        "Acme Corp",
+        [],
+        [
+            _row("INV-0001234", "2020-01-01", "5.00"),
+            _row("INV-0001234", "2020-01-02", "6.00"),
+            _row("OTHER-0001", "2020-01-03", "100.00"),
+        ],
     )
     assert payload.invoices[0].match_phase == "UNMATCHED"
 

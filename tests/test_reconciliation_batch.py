@@ -318,4 +318,20 @@ def test_discovery_failure_returns_a_generic_502_and_never_the_oracle_detail(cap
         assert leaked not in err
     # The operator still needs a breadcrumb, so the failure has to reach the log even
     # though it must never reach the client.
-    assert "403" in caplog.text
+    assert "HTTPStatusError" in caplog.text
+
+
+def test_cached_receipt_path_returns_generic_502_when_invoice_fetch_fails(monkeypatch):
+    async def discover(*_args, **_kwargs):
+        return CUSTOMER, RECEIPT_ROWS
+
+    async def fail_invoice(*_args, **_kwargs):
+        raise RuntimeError("sensitive Oracle detail")
+
+    monkeypatch.setattr(recon, "discover_potential_customers", discover)
+    monkeypatch.setattr(recon, "fetch_bip_invoices", fail_invoice)
+    result, err, status = run_batch(payment_payload())
+
+    assert result is None
+    assert status == 502
+    assert err == recon.CLIENT_UPSTREAM_ERROR

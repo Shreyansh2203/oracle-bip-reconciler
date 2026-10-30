@@ -5,11 +5,20 @@ from typing import Any
 
 import httpx
 
-from src.constants import DEFAULT_CONCURRENCY
+from src.constants import BIP_MAX_DISCOVERY_INVOICES, DEFAULT_CONCURRENCY
 from src.models import ReconciliationRequest
 from src.services.oracle_bip import fetch_bip_invoices, fetch_bip_receipts
 
 logger = logging.getLogger("reconciliation_api.discovery")
+
+
+class CustomerDiscoveryLimitError(ValueError):
+    pass
+
+
+def _customer_name(row: dict[str, Any]) -> str:
+    return str(row.get("BILL_CUSTOMER_NAME") or row.get("CUSTOMER_NAME") or "").strip()
+
 
 def _is_data_row(row: dict[str, Any]) -> bool:
     """Check if a CSV row contains actual data columns (not just parameter echo)."""
@@ -43,20 +52,24 @@ async def _discover_by_receipt(client: httpx.AsyncClient, user: str, pwd: str, r
     if not r_num:
         return None
 
-    logger.info(f"Step 1: Searching Receipt Report using payment_reference '{r_num}'")
-
-    def _verify_receipt(raw_receipts: list[dict[str, Any]]) -> str | None:
-        if raw_receipts:
-            cand_name = str(raw_receipts[0].get("BILL_CUSTOMER_NAME", "")).strip()
-            if cand_name:
-                return cand_name
-        return None
+    logger.info("Step 1: Searching Receipt Report by payment reference")
 
     r_res = await fetch_bip_receipts(client, user, pwd, receipt_number=r_num)
-    cand = _verify_receipt(_filter_data_rows(r_res))
-    if cand:
-        return cand
-
+    names = {
+        _customer_name(row)
+        for row in _filter_data_rows(r_res)
+        if len(r_num) >= 5
+        and len(str(row.get("RECEIPT_NUMBER") or "").strip()) >= 5
+        and (
+            r_num.casefold() in str(row.get("RECEIPT_NUMBER") or "").strip().casefold()
+            or str(row.get("RECEIPT_NUMBER") or "").strip().casefold() in r_num.casefold()
+        )
+    }
+    names.discard("")
+    if len(names) == 1:
+        return names.pop()
+    if len(names) > 1:
+        logger.warning("Receipt reference matched more than one customer; refusing to choose.")
     return None
 
 async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pwd: str, invoices: list[Any]) -> str | None:
@@ -85,15 +98,21 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
 
         if not queries:
             continue
+        if len(queries) > BIP_MAX_DISCOVERY_INVOICES:
+            raise CustomerDiscoveryLimitError(
+                f"Invoice-only customer discovery is limited to {BIP_MAX_DISCOVERY_INVOICES} lines. "
+                "Provide a customer_name or payment_reference for larger batches."
+            )
 
         sem = asyncio.Semaphore(DEFAULT_CONCURRENCY)
-        discovered_candidates = set()
+        discovered_candidates: set[str] = set()
 
         async def _bounded_fetch(kw_args: dict[str, Any], current_sem: asyncio.Semaphore = sem) -> list[dict[str, Any]]:
             async with current_sem:
                 return await fetch_bip_invoices(client, user, pwd, **kw_args)
 
         import itertools
+
         def chunked_iterable(iterable: Iterable[dict[str, Any]], size: int) -> Iterator[tuple[dict[str, Any], ...]]:
             it = iter(iterable)
             while True:
@@ -106,30 +125,28 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
             tasks = [asyncio.create_task(_bounded_fetch(kw)) for kw in query_chunk]
             try:
                 for coro in asyncio.as_completed(tasks):
-                    try:
-                        i_res = await coro
-                        invoices_raw = _filter_data_rows(i_res)
-                        if invoices_raw:
-                            d_name = str(invoices_raw[0].get("BILL_CUSTOMER_NAME", "")).strip()
-                            if d_name:
-                                discovered_candidates.add(d_name)
-                                if len(discovered_candidates) > 1:
-                                    break  # Short-circuit only if we found a conflict
-                    except Exception as e:
-                        logger.error(f"Invoice fetch failed in sequence: {e}")
+                    i_res = await coro
+                    invoices_raw = _filter_data_rows(i_res)
+                    if invoices_raw:
+                        discovered_candidates.update(
+                            name for row in invoices_raw if (name := _customer_name(row))
+                        )
+                        if len(discovered_candidates) > 1:
+                            break
             finally:
                 for t in tasks:
                     t.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
             if len(discovered_candidates) > 1:
                 break
 
         if len(discovered_candidates) == 1:
             d_name = list(discovered_candidates)[0]
-            logger.info(f"Successfully isolated unique customer '{d_name}' at {level['desc']}")
+            logger.info("Successfully isolated one customer at %s", level["desc"])
             return d_name
         elif len(discovered_candidates) > 1:
-            logger.warning(f"Multiple customers found {list(discovered_candidates)} at {level['desc']}, narrowing down...")
+            logger.warning("Multiple customers found at %s; narrowing down.", level["desc"])
             continue
         else:
             logger.warning(f"No customers found at {level['desc']}")
@@ -152,20 +169,22 @@ async def discover_potential_customers(
     if r_num:
         d_name = await _discover_by_receipt(client, user, pwd, r_num)
         if d_name:
-            logger.info(f"Step 1: Successfully identified customer '{d_name}' via Payment Reference.")
+            logger.info("Step 1: Identified customer via payment reference.")
             return d_name, None
         logger.warning("Step 1 failed to identify customer. Moving to Step 2.")
 
     # Step 2: Direct Identification (Customer Name)
     if c_name:
-        logger.info(f"Step 2: Testing customer_name from JSON: '{c_name}' in Receipt Details Report")
+        logger.info("Step 2: Testing supplied customer name in Receipt Details Report")
         r_res = await fetch_bip_receipts(client, user, pwd, customer_name=c_name)
+        data_rows = _filter_data_rows(r_res)
+        matching_rows = [row for row in data_rows if _customer_name(row).casefold() == c_name.casefold()]
+        found_names = {_customer_name(row).casefold() for row in data_rows if _customer_name(row)}
+        if matching_rows and found_names == {c_name.casefold()}:
+            logger.info("Step 2: Confirmed supplied customer has ledger data.")
+            return c_name, matching_rows
 
-        if _filter_data_rows(r_res):
-            logger.info(f"Step 2: Confirmed customer '{c_name}' has ledger data.")
-            return c_name, r_res
-
-        logger.warning(f"Step 2: Customer '{c_name}' has no ledger data. Moving to Step 3.")
+        logger.warning("Step 2: Supplied customer was not uniquely confirmed. Moving to Step 3.")
 
     # Step 3: Invoice-Based Identification
     logger.info("Step 3: Attempting to identify Customer Name using Invoice Details Report sequence...")

@@ -7,7 +7,7 @@ services:
     # --frozen so the build installs exactly what uv.lock pins and never silently
     # re-resolves; --no-dev because pytest, ruff, mypy, bandit, vulture and pip-audit
     # have no business in a production image.
-    buildCommand: "pip install --no-cache-dir uv && uv sync --frozen --no-dev"
+    buildCommand: "pip install --no-cache-dir uv==0.12.14 && uv sync --frozen --no-dev"
     # The interpreter is addressed through the venv explicitly. Render does not promise to
     # put .venv/bin on PATH, and a bare `uvicorn` that cannot be resolved is a deploy that
     # builds cleanly and then fails to start.

@@ -170,15 +170,16 @@ In scope and enforced:
   both produce a publicly reachable URL, which is why the refusal is the default rather than
   a documented caveat. Turning the variable on is the operator accepting that the endpoint
   is unauthenticated, and `.env.example` says so in those words.
-- **Caller-supplied strings are bounded.** Every value a caller controls that reaches the
-  BI Publisher SOAP envelope or the report cache key has a length bound, because both are
-  sized by whatever the caller sends.
+- **Request and Oracle response sizes are bounded.** Request bodies are capped at 2 MiB,
+  SOAP report responses at 20 MiB, and only cache values up to 256 KiB are retained. The
+  invoice-only customer-discovery fallback is capped at ten invoice lines to prevent a
+  large batch from turning into excessive BI Publisher requests.
 - **A rejected payload is not echoed back.** A `422` reports each error's type, location
   and message but not the offending value, so refusing a 2,501-invoice batch does not return
   2,501 invoices to the caller that sent them.
-- **The report cache key is injective.** Parameters are percent-encoded before they are
-  joined, so a caller-supplied invoice number cannot forge the separator and share a cache
-  entry with a different request.
+- **The report cache key is injective and namespaced.** It includes the Oracle endpoint,
+  report paths, and service-account username; parameters are percent-encoded before joining.
+  Remote Redis URLs require TLS.
 - Fail-closed CORS by default, with `allow_credentials=False` throughout.
 - `ORACLE_PASS` is declared with `repr=False`, so it cannot reach the logs through
   `str(settings)`, `repr(settings)` or a `ValidationError`.
@@ -189,8 +190,10 @@ In scope and enforced:
 - `X-Forwarded-For` is ignored for rate-limit bucketing unless `TRUSTED_PROXY_HEADERS=true`,
   and then only its last entry is read. Trusting the header unconditionally — which is what
   uvicorn's `--forwarded-allow-ips=*` does — would let any caller mint its own bucket.
+- When `REDIS_URL` is configured, SlowAPI uses it as a shared rate-limit backend. Without
+  Redis, rate-limit buckets are process-local and multiplied across workers; do not rely on
+  that mode as a distributed abuse control.
 - Oracle exceptions, report paths, hostnames and ORA codes are logged server-side and
   never returned to the client; the client receives a fixed `502` message.
 - `bandit` and a weekly `pip-audit` scan run in CI. See
   [README.md](README.md#quality-gates) for the full gate list.
-

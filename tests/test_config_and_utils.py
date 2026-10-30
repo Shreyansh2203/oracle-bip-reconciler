@@ -67,6 +67,22 @@ def test_optional_settings_have_their_documented_defaults():
     assert settings.ALLOW_INSECURE_ORACLE_HTTP is False
 
 
+@pytest.mark.parametrize("url", ["redis://cache.example.net:6379/0"])
+def test_remote_redis_requires_tls(url):
+    with pytest.raises(ValidationError, match="Remote Redis connections must use rediss"):
+        Settings(**{**BASE, "REDIS_URL": url})
+
+
+def test_redis_url_rejects_non_redis_schemes():
+    with pytest.raises(ValidationError, match="valid redis:// or rediss://"):
+        Settings(**{**BASE, "REDIS_URL": "http://cache.example.net"})
+
+
+@pytest.mark.parametrize("url", ["rediss://cache.example.net:6379/0", "redis://localhost:6379/0"])
+def test_tls_or_loopback_redis_is_allowed(url):
+    assert Settings(**{**BASE, "REDIS_URL": url}).REDIS_URL == url
+
+
 def test_unknown_environment_variables_are_ignored():
     # extra="ignore" is what lets a deployment carry variables this service does not read
     # without every worker refusing to start.
@@ -120,6 +136,11 @@ def test_sanitize_float_val():
 def test_sanitize_float_val_keeps_a_real_zero():
     assert sanitize_float_val("0") == 0.0
     assert sanitize_float_val("0.00") == 0.0
+
+
+def test_sanitize_float_val_rejects_booleans_as_money():
+    assert sanitize_float_val(True) is None
+    assert sanitize_float_val(False) is None
 
 
 def test_format_oracle_date_strips_offsets():

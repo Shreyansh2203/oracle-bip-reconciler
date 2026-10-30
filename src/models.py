@@ -27,7 +27,7 @@ class InvoiceItem(BaseModel):
     # their single assignment site instead.
     model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
-    line_id: int | str | None = Field(default=None, alias="line_id")
+    line_id: int | str | None = Field(default=None, alias="line_id", max_length=MAX_IDENTIFIER_LENGTH)
     invoice_number: str | int | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
     fusion_invoice_number: str | None = None
     invoice_date: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
@@ -36,10 +36,9 @@ class InvoiceItem(BaseModel):
     fusion_invoice_amount: float | None = None
     description: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
     customer_invoice_number: str | int | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
-    store_no: int | str | None = Field(default=None, alias="store_no")
+    store_no: int | str | None = Field(default=None, alias="store_no", max_length=MAX_IDENTIFIER_LENGTH)
     match_phase: Literal["MATCHED", "UNMATCHED"] | None = None
     match_rule: str | None = None
-
 
     @field_validator("invoice_number", "invoice_date", "customer_invoice_number", mode="before")
     @classmethod
@@ -83,7 +82,7 @@ class ReconciliationRequest(BaseModel):
     invoices: list[InvoiceItem] = Field(default_factory=list, max_length=2500)
     total_amount: float | None = None
     confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
-    confidence_label: str | None = None
+    confidence_label: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
     invoice_count: int | None = None
     meta_data: MetaDataModel | None = None
     meta_extra: dict[str, Any] | None = Field(default=None, alias="_meta")

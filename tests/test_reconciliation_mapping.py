@@ -72,8 +72,8 @@ def test_fuzzy_number_match_wins_over_single_amount_match():
         _oracle_row("INV-0008", "2026-03-03", "100.00"),
     ]
     map_ledger_to_payload(payload, "Acme Corp", [], oracle)
-    # The fuzzy number match is corroborated by the date, so it outranks the lone amount match.
-    assert payload.invoices[0].fusion_invoice_number == "INY-0009"
+    # Both lookalike numbers have corroboration, but they point at different rows.
+    assert payload.invoices[0].match_phase == "UNMATCHED"
 
 
 def test_fuzzy_tie_break_prefers_first_corroborated_candidate():
@@ -83,9 +83,9 @@ def test_fuzzy_tie_break_prefers_first_corroborated_candidate():
         _oracle_row("INX-0009", "2026-02-02", "999.00"),
     ]
     map_ledger_to_payload(payload, "Acme Corp", [], oracle)
-    # Both are corroborated (amount and date respectively). Every other tier picks the
-    # first candidate in ledger order, so the fuzzy tier must too.
-    assert payload.invoices[0].fusion_invoice_number == "INY-0009"
+    # One agrees by amount and the other by date. Neither is uniquely corroborated, so
+    # ledger order cannot choose between them.
+    assert payload.invoices[0].match_phase == "UNMATCHED"
 
 
 def test_single_amount_or_date_match_is_accepted_only_when_unique():
@@ -217,6 +217,48 @@ def test_receipt_reference_match_is_a_case_insensitive_substring():
     map_ledger_to_payload(payload, "Acme Corp", receipts, [])
 
     assert payload.fusion_receipt_number == "RCPT-45021"
+
+
+def test_ambiguous_receipt_reference_does_not_pick_a_ledger_order_winner():
+    payload = ReconciliationRequest(payment_reference="RCPT-4502")
+    receipts = [
+        {"RECEIPT_NUMBER": "RCPT-45021", "CURRENCY": "USD"},
+        {"RECEIPT_NUMBER": "RCPT-45029", "CURRENCY": "EUR"},
+    ]
+    map_ledger_to_payload(payload, "Acme Corp", receipts, [])
+    assert payload.fusion_receipt_number is None
+    assert payload.fusion_currency is None
+
+
+def test_exact_receipt_reference_wins_over_other_substring_candidates():
+    payload = ReconciliationRequest(payment_reference="RCPT-45021")
+    receipts = [
+        {"RECEIPT_NUMBER": "RCPT-450210", "CURRENCY": "EUR"},
+        {"RECEIPT_NUMBER": "RCPT-45021", "CURRENCY": "USD"},
+    ]
+    map_ledger_to_payload(payload, "Acme Corp", receipts, [])
+    assert payload.fusion_receipt_number == "RCPT-45021"
+    assert payload.fusion_currency == "USD"
+
+
+def test_receipt_amount_and_date_fallback_requires_a_unique_row():
+    payload = ReconciliationRequest(total_amount=100.0, payment_date="2026-04-01")
+    receipts = [
+        {"RECEIPT_NUMBER": "RCPT-1", "RECEIPT_DATE": "2026-04-01", "RECEIPT_AMOUNT": "100.00"},
+        {"RECEIPT_NUMBER": "RCPT-2", "RECEIPT_DATE": "2026-04-01", "RECEIPT_AMOUNT": "100.00"},
+    ]
+    map_ledger_to_payload(payload, "Acme Corp", receipts, [])
+    assert payload.fusion_receipt_number is None
+
+
+def test_missing_amounts_and_dates_never_count_as_match_evidence():
+    payload = _payload(InvoiceItem(invoice_number="INV-0001", invoice_date=None, invoice_amount=None))
+    ledger = [
+        _oracle_row("INV-0001", None, None),
+        _oracle_row("INV-0001", None, None),
+    ]
+    map_ledger_to_payload(payload, "Acme Corp", [], ledger)
+    assert payload.invoices[0].match_phase == "UNMATCHED"
 
 
 # --- the lower tiers ----------------------------------------------------------------------
@@ -355,7 +397,8 @@ def test_discovery_failure_does_not_leak_oracle_internals(monkeypatch, caplog):
     assert status == 502
     assert err == recon.CLIENT_UPSTREAM_ERROR
     assert SECRET_LEAK not in err
-    assert SECRET_LEAK in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert SECRET_LEAK not in caplog.text
 
 
 def test_ledger_fetch_failure_does_not_leak_oracle_internals(monkeypatch, caplog):
@@ -377,7 +420,8 @@ def test_ledger_fetch_failure_does_not_leak_oracle_internals(monkeypatch, caplog
     assert status == 502
     assert err == recon.CLIENT_UPSTREAM_ERROR
     assert SECRET_LEAK not in err
-    assert SECRET_LEAK in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert SECRET_LEAK not in caplog.text
 
 
 def test_reconcile_endpoint_turns_a_service_error_into_the_declared_status(monkeypatch):
