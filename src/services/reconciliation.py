@@ -1,0 +1,397 @@
+import asyncio
+import logging
+import time
+import uuid
+from typing import Any
+
+import httpx
+import Levenshtein
+
+from src.models import ReconciliationRequest
+from src.services.discovery import _filter_data_rows, discover_potential_customers
+from src.services.oracle_bip import fetch_bip_invoices, fetch_bip_receipts
+from src.utils.date_formatter import format_oracle_date
+from src.utils.validators import sanitize_float_val
+
+logger = logging.getLogger("reconciliation_api")
+
+# Returned verbatim to the client so Oracle report paths, SQL and hostnames are never
+# echoed back; the underlying exception is only ever written to the server log.
+CLIENT_UPSTREAM_ERROR = "The reconciliation service is temporarily unable to reach the Oracle ERP ledger."
+
+# The shortest number either side of a substring comparison may be. Below this, "1" is a
+# substring of every receipt number in the ledger, which is not a match but a coincidence.
+# Both the invoice and the receipt side read this one constant so the floor cannot drift
+# apart again.
+MIN_NUMBER_MATCH_LENGTH = 5
+
+
+def _normalized_date(value: Any) -> str:
+    return str(value).strip().lower()
+
+
+def _is_date_equal(date1: Any, date2: Any) -> bool:
+    """Compare two dates after normalizing both to YYYY-MM-DD."""
+    n1 = format_oracle_date(date1)
+    n2 = format_oracle_date(date2)
+    if n1 is None or n2 is None:
+        # Empty or absent cells are not matching evidence. Preserve exact non-empty raw
+        # comparisons for Oracle date formats this service does not know how to parse.
+        raw1, raw2 = _normalized_date(date1), _normalized_date(date2)
+        return bool(raw1 and raw2 and raw1 == raw2)
+    return n1 == n2
+
+
+def _dates_match(
+    norm1: str | None,
+    raw1: str,
+    norm2: str | None,
+    raw2: str,
+) -> bool:
+    if norm1 is None or norm2 is None:
+        return bool(raw1.strip() and raw2.strip() and raw1.strip().casefold() == raw2.strip().casefold())
+    return norm1 == norm2
+
+
+def _is_amount_equal(amt1: Any, amt2: Any) -> bool:
+    # sanitize_float_val no longer raises -- it returns None and logs -- so there is nothing
+    # here to catch. The guard that matters is the second one: two amounts that could not be
+    # read are not equal amounts, they are two unreadable cells. Comparing the sanitised
+    # values without it would make "not a number" equal to "not a number" and reconcile a
+    # line against a row on the strength of a parse failure.
+    if amt1 is None or amt2 is None:
+        return False
+    sanitized = sanitize_float_val(amt1)
+    if sanitized is None:
+        return False
+    return sanitized == sanitize_float_val(amt2)
+
+
+def _is_substring_num_ok(number_a: str, number_b: str, *, ignore_case: bool = True) -> bool:
+    """Bidirectional substring test, subject to the length floor.
+
+    Both sides must reach MIN_NUMBER_MATCH_LENGTH. A shorter side is an incidental
+    fragment -- a serial, a single digit, a fragment of a longer reference -- and treating
+    it as a match binds one document's data to another's.
+
+    The receipt reference is matched case-insensitively because a payment reference is read
+    off a remittance advice in whatever case the bank printed it. The invoice number is not:
+    case is a real difference between two references, so a case-differing pair is left to
+    the bounded Levenshtein budget rather than accepted outright.
+    """
+    if not number_a or not number_b:
+        return False
+    if len(number_a) < MIN_NUMBER_MATCH_LENGTH or len(number_b) < MIN_NUMBER_MATCH_LENGTH:
+        return False
+    if ignore_case:
+        number_a, number_b = number_a.lower(), number_b.lower()
+    return number_a in number_b or number_b in number_a
+
+
+def _is_num_ok(inv_num: str, o_num: str) -> bool:
+    if not inv_num or not o_num:
+        return False
+    if inv_num == o_num:
+        return True
+
+    # The minimum length applies to BOTH sides: a 3-4 character Oracle number is within
+    # the typo tolerance of a 5 character OCR number, which produces false positives. It
+    # gates the typo budget as well as the substring test, so a short pair is not rescued
+    # by falling through to Levenshtein.
+    if len(inv_num) < MIN_NUMBER_MATCH_LENGTH or len(o_num) < MIN_NUMBER_MATCH_LENGTH:
+        return False
+
+    if _is_substring_num_ok(inv_num, o_num, ignore_case=False):
+        return True
+
+    # Fuzzy matching using Levenshtein distance for OCR typos.
+    # Allow 1 typo for numbers up to 6 chars, 2 typos for longer. The budget is derived
+    # from the shorter of the two numbers so it is not skewed by an OCR-truncated input.
+    max_dist = 1 if min(len(inv_num), len(o_num)) <= 6 else 2
+    return Levenshtein.distance(inv_num, o_num) <= max_dist
+
+
+class _OracleInvoice:
+    """A single Oracle ledger row with its comparison keys pre-computed once."""
+
+    __slots__ = ("number", "number_raw", "date_raw", "date_norm", "date_cmp", "amount_raw", "amount", "mapped")
+
+    def __init__(self, raw: dict[str, Any]) -> None:
+        number_raw = raw.get("TRANSACTION_NUMBER") or raw.get("INVOICE_NUMBER")
+        date_raw = raw.get("TRANSACTION_DATE") or raw.get("INVOICE_DATE")
+        amount_raw = raw.get("TRANSACTION_TOTAL") or raw.get("TOTAL_AMOUNTS") or raw.get("INVOICE_AMOUNT")
+
+        self.number_raw = number_raw
+        # "" (not "None") is the key used by both the lookup index and the mapped ledger,
+        # so a number-less row can never be handed out twice.
+        self.number = str(number_raw) if number_raw is not None else ""
+        self.date_raw = date_raw
+        self.date_norm = format_oracle_date(date_raw)
+        self.date_cmp = _normalized_date(date_raw)
+        self.amount_raw = amount_raw
+        self.amount = sanitize_float_val(amount_raw) if amount_raw is not None else None
+        self.mapped = False
+
+
+def map_ledger_to_payload(
+    payload: ReconciliationRequest,
+    customer_name: str,
+    all_receipts_raw: list[dict[str, Any]],
+    all_invoices_raw: list[dict[str, Any]],
+) -> None:
+    # ── STEP 3: Map Receipt ──
+    def _apply_receipt_mapping(r: dict[str, Any]) -> None:
+        payload.fusion_receipt_number = r.get("RECEIPT_NUMBER")
+        payload.fusion_receipt_date = r.get("RECEIPT_DATE")
+        receipt_amount = r.get("RECEIPT_AMOUNT")
+        payload.fusion_applied_amount = (
+            sanitize_float_val(receipt_amount)
+            if receipt_amount is not None and str(receipt_amount).strip()
+            else None
+        )
+        payload.fusion_currency = r.get("CURRENCY")
+        payload.fusion_receipt_status_code = r.get("RECEIPT_STATUS_CODE")
+        payload.fusion_customer_number = r.get("BILL_CUSTOMER_NUMBER")
+
+        if not payload.payment_reference:
+            payload.payment_reference = payload.fusion_receipt_number
+        if not payload.payment_date:
+            payload.payment_date = payload.fusion_receipt_date
+        if payload.total_amount is None:
+            payload.total_amount = payload.fusion_applied_amount
+        if not payload.customer_name:
+            payload.customer_name = r.get("BILL_CUSTOMER_NAME") or customer_name
+
+    receipt_number = str(payload.payment_reference).strip() if payload.payment_reference else ""
+    if receipt_number:
+        # An exact reference wins; otherwise a substring must identify exactly one row.
+        # Ledger ordering is not evidence that two candidate receipts are the same payment.
+        matching_receipts: list[dict[str, Any]] = []
+        exact_receipts: list[dict[str, Any]] = []
+        for r in all_receipts_raw:
+            cand_num = str(r.get("RECEIPT_NUMBER", "")).strip()
+            if _is_substring_num_ok(receipt_number, cand_num):
+                matching_receipts.append(r)
+                if receipt_number.casefold() == cand_num.casefold():
+                    exact_receipts.append(r)
+        receipt_candidates = exact_receipts if exact_receipts else matching_receipts
+        if len(receipt_candidates) == 1:
+            _apply_receipt_mapping(receipt_candidates[0])
+        elif len(receipt_candidates) > 1:
+            logger.warning("Payment reference matched multiple receipt rows; refusing to choose.")
+    else:
+        total_amt = payload.total_amount
+        pay_date = payload.payment_date
+        if total_amt is not None and pay_date:
+            matching_receipts = []
+            for r in all_receipts_raw:
+                r_amt = r.get("RECEIPT_AMOUNT")
+                r_date = r.get("RECEIPT_DATE")
+                if _is_amount_equal(total_amt, r_amt) and _is_date_equal(pay_date, r_date):
+                    matching_receipts.append(r)
+            if len(matching_receipts) == 1:
+                _apply_receipt_mapping(matching_receipts[0])
+            elif len(matching_receipts) > 1:
+                logger.warning("Receipt amount and date matched multiple rows; refusing to choose.")
+
+    # ── STEP 4: Map Invoices (Tiered Matching) ──
+    # Normalisation (date parsing, float coercion, number keying) is done once per Oracle
+    # row here instead of inside the O(payload_invoices x ledger_rows) matching loop.
+    ledger = [_OracleInvoice(row) for row in all_invoices_raw]
+    inv_by_num: dict[str, list[_OracleInvoice]] = {}
+    for entry in ledger:
+        inv_by_num.setdefault(entry.number, []).append(entry)
+
+    def _apply_invoice_mapping(inv_item: Any, o_inv: _OracleInvoice, match_rule: str | None = None) -> None:
+        inv_item.fusion_invoice_number = o_inv.number_raw
+        inv_item.fusion_invoice_date = o_inv.date_raw
+        inv_item.fusion_invoice_amount = o_inv.amount_raw
+        inv_item.match_phase = "MATCHED"
+        inv_item.match_rule = match_rule
+
+        inv_item.invoice_number = inv_item.fusion_invoice_number
+        inv_item.invoice_date = inv_item.fusion_invoice_date
+        if inv_item.fusion_invoice_amount is not None:
+            inv_item.invoice_amount = sanitize_float_val(inv_item.fusion_invoice_amount)
+
+        o_inv.mapped = True
+
+    for invoice in payload.invoices:
+        inv_num = str(invoice.invoice_number).strip() if invoice.invoice_number else ""
+        inv_date = str(invoice.invoice_date).strip() if invoice.invoice_date else ""
+        inv_amt = invoice.invoice_amount
+
+        inv_date_norm = format_oracle_date(inv_date)
+        inv_date_cmp = _normalized_date(inv_date)
+        inv_amt_cmp = sanitize_float_val(inv_amt) if inv_amt is not None else None
+
+        matched_o_inv: _OracleInvoice | None = None
+        match_rule: str | None = None
+
+        # 1. Dictionary-based lookup for EXACT number matches
+        exact_number_hit = bool(inv_num and inv_num in inv_by_num)
+        if exact_number_hit:
+            candidates = [o for o in inv_by_num[inv_num] if not o.mapped]
+            two_way_matches: list[_OracleInvoice] = []
+
+            # Exact 3-Way Match
+            exact_matches = []
+            for o_inv in candidates:
+                amount_ok = inv_amt_cmp is not None and o_inv.amount is not None and inv_amt_cmp == o_inv.amount
+                if _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp) and amount_ok:
+                    exact_matches.append(o_inv)
+            if len(exact_matches) == 1 or (
+                exact_matches
+                and all(
+                    (entry.number_raw, entry.date_raw, entry.amount_raw)
+                    == (exact_matches[0].number_raw, exact_matches[0].date_raw, exact_matches[0].amount_raw)
+                    for entry in exact_matches[1:]
+                )
+            ):
+                matched_o_inv = exact_matches[0]
+                match_rule = "EXACT_NUMBER_AMOUNT_DATE"
+
+            # 2-Way Match Fallbacks (Num + Amt, Num + Date)
+            if not matched_o_inv:
+                for o_inv in candidates:
+                    amount_ok = inv_amt_cmp is not None and o_inv.amount is not None and inv_amt_cmp == o_inv.amount
+                    if amount_ok or _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp):
+                        two_way_matches.append(o_inv)
+                if len(two_way_matches) == 1 or (
+                    two_way_matches
+                    and all(
+                        (entry.number_raw, entry.date_raw, entry.amount_raw)
+                        == (two_way_matches[0].number_raw, two_way_matches[0].date_raw, two_way_matches[0].amount_raw)
+                        for entry in two_way_matches[1:]
+                    )
+                ):
+                    matched_o_inv = two_way_matches[0]
+                    match_rule = "EXACT_NUMBER_AMOUNT_OR_DATE"
+
+            # 1-Way Match Fallback (Num Exact)
+            if not matched_o_inv and not two_way_matches and len(candidates) == 1:
+                matched_o_inv = candidates[0]
+                match_rule = "EXACT_NUMBER_UNIQUE"
+
+        # 2. Fuzzy Matching Fallback (if exact num failed)
+        if not matched_o_inv and not exact_number_hit:
+            available_o_invoices = [o for o in ledger if not o.mapped]
+
+            matches_date_amt: list[_OracleInvoice] = []
+            matches_amt: list[_OracleInvoice] = []
+            matches_date: list[_OracleInvoice] = []
+            # Split by priority instead of insert(0), which reversed the tie-break order
+            # and made the last priority candidate win.
+            matches_fuzzy_num_corroborated: list[_OracleInvoice] = []
+            matches_fuzzy_num: list[_OracleInvoice] = []
+
+            for o_inv in available_o_invoices:
+                date_ok = _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp)
+                amt_ok = inv_amt_cmp is not None and inv_amt_cmp == o_inv.amount
+
+                if date_ok and amt_ok and _is_num_ok(inv_num, o_inv.number):
+                    matches_date_amt.append(o_inv)
+
+                if amt_ok:
+                    matches_amt.append(o_inv)
+                if date_ok:
+                    matches_date.append(o_inv)
+
+            if not matches_date_amt:
+                for o_inv in available_o_invoices:
+                    if not _is_num_ok(inv_num, o_inv.number):
+                        continue
+                    amt_ok = inv_amt_cmp is not None and inv_amt_cmp == o_inv.amount
+                    date_ok = _dates_match(inv_date_norm, inv_date_cmp, o_inv.date_norm, o_inv.date_cmp)
+                    if amt_ok or date_ok:
+                        matches_fuzzy_num_corroborated.append(o_inv)
+                    else:
+                        matches_fuzzy_num.append(o_inv)
+
+            if len(matches_date_amt) == 1:
+                matched_o_inv = matches_date_amt[0]
+                match_rule = "NUMBER_AMOUNT_DATE"
+            elif len(matches_date_amt) > 1:
+                logger.warning("Fuzzy number and both invoice fields matched multiple rows; refusing to choose.")
+            elif len(matches_fuzzy_num_corroborated) == 1:
+                matched_o_inv = matches_fuzzy_num_corroborated[0]
+                match_rule = "FUZZY_NUMBER_AMOUNT_OR_DATE"
+            elif not matches_fuzzy_num_corroborated and len(matches_fuzzy_num) == 1:
+                # This bucket has no corroboration of any kind, so it is held to the same
+                # uniqueness rule as the amount-only and date-only buckets. Ledger order
+                # alone is not evidence: two rows reached here on a number resemblance
+                # alone, and picking the first of them binds the line to a row that
+                # disagrees with it on both date and amount.
+                matched_o_inv = matches_fuzzy_num[0]
+                match_rule = "FUZZY_NUMBER_ALONE"
+            elif not matches_fuzzy_num_corroborated and len(matches_amt) == 1:
+                matched_o_inv = matches_amt[0]
+                match_rule = "AMOUNT_ALONE_UNIQUE"
+            elif not matches_fuzzy_num_corroborated and len(matches_date) == 1:
+                matched_o_inv = matches_date[0]
+                match_rule = "DATE_ALONE_UNIQUE"
+
+        if matched_o_inv:
+            _apply_invoice_mapping(invoice, matched_o_inv, match_rule)
+        else:
+            invoice.match_phase = "UNMATCHED"
+
+
+async def process_reconciliation_batch(
+    payload: ReconciliationRequest,
+    client: httpx.AsyncClient,
+    oracle_user: str,
+    oracle_pass: str
+) -> tuple[ReconciliationRequest | None, str | None, int | None]:
+    request_id = str(uuid.uuid4())
+    logger.info("[%s] Starting reconciliation", request_id)
+    start_time = time.time()
+
+    user = oracle_user
+    pwd = oracle_pass
+
+    try:
+        customer_name, cached_r_res = await discover_potential_customers(client, user, pwd, payload)
+    except Exception as e:
+        from src.services.discovery import CustomerDiscoveryLimitError
+
+        if isinstance(e, CustomerDiscoveryLimitError):
+            return None, str(e), 422
+        logger.error("[%s] Customer discovery failed: %s", request_id, type(e).__name__)
+        return None, CLIENT_UPSTREAM_ERROR, 502
+
+    if not customer_name:
+        logger.warning("[%s] Unable to determine customer name.", request_id)
+        return None, None, None
+
+    payload.fusion_customer_name = customer_name
+
+    logger.info("[%s] Fetching ledger reports", request_id)
+
+    i_task = fetch_bip_invoices(client, user, pwd, customer_name=customer_name)
+
+    if cached_r_res is not None:
+        logger.info(f"[{request_id}] Using cached Receipt Report from Step 2 discovery.")
+        r_raw = cached_r_res
+        try:
+            i_raw = await i_task
+        except Exception as err:
+            logger.error("[%s] Invoice ledger fetch failed: %s", request_id, type(err).__name__)
+            return None, CLIENT_UPSTREAM_ERROR, 502
+    else:
+        r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
+        i_raw, r_raw = await asyncio.gather(i_task, r_task, return_exceptions=True)  # type: ignore
+
+    if isinstance(i_raw, BaseException) or isinstance(r_raw, BaseException):
+        err = i_raw if isinstance(i_raw, BaseException) else r_raw
+        logger.error("[%s] Oracle ledger fetch failed: %s", request_id, type(err).__name__)
+        return None, CLIENT_UPSTREAM_ERROR, 502
+
+    all_invoices_raw = _filter_data_rows(i_raw)
+    all_receipts_raw = _filter_data_rows(r_raw)
+
+    map_ledger_to_payload(payload, customer_name, all_receipts_raw, all_invoices_raw)
+
+    duration = int((time.time() - start_time) * 1000)
+    logger.info("[%s] Reconciliation complete in %dms", request_id, duration)
+    return payload, None, None

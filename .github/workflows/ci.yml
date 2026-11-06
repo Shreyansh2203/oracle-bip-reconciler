@@ -1,0 +1,106 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    # Weekly dependency vulnerability scan, Monday 06:17 UTC. Off the hour on purpose:
+    # scheduled workflows queue behind everyone else's, and the top of the hour is the
+    # worst time to be in that queue. Advisories are published continuously, so a scan
+    # that only runs on push would miss one published for an already-merged dependency.
+    - cron: "17 6 * * 1"
+
+# Cancel superseded runs on the same ref so a push does not queue behind its own history.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: the gates need the checked-out source and nothing else.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # The whole suite plus four static gates runs in well under two minutes locally. Twenty
+    # is generous headroom for a cold runner, and still fails the job instead of burning an
+    # hour on a hang: a stuck dependency fetch or a wedged test is a red X, not a timeout
+    # nobody reads.
+    timeout-minutes: 20
+
+    env:
+      # Placeholders. Settings() is constructed at import time, so the suite needs these
+      # three values to collect. tests/conftest.py sets the same values for local runs, and
+      # http://localhost:8080 satisfies validate_oracle_url with no insecure-HTTP opt-in.
+      ORACLE_URL: "http://localhost:8080"
+      ORACLE_USER: "test"
+      ORACLE_PASS: "test"
+
+    steps:
+    # Every action is pinned to a full commit SHA. A mutable tag like @v4 can be repointed at
+    # a different commit at any time, which puts a supply-chain opening in the build that runs
+    # before any of the gates below. The tag is kept as a trailing comment for humans, and
+    # Dependabot (.github/dependabot.yml) opens the PR that moves the SHA forward.
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.12"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+    - name: Verify the lockfile is current
+      # `uv sync --frozen` installs whatever uv.lock holds without checking it against
+      # pyproject.toml, so on its own a lockfile edited by hand and never regenerated passes
+      # this job and ships a resolved set that does not match the declarations.
+      run: uv lock --check
+
+    - name: Install dependencies
+      run: uv sync --frozen --dev
+
+    - name: Lint, typecheck, security scan, dead code, tests
+      run: uv run task check_all
+
+  dependency-audit:
+    # A separate job so a vulnerable transitive dependency reports as its own failure
+    # instead of a red X on the test job, and so the scan can also run on a schedule.
+    runs-on: ubuntu-latest
+    # Both pip-audit invocations hit the advisory database over the network, so this job is
+    # bounded by that rather than by any work we do. Fifteen is enough for two scans against
+    # a warm cache and turns a hung advisory endpoint into a red X rather than a job that
+    # occupies a runner until GitHub's six-hour ceiling.
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.12"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+    - name: Install dependencies
+      run: uv sync --frozen --dev
+
+    - name: Audit the runtime dependency set
+      # Audits requirements.txt, which is the set Vercel and Render actually install, rather
+      # than whatever happens to be importable. --strict also fails on a pinned requirement
+      # that cannot be resolved, so a malformed export cannot pass as "no vulnerabilities".
+      # pip-audit exits 1 on a finding, which is what fails this job.
+      run: uv run pip-audit --strict --requirement requirements.txt
+
+    - name: Audit the development toolchain
+      # Separate from the line above on purpose: a CVE in a linter is not what ships, and
+      # folding the dev group into the runtime scan would let one block the other.
+      run: uv run pip-audit --strict --local
+

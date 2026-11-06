@@ -1,0 +1,36 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Kept in step with the ruff version resolved in uv.lock, so the hook and CI
+    # enforce the same formatting rules.
+    rev: v0.16.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+        exclude: '\.coverage$'
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    # Kept in step with the mypy version resolved in uv.lock.
+    rev: v2.3.1
+    hooks:
+      - id: mypy
+        name: mypy
+        files: ^(src|api)/
+        additional_dependencies:
+          - fastapi==0.141.1
+          - httpx==0.28.1
+          - pydantic==2.13.4
+          - pydantic-settings==2.15.0
+          - slowapi==0.1.10
+          - tenacity==9.1.4

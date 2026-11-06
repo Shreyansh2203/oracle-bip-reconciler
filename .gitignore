@@ -1,0 +1,39 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environment files (.env.example is the committed template and must stay visible)
+.env
+.env.*
+!.env.example
+
+# PII and Live Data
+# These hold real Oracle Fusion BI Publisher extracts from the client tenant. They
+# must never be committed, on any branch, in any worktree.
+Customers.txt
+Real Test Cases/
+reports/
+data/
+Prompts/
+.agents/
+
+# Deployment and editor noise
+.vercel/
+.idea/
+.vscode/
+*.log

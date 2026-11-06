@@ -1,0 +1,35 @@
+# Keep the build context small and stop the host virtualenv from clobbering the
+# Linux one created by `uv sync` in the image.
+.git
+.github
+.vercel
+
+.venv
+venv
+__pycache__
+*.py[cod]
+
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.bandit
+
+# Never bake credentials or live customer data into an image layer
+.env
+.env.*
+!.env.example
+Customers.txt
+Real Test Cases/
+
+# Development-only artefacts
+tests
+docs
+Dockerfile
+.dockerignore
+Makefile
+README.md
+LICENSE
+requirements.txt
+start.bat
+start.ps1
+start.sh
