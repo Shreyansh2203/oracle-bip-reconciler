@@ -93,11 +93,11 @@ jobs:
       run: uv sync --frozen --dev
 
     - name: Audit the runtime dependency set
-      # Audits requirements.txt, which is the set Vercel and Render actually install, rather
-      # than whatever happens to be importable. --strict also fails on a pinned requirement
-      # that cannot be resolved, so a malformed export cannot pass as "no vulnerabilities".
-      # pip-audit exits 1 on a finding, which is what fails this job.
-      run: uv run pip-audit --strict --requirement requirements.txt
+      # Audits pyproject.toml, which is the source of truth for dependencies. --strict also
+      # fails on a pinned requirement that cannot be resolved, so a malformed export cannot
+      # pass as "no vulnerabilities". pip-audit exits 1 on a finding, which is what fails
+      # this job.
+      run: uv run pip-audit --strict
 
     - name: Audit the development toolchain
       # Separate from the line above on purpose: a CVE in a linter is not what ships, and
