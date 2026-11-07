@@ -85,28 +85,3 @@ def test_end_to_end_health_and_ready():
         assert http.get("/ready").status_code == 200
         assert http.get("/ready").json() == {"status": "ready"}
         assert http.get("/").status_code == 200
-
-
-def test_end_to_end_requires_api_key_when_configured(monkeypatch):
-    from src.core.config import settings
-
-    monkeypatch.setattr(settings, "API_KEY", "prod-secret")
-    with respx.mock as router:
-        router.post(SOAP_URL).mock(return_value=httpx.Response(200, text=_soap(INVOICE_CSV)))
-        with TestClient(app) as http:
-            response = http.post(
-                "/v1/reconcile/batch",
-                json={"customer_name": "Acme Corp"},
-            )
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid or missing API key"
-
-    with respx.mock as router:
-        router.post(SOAP_URL).mock(return_value=httpx.Response(200, text=_soap(INVOICE_CSV)))
-        with TestClient(app) as http:
-            response = http.post(
-                "/v1/reconcile/batch",
-                json={"customer_name": "Acme Corp"},
-                headers={"x-api-key": "prod-secret"},
-            )
-    assert response.status_code != 401, response.text

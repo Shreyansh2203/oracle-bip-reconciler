@@ -32,11 +32,6 @@ class Settings(BaseSettings):
     # without checking who set it hands the rate limit to whoever chooses to set it.
     TRUSTED_PROXY_HEADERS: bool = False
 
-    # Optional shared secret for direct client calls. When set, every reconciliation
-    # request must carry ``X-API-Key`` with this value (compared in constant time).
-    # Leave unset when the service sits behind an authenticating proxy.
-    API_KEY: str | None = None
-
     @field_validator("ORACLE_URL", mode="after")
     @classmethod
     def validate_oracle_url(cls, v: str, info: ValidationInfo) -> str:

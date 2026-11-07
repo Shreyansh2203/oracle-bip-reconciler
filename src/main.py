@@ -205,7 +205,7 @@ app.add_middleware(
     allow_origins=origins if origins else [],  # Fail closed if no origins provided
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-API-Key"],
+    allow_headers=["Content-Type"],
 )
 app.add_middleware(RequestBodyLimitMiddleware)
 

@@ -42,10 +42,6 @@ services:
       # rate limit counts callers rather than the edge.
       - key: TRUSTED_PROXY_HEADERS
         value: "false"
-      # Optional shared secret for direct client calls. Leave unset when behind an
-      # authenticating proxy; when set, every reconcile request needs X-API-Key.
-      - key: API_KEY
-        value: ""
       - key: REDIS_URL
         value: ""
       - key: ORACLE_BIP_INVOICE_PATH
