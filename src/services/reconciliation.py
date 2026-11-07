@@ -38,6 +38,13 @@ def _is_date_equal(date1: Any, date2: Any) -> bool:
         # Empty or absent cells are not matching evidence. Preserve exact non-empty raw
         # comparisons for Oracle date formats this service does not know how to parse.
         raw1, raw2 = _normalized_date(date1), _normalized_date(date2)
+        # Empty or absent cells are not matching evidence. A None (or the literal
+        # "None"/"none" an unsanitised cell can carry) normalises to "none", which
+        # must not be treated as a real date.
+        if raw1 in ("", "none"):
+            raw1 = ""
+        if raw2 in ("", "none"):
+            raw2 = ""
         return bool(raw1 and raw2 and raw1 == raw2)
     return n1 == n2
 
@@ -49,7 +56,13 @@ def _dates_match(
     raw2: str,
 ) -> bool:
     if norm1 is None or norm2 is None:
-        return bool(raw1.strip() and raw2.strip() and raw1.strip().casefold() == raw2.strip().casefold())
+        left = raw1.strip().casefold()
+        right = raw2.strip().casefold()
+        if left in ("", "none"):
+            left = ""
+        if right in ("", "none"):
+            right = ""
+        return bool(left and right and left == right)
     return norm1 == norm2
 
 
@@ -169,7 +182,7 @@ def map_ledger_to_payload(
         matching_receipts: list[dict[str, Any]] = []
         exact_receipts: list[dict[str, Any]] = []
         for r in all_receipts_raw:
-            cand_num = str(r.get("RECEIPT_NUMBER", "")).strip()
+            cand_num = str(r.get("RECEIPT_NUMBER") or "").strip()
             if _is_substring_num_ok(receipt_number, cand_num):
                 matching_receipts.append(r)
                 if receipt_number.casefold() == cand_num.casefold():

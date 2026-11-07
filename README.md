@@ -280,6 +280,10 @@ Coverage gate: 100% on reconciliation layer. CI enforces `1032/1032` tests passi
 - Provide real `ORACLE_URL`/`ORACLE_USER`/`ORACLE_PASS`
 - Enable TLS termination at the edge
 
+### Vercel
+
+`vercel.json` builds `api/index.py` as a serverless function. The build succeeds even without credentials, but every request returns `500` until `ORACLE_URL`, `ORACLE_USER`, and `ORACLE_PASS` are set in the Vercel dashboard → **Settings → Environment Variables**. The build itself cannot supply these because `vercel.json` uses `builds` (no `env` block), so the dashboard is the only place they can be configured.
+
 ---
 
 ## Contributing

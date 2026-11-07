@@ -122,6 +122,7 @@ async def request_id_middleware(request: Request, call_next: Callable[[Request],
 
     logger_with_id = RequestIdAdapter(logger, {"request_id": request_id})
 
+    response: Any = None
     start = time.monotonic()
     try:
         response = await call_next(request)
@@ -204,7 +205,7 @@ app.add_middleware(
     allow_origins=origins if origins else [],  # Fail closed if no origins provided
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 app.add_middleware(RequestBodyLimitMiddleware)
 

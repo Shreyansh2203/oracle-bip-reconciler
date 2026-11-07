@@ -1,3 +1,4 @@
+import hmac
 import logging
 
 import httpx
@@ -59,6 +60,20 @@ def require_public_access_opt_in() -> None:
             "Put an authenticating proxy in front of this service, or set it to true."
         )
         raise HTTPException(status_code=503, detail=PUBLIC_ACCESS_DISABLED)
+
+
+def require_api_key(request: Request) -> None:
+    """Require ``X-API-Key`` when an operator has configured ``API_KEY``.
+
+    Compared in constant time so timing cannot leak the secret. Kept optional: when
+    ``API_KEY`` is unset the service relies on the authenticating proxy instead.
+    """
+    expected = settings.API_KEY
+    if not expected:
+        return
+    provided = request.headers.get("x-api-key", "")
+    if not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 def get_client(request: Request) -> httpx.AsyncClient:

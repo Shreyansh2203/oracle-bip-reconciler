@@ -35,7 +35,7 @@ def _strip_thousands(text: str, separator: str) -> str | None:
         head, _, tail = text.partition(",")
         groups = tail.split(",")
     else:
-        head, _, tail = text.rpartition(".")
+        head, _, tail = text.partition(".")
         groups = tail.split(".")
     if not head.isdigit() or len(head) > 3 or any(len(group) != 3 for group in groups):
         return None
