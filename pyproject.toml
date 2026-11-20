@@ -128,7 +128,8 @@ ignore_names = [
 
 [tool.taskipy.tasks]
 start = "uvicorn src.main:app --reload --host 127.0.0.1 --port 8000"
-lint = "ruff check src/ tests/ api/"
+format = "ruff format src/ tests/ api/"
+lint = "ruff check src/ tests/ api/ && ruff format --check src/ tests/ api/"
 types = "mypy src/ api/"
 security = "bandit -r src/ api/ -q"
 deadcode = "vulture src/ tests/ api/ --min-confidence 80"

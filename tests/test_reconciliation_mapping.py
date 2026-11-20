@@ -311,9 +311,7 @@ def test_three_way_match_refused_when_two_rows_share_all_three_fields():
     # The invoice's number is not an exact dictionary hit (no oracle row carries
     # "INV-0009" verbatim), so exact_number_hit is False and we reach the fuzzy
     # section where len(matches_date_amt) > 1 triggers the warning at line 315.
-    payload = _payload(
-        InvoiceItem(invoice_number="INV-0009", invoice_date="2026-01-05", invoice_amount=100.0)
-    )
+    payload = _payload(InvoiceItem(invoice_number="INV-0009", invoice_date="2026-01-05", invoice_amount=100.0))
     oracle = [
         _oracle_row("INV-009", "2026-01-05", "100.00"),
         _oracle_row("INV-008", "2026-01-05", "100.00"),
@@ -602,8 +600,11 @@ def test_fuzzy_fallback_stays_bounded_for_a_large_tenant_ledger(monkeypatch):
     # One pass over the ledger, plus a small per-invoice overhead. The old per-pair
     # rescan was ~1,000,000 of each.
     assert calls["date"] < len(ledger) * 2, f"format_oracle_date called {calls['date']} times for {len(ledger)} rows"
-    assert calls["amount"] < len(ledger) * 2, f"sanitize_float_val called {calls['amount']} times for {len(ledger)} rows"
+    assert calls["amount"] < len(ledger) * 2, (
+        f"sanitize_float_val called {calls['amount']} times for {len(ledger)} rows"
+    )
     assert elapsed < 90.0, f"fuzzy fallback took {elapsed:.2f}s"
+
 
 def test_a_blank_invoice_number_is_not_an_exact_dictionary_hit():
     # If the invoice number is blank, it was mapping to the "" key in inv_by_num.

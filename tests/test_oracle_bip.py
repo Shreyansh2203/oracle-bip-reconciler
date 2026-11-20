@@ -1,4 +1,3 @@
-
 import asyncio
 import base64
 import binascii
@@ -34,7 +33,7 @@ INVOICE_CSV = (
 )
 RECEIPT_CSV = (
     "RECEIPT_NUMBER,RECEIPT_DATE,RECEIPT_AMOUNT,CURRENCY,BILL_CUSTOMER_NAME\n"
-    "RCPT-45021,2026-08-14,\"4,750.50\",USD,Acme Corp\n"
+    'RCPT-45021,2026-08-14,"4,750.50",USD,Acme Corp\n'
 )
 
 
@@ -55,7 +54,7 @@ def soap_envelope(csv_text, namespaced=True):
         '<?xml version="1.0" encoding="UTF-8"?>'
         f'<soap:Envelope xmlns:soap="{SOAP_NS}">'
         "<soap:Body>"
-        f'<{prefix}runReportResponse{ns}>'
+        f"<{prefix}runReportResponse{ns}>"
         f"<{prefix}reportOutput><{prefix}reportBytes>{encoded}</{prefix}reportBytes></{prefix}reportOutput>"
         f"</{prefix}runReportResponse>"
         "</soap:Body></soap:Envelope>"
@@ -218,9 +217,7 @@ def sent_envelope(mock_route):
 
 def test_soap_envelope_carries_the_namespaces_path_and_credential():
     with respx.mock as router:
-        route = router.post(SOAP_URL).mock(
-            return_value=httpx.Response(200, text=soap_envelope(INVOICE_CSV))
-        )
+        route = router.post(SOAP_URL).mock(return_value=httpx.Response(200, text=soap_envelope(INVOICE_CSV)))
         rows = run(fetch_bip_invoices, "svc-account", "svc-password", invoice_number="INV-2026-00881")
 
     assert len(rows) == 1
@@ -260,7 +257,9 @@ def test_all_four_parameters_are_always_sent_even_when_blank():
 
     root = sent_envelope(route)
     items = root.findall(f".//{{{PUB_NS}}}parameterNameValues/{{{PUB_NS}}}item")
-    sent = {item.find(f"{{{PUB_NS}}}name").text: item.find(f"{{{PUB_NS}}}values/{{{PUB_NS}}}item").text for item in items}
+    sent = {
+        item.find(f"{{{PUB_NS}}}name").text: item.find(f"{{{PUB_NS}}}values/{{{PUB_NS}}}item").text for item in items
+    }
 
     assert set(sent) == {"P_CUSTOMER_NAME", "P_INVOICE_NUM", "P_INVOICE_AMOUNT", "P_INVOICE_DATE"}
     assert set(sent.values()) == {" "}
@@ -281,7 +280,9 @@ def test_optional_parameters_are_sent_when_supplied_and_blanked_otherwise():
 
     root = sent_envelope(route)
     items = root.findall(f".//{{{PUB_NS}}}parameterNameValues/{{{PUB_NS}}}item")
-    sent = {item.find(f"{{{PUB_NS}}}name").text: item.find(f"{{{PUB_NS}}}values/{{{PUB_NS}}}item").text for item in items}
+    sent = {
+        item.find(f"{{{PUB_NS}}}name").text: item.find(f"{{{PUB_NS}}}values/{{{PUB_NS}}}item").text for item in items
+    }
 
     assert sent["P_CUSTOMER_NAME"] == "Acme Corp"
     assert sent["P_INVOICE_NUM"] == "INV-2026-00881"
@@ -299,7 +300,9 @@ def test_a_blank_amount_parameter_is_not_treated_as_a_zero():
 
     root = sent_envelope(route)
     items = root.findall(f".//{{{PUB_NS}}}parameterNameValues/{{{PUB_NS}}}item")
-    sent = {item.find(f"{{{PUB_NS}}}name").text: item.find(f"{{{PUB_NS}}}values/{{{PUB_NS}}}item").text for item in items}
+    sent = {
+        item.find(f"{{{PUB_NS}}}name").text: item.find(f"{{{PUB_NS}}}values/{{{PUB_NS}}}item").text for item in items
+    }
     assert sent["P_INVOICE_AMOUNT"] == "0.00"
 
 
@@ -572,6 +575,8 @@ def test_a_configured_redis_backs_the_shared_cache(monkeypatch):
     monkeypatch.setattr(oracle_bip.settings, "REDIS_URL", "redis://cache.invalid:6379/0")
     cache = oracle_bip.AsyncCache()
     assert cache.redis is not None
+    assert cache.redis.connection_pool.connection_kwargs.get("socket_timeout") == 3.0
+    assert cache.redis.connection_pool.connection_kwargs.get("socket_connect_timeout") == 2.0
 
     # Two workers on two hosts share the ledger through Redis, so the TTL has to travel with
     # the value rather than living only in the local cache's own expiry.
@@ -579,6 +584,31 @@ def test_a_configured_redis_backs_the_shared_cache(monkeypatch):
     asyncio.run(cache.set("k", [{"A": "1"}]))
     assert cache.redis.set_calls == [("k", '[{"A": "1"}]', oracle_bip.BIP_CACHE_TTL_SECONDS)]
     assert asyncio.run(cache.get("k")) == [{"A": "1"}]
+
+
+def test_fetch_once_caller_cancellation_does_not_abort_concurrent_waiters():
+    async def slow_fetch():
+        await asyncio.sleep(0.04)
+        return [{"TRANSACTION_NUMBER": "INV-1"}]
+
+    async def scenario():
+        t1 = asyncio.create_task(oracle_bip._fetch_once("shared_key", slow_fetch))
+        await asyncio.sleep(0.01)
+        t2 = asyncio.create_task(oracle_bip._fetch_once("shared_key", slow_fetch))
+
+        # Cancel caller 1 while in-flight
+        t1.cancel()
+        try:
+            await t1
+        except asyncio.CancelledError:
+            pass
+
+        # Caller 2 should still receive the completed results safely
+        result2 = await t2
+        assert result2 == [{"TRANSACTION_NUMBER": "INV-1"}]
+        assert oracle_bip._inflight == {}
+
+    asyncio.run(scenario())
 
 
 def test_a_redis_read_failure_falls_back_to_the_local_cache(monkeypatch):
@@ -680,7 +710,7 @@ def test_an_unparseable_report_body_is_reported_not_swallowed():
     corrupt = soap_envelope(INVOICE_CSV).replace(base64.b64encode(INVOICE_CSV.encode()).decode(), "not-base64!!")
     with respx.mock as router:
         router.post(SOAP_URL).mock(return_value=httpx.Response(200, text=corrupt))
-        with pytest.raises(Exception, match="Failed to parse SOAP response"):
+        with pytest.raises(oracle_bip.OracleBIPParseError, match="Failed to parse SOAP response"):
             run(_run_bip_report, "svc-account", "svc-password", ["/Some Report.xdo"], [], "invoice")
 
 
@@ -690,7 +720,7 @@ def test_a_well_formed_envelope_with_no_report_yields_no_rows():
     # identified", not a 502, so the two failure shapes stay distinguishable.
     fault = (
         f'<soap:Envelope xmlns:soap="{SOAP_NS}"><soap:Body>'
-        '<soap:Fault><faultcode>soap:Server</faultcode><faultstring>Job failed</faultstring></soap:Fault>'
+        "<soap:Fault><faultcode>soap:Server</faultcode><faultstring>Job failed</faultstring></soap:Fault>"
         "</soap:Body></soap:Envelope>"
     )
     with respx.mock as router:

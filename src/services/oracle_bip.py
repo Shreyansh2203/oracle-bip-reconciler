@@ -36,8 +36,10 @@ from src.constants import (
     DEFAULT_RECEIPT_REPORT_PATH,
 )
 from src.core.config import settings
+from src.utils.date_formatter import format_oracle_date
 
 logger = logging.getLogger(__name__)
+
 
 class AsyncCache:
     def __init__(self) -> None:
@@ -49,7 +51,12 @@ class AsyncCache:
         if redis_url:
             try:
                 import redis.asyncio as redis
-                self.redis = redis.from_url(redis_url)
+
+                self.redis = redis.from_url(
+                    redis_url,
+                    socket_timeout=3.0,
+                    socket_connect_timeout=2.0,
+                )
                 logger.info("Redis cache initialized for Oracle BIP")
             except ImportError:
                 logger.warning("Redis is configured but redis package is not installed. Falling back to local cache.")
@@ -77,6 +84,7 @@ class AsyncCache:
         else:
             self.local[key] = value
 
+
 _bip_cache = AsyncCache()
 
 # One entry per cache key that is currently being fetched.
@@ -88,9 +96,7 @@ async def close_cache() -> None:
         await _bip_cache.redis.aclose()
 
 
-async def _fetch_once(
-    key: str, factory: Callable[[], Awaitable[list[dict[str, Any]]]]
-) -> list[dict[str, Any]]:
+async def _fetch_once(key: str, factory: Callable[[], Awaitable[list[dict[str, Any]]]]) -> list[dict[str, Any]]:
     """Run `factory` for `key`, or await the run another caller already started.
 
     `_discover_by_invoice_sequence` fans out up to DEFAULT_CONCURRENCY fetches that all
@@ -100,30 +106,33 @@ async def _fetch_once(
     single-threaded asyncio and a yield would let a second caller in between.
 
     A failure reaches the waiters too, because they would have received the same error had
-    they issued the request themselves. The entry is always removed, so a cancelled caller
-    cannot leave a future behind for a later event loop to await.
+    they issued the request themselves. The underlying task runs independently so that if
+    the initiating caller is cancelled (e.g. client disconnect/timeout), the in-flight
+    fetch still finishes and serves concurrent or subsequent waiters rather than cascading
+    cancellations to other callers.
     """
     existing = _inflight.get(key)
     if existing is not None:
         return await asyncio.shield(existing)
 
-    owned: asyncio.Future[list[dict[str, Any]]] = asyncio.get_running_loop().create_future()
-    _inflight[key] = owned
-    try:
-        results = await factory()
-    except BaseException as error:
-        if not owned.done():
-            owned.set_exception(error)
-            # Consumed here so the loop does not log it as never retrieved. A waiter that
-            # awaits the future still sees it.
-            owned.exception()
-        raise
-    else:
-        if not owned.done():
-            owned.set_result(results)
-        return results
-    finally:
+    async def _run() -> list[dict[str, Any]]:
+        return await factory()
+
+    task: asyncio.Task[list[dict[str, Any]]] = asyncio.create_task(_run())
+    _inflight[key] = task
+
+    def _cleanup(t: asyncio.Task[Any]) -> None:
         _inflight.pop(key, None)
+        if not t.cancelled():
+            # Acknowledge the exception so the event loop does not warn if all waiters cancelled.
+            t.exception()
+
+    task.add_done_callback(_cleanup)
+    try:
+        return await asyncio.shield(task)
+    finally:
+        if task.done():
+            _inflight.pop(key, None)
 
 
 def _get_cache_key(report_type: str, parameters: list[dict[str, Any]]) -> str:
@@ -138,8 +147,7 @@ def _get_cache_key(report_type: str, parameters: list[dict[str, Any]]) -> str:
     """
     sorted_params = sorted(parameters, key=lambda x: x["name"])
     param_str = "|".join(
-        f"{quote(str(p['name']), safe='')}={quote(str(p['values'][0]), safe='')}"
-        for p in sorted_params
+        f"{quote(str(p['name']), safe='')}={quote(str(p['values'][0]), safe='')}" for p in sorted_params
     )
     return f"{quote(report_type, safe='')}::{param_str}"
 
@@ -150,9 +158,6 @@ def _cache_namespace(username: str, candidate_paths: list[str]) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(identity).hexdigest()
-
-
-
 
 
 def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
@@ -176,7 +181,11 @@ def _parse_soap_response_sync(response_text: str) -> list[dict[str, Any]]:
         # the first header, and str.strip() does not remove it. Left in place, the key
         # becomes "\ufeffTRANSACTION_NUMBER", which every downstream lookup (matcher,
         # receipt mapping) misses silently, reconciling the whole report to nothing.
-        clean_row = {key.lstrip("\ufeff").strip().upper().replace(" ", ""): (value or "").strip() for key, value in row.items() if key}
+        clean_row = {
+            key.lstrip("\ufeff").strip().upper().replace(" ", ""): (value or "").strip()
+            for key, value in row.items()
+            if key
+        }
         if clean_row:
             results.append(clean_row)
     return results
@@ -187,6 +196,10 @@ class OracleBIPTransientError(Exception):
 
 
 class OracleBIPResponseTooLargeError(Exception):
+    pass
+
+
+class OracleBIPParseError(Exception):
     pass
 
 
@@ -204,18 +217,14 @@ async def _run_bip_report(
     # which may crash the query if they are invalid strings like 'null'.
     valid_parameters = parameters
 
-    valid_paths = [
-        path for path in candidate_paths if path and path.strip()
-    ]
+    valid_paths = [path for path in candidate_paths if path and path.strip()]
     cache_key = f"{_cache_namespace(username, valid_paths)}::{_get_cache_key(report_type, valid_parameters)}"
     cached_val = await _bip_cache.get(cache_key)
     if cached_val is not None:
         return cached_val
 
     async def _fetch() -> list[dict[str, Any]]:
-        return await _post_bip_report(
-            client, username, password, valid_paths, valid_parameters, report_type, cache_key
-        )
+        return await _post_bip_report(client, username, password, valid_paths, valid_parameters, report_type, cache_key)
 
     return await _fetch_once(cache_key, _fetch)
 
@@ -321,7 +330,7 @@ async def _post_bip_report(
                 return results
             except Exception as parse_error:
                 logger.error("Failed to parse Oracle BIP SOAP response: %s", type(parse_error).__name__)
-                raise Exception("Failed to parse SOAP response.") from parse_error
+                raise OracleBIPParseError("Failed to parse SOAP response.") from parse_error
 
         except httpx.HTTPStatusError as error:
             if error.response.status_code == 404:
@@ -358,7 +367,6 @@ async def fetch_bip_invoices(
         DEFAULT_INVOICE_REPORT_PATH,
     ]
 
-    from src.utils.date_formatter import format_oracle_date
     fmt_date = format_oracle_date(invoice_date) if invoice_date else ""
 
     # ALWAYS pass all 4 parameters to prevent BI Publisher "Missing Parameter" faults
@@ -396,13 +404,15 @@ async def fetch_bip_receipts(
     ]
 
     # Use standard Oracle format (YYYY-MM-DD) instead of BIP format (MM-DD-YYYY) to prevent ORA-01861 500 errors
-    from src.utils.date_formatter import format_oracle_date
     fmt_date = format_oracle_date(receipt_date) if receipt_date else ""
 
     parameters = [
         {"name": "P_CUSTOMER_NAME", "values": [customer_name if customer_name else " "]},
         {"name": "P_RECEIPT_NUMBER", "values": [receipt_number if receipt_number else " "]},
-        {"name": "P_RECEIPT_AMOUNT", "values": [str(receipt_amount) if receipt_amount is not None and str(receipt_amount).strip() else " "]},
+        {
+            "name": "P_RECEIPT_AMOUNT",
+            "values": [str(receipt_amount) if receipt_amount is not None and str(receipt_amount).strip() else " "],
+        },
         {"name": "P_RECEIPT_DATE", "values": [fmt_date if fmt_date else " "]},
     ]
 

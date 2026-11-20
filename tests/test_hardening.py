@@ -1,4 +1,3 @@
-
 import asyncio
 import base64
 import logging
@@ -40,9 +39,7 @@ def test_request_body_middleware_rejects_declared_and_streamed_oversize_payloads
             app_called = True
             await downstream_receive()
             await downstream_receive()
-            await downstream_send(
-                {"type": "http.response.start", "status": 200, "headers": []}
-            )
+            await downstream_send({"type": "http.response.start", "status": 200, "headers": []})
 
         middleware = RequestBodyLimitMiddleware(downstream, max_bytes=3)
         await middleware({"type": "http", "headers": headers}, receive, send)
@@ -63,6 +60,8 @@ def test_request_body_middleware_rejects_declared_and_streamed_oversize_payloads
         )
 
         assert not declared_called and declared_response[0]["status"] == 413
+        assert (b"x-content-type-options", b"nosniff") in declared_response[0]["headers"]
+        assert (b"x-frame-options", b"DENY") in declared_response[0]["headers"]
         assert not invalid_called and invalid_response[0]["status"] == 413
         assert streamed_called
         assert streamed_response[0]["status"] == 413
@@ -355,7 +354,9 @@ def test_an_ambiguous_date_binds_no_ledger_row_rather_than_the_wrong_one():
     # The pinned behaviour was that a payload dated 05-06-2026 bound a 5 June row, and it
     # bound it because the parse guessed 6 May. Refusing the date means the date agrees with
     # nothing, and the line goes to review instead of to the wrong customer row.
-    payload = _payload(invoices=[InvoiceItem(invoice_number="INV-ZZZZ", invoice_date="05-06-2026", invoice_amount=50.0)])
+    payload = _payload(
+        invoices=[InvoiceItem(invoice_number="INV-ZZZZ", invoice_date="05-06-2026", invoice_amount=50.0)]
+    )
     ledger = [
         {"TRANSACTION_NUMBER": "INV-A", "TRANSACTION_DATE": "2026-06-05", "TRANSACTION_TOTAL": "50.00"},
         {"TRANSACTION_NUMBER": "INV-B", "TRANSACTION_DATE": "2026-05-06", "TRANSACTION_TOTAL": "50.00"},
@@ -433,7 +434,9 @@ def test_a_non_finite_value_is_dropped_without_claiming_it_was_unreadable(caplog
 def test_a_refused_amount_cannot_reconcile_against_a_row_it_does_not_match():
     # The refusal has to cost an agreement rather than bind a wrong row, which is what the
     # caller's None fallback is for.
-    payload = _payload(invoices=[InvoiceItem(invoice_number="INV-0001", invoice_date="2026-01-01", invoice_amount="1.234,56")])
+    payload = _payload(
+        invoices=[InvoiceItem(invoice_number="INV-0001", invoice_date="2026-01-01", invoice_amount="1.234,56")]
+    )
     assert payload.invoices[0].invoice_amount == 1234.56
     ledger = [
         {"TRANSACTION_NUMBER": "INV-0001", "TRANSACTION_DATE": "2026-01-01", "TRANSACTION_TOTAL": "1.23456"},
@@ -612,13 +615,13 @@ def _soap(csv_text):
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body>'
-        f"<pub:runReportResponse xmlns:pub=\"http://xmlns.oracle.com/oxp/service/PublicReportService\">"
+        f'<pub:runReportResponse xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">'
         f"<pub:reportOutput><pub:reportBytes>{encoded}</pub:reportBytes></pub:reportOutput>"
         "</pub:runReportResponse></soap:Body></soap:Envelope>"
     )
 
 
-ROWS_CSV = 'TRANSACTION_NUMBER,TRANSACTION_DATE,TRANSACTION_TOTAL,BILL_CUSTOMER_NAME\nINV-1,2026-01-01,5.00,Acme\n'
+ROWS_CSV = "TRANSACTION_NUMBER,TRANSACTION_DATE,TRANSACTION_TOTAL,BILL_CUSTOMER_NAME\nINV-1,2026-01-01,5.00,Acme\n"
 
 
 def test_concurrent_callers_of_one_cache_key_issue_one_report_request():
@@ -657,10 +660,7 @@ def test_a_failed_fetch_is_not_pinned_as_a_result_for_the_next_caller():
             with respx.mock as router:
                 router.post(SOAP_URL).mock(return_value=httpx.Response(500, text="boom"))
                 failed = await asyncio.gather(
-                    *(
-                        _safe_run(client, "u", "p", ["/r.xdo"], parameters, "invoice")
-                        for _ in range(3)
-                    ),
+                    *(_safe_run(client, "u", "p", ["/r.xdo"], parameters, "invoice") for _ in range(3)),
                     return_exceptions=True,
                 )
             # The key must not still be registered, or the next caller awaits a dead future.

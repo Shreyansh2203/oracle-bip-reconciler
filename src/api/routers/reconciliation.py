@@ -9,6 +9,7 @@ from src.services.reconciliation import process_reconciliation_batch
 
 router = APIRouter(tags=["reconciliation"])
 
+
 @router.post(
     "/v1/reconcile/batch",
     response_model=ReconciliationRequest | None,
@@ -52,7 +53,8 @@ async def reconcile_data_batch(
         payload=payload,
         client=client,
         oracle_user=settings.ORACLE_USER,
-        oracle_pass=settings.ORACLE_PASS
+        oracle_pass=settings.ORACLE_PASS,
+        request_id=getattr(request.state, "request_id", None),
     )
     RECONCILIATION_COUNT.labels(status="error" if err else "success").inc()
     if err:

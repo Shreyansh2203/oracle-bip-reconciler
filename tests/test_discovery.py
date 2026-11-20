@@ -1,4 +1,3 @@
-
 import asyncio
 import base64
 
@@ -80,14 +79,13 @@ def test_is_data_row():
     # Row with actual data
     assert _is_data_row({"BILL_CUSTOMER_NAME": "Test Corp", "TRANSACTION_NUMBER": "123"})
 
+
 def test_filter_data_rows():
-    rows = [
-        {"P_ORG_ID": "123"},
-        {"BILL_CUSTOMER_NAME": "Test Corp"}
-    ]
+    rows = [{"P_ORG_ID": "123"}, {"BILL_CUSTOMER_NAME": "Test Corp"}]
     filtered = _filter_data_rows(rows)
     assert len(filtered) == 1
     assert filtered[0]["BILL_CUSTOMER_NAME"] == "Test Corp"
+
 
 def test_filter_data_rows_empty():
     assert _filter_data_rows([]) == []
@@ -176,9 +174,9 @@ def test_step_1_rejects_receipts_for_multiple_customers(monkeypatch):
 def test_a_receipt_row_with_no_customer_name_is_not_an_identification(monkeypatch):
     # An empty name must not short-circuit the phase with a falsy answer; it has to fall
     # through to the next step rather than report "no customer".
-    recorder = FetchRecorder(receipts=[{"BILL_CUSTOMER_NAME": "", "RECEIPT_NUMBER": "RCPT-1"}], invoices=[INVOICE_ROW]).install(
-        monkeypatch
-    )
+    recorder = FetchRecorder(
+        receipts=[{"BILL_CUSTOMER_NAME": "", "RECEIPT_NUMBER": "RCPT-1"}], invoices=[INVOICE_ROW]
+    ).install(monkeypatch)
     payload = ReconciliationRequest(
         payment_reference="RCPT-45021", invoices=[InvoiceItem(invoice_number="INV-2026-00882")]
     )
@@ -258,7 +256,9 @@ def test_step_3_queries_on_the_invoice_number_alone_first(monkeypatch):
     # The cheapest query first. The number is the unique identifier, so a hit here ends the
     # phase without ever sending the amount or the date.
     recorder = FetchRecorder(invoices=[INVOICE_ROW]).install(monkeypatch)
-    payload = ReconciliationRequest(invoices=[InvoiceItem(invoice_number="INV-2026-00882", invoice_date="2026-08-14", invoice_amount=4750.50)])
+    payload = ReconciliationRequest(
+        invoices=[InvoiceItem(invoice_number="INV-2026-00882", invoice_date="2026-08-14", invoice_amount=4750.50)]
+    )
 
     name, _ = run_discovery(payload)
 
@@ -346,7 +346,9 @@ def test_invoices_without_a_number_are_never_queried(monkeypatch):
     # A number-less line cannot be searched for, and querying it with a blank parameter would
     # ask Oracle for the whole ledger.
     recorder = FetchRecorder(invoices=[INVOICE_ROW]).install(monkeypatch)
-    payload = ReconciliationRequest(invoices=[InvoiceItem(invoice_amount=100.0), InvoiceItem(invoice_number="INV-2026-00882")])
+    payload = ReconciliationRequest(
+        invoices=[InvoiceItem(invoice_amount=100.0), InvoiceItem(invoice_number="INV-2026-00882")]
+    )
 
     name, _ = run_discovery(payload)
 
@@ -384,9 +386,7 @@ def test_no_level_resolving_a_customer_reports_nothing(monkeypatch):
     # (None, None) is not an error: it is how the service says "I could not identify this
     # customer", which the API turns into a null 200 body rather than a 502.
     FetchRecorder().install(monkeypatch)
-    name, cached = run_discovery(
-        ReconciliationRequest(invoices=[InvoiceItem(invoice_number="INV-NOT-IN-LEDGER")])
-    )
+    name, cached = run_discovery(ReconciliationRequest(invoices=[InvoiceItem(invoice_number="INV-NOT-IN-LEDGER")]))
     assert (name, cached) == (None, None)
 
 
@@ -397,9 +397,7 @@ def test_a_conflict_never_resolves_to_an_arbitrary_customer(monkeypatch):
         return [INVOICE_ROW] if kwargs["invoice_number"] == "INV-A" else [OTHER_INVOICE_ROW]
 
     FetchRecorder(invoices=invoices_for).install(monkeypatch)
-    payload = ReconciliationRequest(
-        invoices=[InvoiceItem(invoice_number="INV-A"), InvoiceItem(invoice_number="INV-B")]
-    )
+    payload = ReconciliationRequest(invoices=[InvoiceItem(invoice_number="INV-A"), InvoiceItem(invoice_number="INV-B")])
 
     name, _ = run_discovery(payload)
 
@@ -435,9 +433,7 @@ def test_invoice_only_discovery_queries_at_most_the_configured_limit(monkeypatch
     from src.constants import BIP_MAX_DISCOVERY_INVOICES
 
     numbers = [f"INV-{i:05d}" for i in range(BIP_MAX_DISCOVERY_INVOICES)]
-    name, _ = run_discovery(
-        ReconciliationRequest(invoices=[InvoiceItem(invoice_number=n) for n in numbers])
-    )
+    name, _ = run_discovery(ReconciliationRequest(invoices=[InvoiceItem(invoice_number=n) for n in numbers]))
     assert name == CUSTOMER
     assert len(recorder.invoice_calls) == BIP_MAX_DISCOVERY_INVOICES
 

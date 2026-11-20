@@ -1,4 +1,3 @@
-
 import asyncio
 import base64
 import json
@@ -237,7 +236,9 @@ def test_a_successful_reconciliation_returns_200_over_http():
     with mock as router:
         router.post(SOAP_URL).mock(side_effect=side_effect)
         with TestClient(app) as http:
-            response = http.post("/v1/reconcile/batch", json={"customer_name": CUSTOMER, "payment_reference": RECEIPT_NUMBER})
+            response = http.post(
+                "/v1/reconcile/batch", json={"customer_name": CUSTOMER, "payment_reference": RECEIPT_NUMBER}
+            )
 
     assert response.status_code == 200
     body = response.json()

@@ -8,7 +8,11 @@ import httpx
 import Levenshtein
 
 from src.models import ReconciliationRequest
-from src.services.discovery import _filter_data_rows, discover_potential_customers
+from src.services.discovery import (
+    CustomerDiscoveryLimitError,
+    _filter_data_rows,
+    discover_potential_customers,
+)
 from src.services.oracle_bip import fetch_bip_invoices, fetch_bip_receipts
 from src.utils.date_formatter import format_oracle_date
 from src.utils.validators import sanitize_float_val
@@ -158,9 +162,7 @@ def map_ledger_to_payload(
         payload.fusion_receipt_date = r.get("RECEIPT_DATE")
         receipt_amount = r.get("RECEIPT_AMOUNT")
         payload.fusion_applied_amount = (
-            sanitize_float_val(receipt_amount)
-            if receipt_amount is not None and str(receipt_amount).strip()
-            else None
+            sanitize_float_val(receipt_amount) if receipt_amount is not None and str(receipt_amount).strip() else None
         )
         payload.fusion_currency = r.get("CURRENCY")
         payload.fusion_receipt_status_code = r.get("RECEIPT_STATUS_CODE")
@@ -354,10 +356,11 @@ async def process_reconciliation_batch(
     payload: ReconciliationRequest,
     client: httpx.AsyncClient,
     oracle_user: str,
-    oracle_pass: str
+    oracle_pass: str,
+    request_id: str | None = None,
 ) -> tuple[ReconciliationRequest | None, str | None, int | None]:
-    request_id = str(uuid.uuid4())
-    logger.info("[%s] Starting reconciliation", request_id)
+    req_id = request_id or str(uuid.uuid4())
+    logger.info("[%s] Starting reconciliation", req_id)
     start_time = time.time()
 
     user = oracle_user
@@ -366,30 +369,28 @@ async def process_reconciliation_batch(
     try:
         customer_name, cached_r_res = await discover_potential_customers(client, user, pwd, payload)
     except Exception as e:
-        from src.services.discovery import CustomerDiscoveryLimitError
-
         if isinstance(e, CustomerDiscoveryLimitError):
             return None, str(e), 422
-        logger.error("[%s] Customer discovery failed: %s", request_id, type(e).__name__)
+        logger.error("[%s] Customer discovery failed: %s", req_id, type(e).__name__)
         return None, CLIENT_UPSTREAM_ERROR, 502
 
     if not customer_name:
-        logger.warning("[%s] Unable to determine customer name.", request_id)
+        logger.warning("[%s] Unable to determine customer name.", req_id)
         return None, None, None
 
     payload.fusion_customer_name = customer_name
 
-    logger.info("[%s] Fetching ledger reports", request_id)
+    logger.info("[%s] Fetching ledger reports", req_id)
 
     i_task = fetch_bip_invoices(client, user, pwd, customer_name=customer_name)
 
     if cached_r_res is not None:
-        logger.info(f"[{request_id}] Using cached Receipt Report from Step 2 discovery.")
+        logger.info("[%s] Using cached Receipt Report from Step 2 discovery.", req_id)
         r_raw = cached_r_res
         try:
             i_raw = await i_task
         except Exception as err:
-            logger.error("[%s] Invoice ledger fetch failed: %s", request_id, type(err).__name__)
+            logger.error("[%s] Invoice ledger fetch failed: %s", req_id, type(err).__name__)
             return None, CLIENT_UPSTREAM_ERROR, 502
     else:
         r_task = fetch_bip_receipts(client, user, pwd, customer_name=customer_name)
@@ -397,7 +398,7 @@ async def process_reconciliation_batch(
 
     if isinstance(i_raw, BaseException) or isinstance(r_raw, BaseException):
         err = i_raw if isinstance(i_raw, BaseException) else r_raw
-        logger.error("[%s] Oracle ledger fetch failed: %s", request_id, type(err).__name__)
+        logger.error("[%s] Oracle ledger fetch failed: %s", req_id, type(err).__name__)
         return None, CLIENT_UPSTREAM_ERROR, 502
 
     all_invoices_raw = _filter_data_rows(i_raw)
@@ -406,5 +407,5 @@ async def process_reconciliation_batch(
     map_ledger_to_payload(payload, customer_name, all_receipts_raw, all_invoices_raw)
 
     duration = int((time.time() - start_time) * 1000)
-    logger.info("[%s] Reconciliation complete in %dms", request_id, duration)
+    logger.info("[%s] Reconciliation complete in %dms", req_id, duration)
     return payload, None, None

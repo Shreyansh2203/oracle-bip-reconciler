@@ -15,7 +15,7 @@ _DECIMAL_RE = re.compile(r"^([+-]?)(\d*)[.,](\d+)$")
 
 
 def sanitize_string_val(value: str | int | None) -> str | None:
-    """Sanitize string inputs: strip whitespace, convert None and 'none' to empty string."""
+    """Sanitize string inputs: strip whitespace, convert None, 'none', and empty strings to None."""
     if value is None:
         return None
     stripped = str(value).strip()
@@ -107,6 +107,9 @@ def sanitize_float_val(value: float | str | None) -> float | None:
     if text.startswith("(") and text.endswith(")"):
         negative = True
         text = text[1:-1].strip()
+    elif text.endswith("-"):
+        negative = True
+        text = text[:-1].strip()
     if text[:1] in ("-", "+"):
         negative = negative or text[0] == "-"
         text = text[1:].strip()
@@ -147,7 +150,9 @@ def sanitize_float_val(value: float | str | None) -> float | None:
             plain = float(text)
         except ValueError:
             return _reject(value)
-        return -plain if negative else (plain if math.isfinite(plain) else None)
+        if not math.isfinite(plain):
+            return None
+        return -plain if negative else plain
 
     # Every branch above leaves a plain decimal literal of digits and at most one full stop,
     # so this cannot fail to parse. A very long run of digits still can be beyond float's

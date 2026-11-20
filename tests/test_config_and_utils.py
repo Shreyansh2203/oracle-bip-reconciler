@@ -53,7 +53,9 @@ def test_insecure_http_opt_in_is_only_honoured_for_the_url_it_was_declared_befor
     # ALLOW_INSECURE_ORACLE_HTTP is declared first because validate_oracle_url reads it out of
     # ValidationInfo.data, which only holds the fields validated so far. Reordering the two
     # fields would make the opt-in silently stop working, so the dependency is asserted.
-    assert list(Settings.model_fields).index("ALLOW_INSECURE_ORACLE_HTTP") < list(Settings.model_fields).index("ORACLE_URL")
+    assert list(Settings.model_fields).index("ALLOW_INSECURE_ORACLE_HTTP") < list(Settings.model_fields).index(
+        "ORACLE_URL"
+    )
 
     # With the opt-in present, the validator sees it and permits a remote http:// URL.
     allowed = Settings(**{**BASE, "ORACLE_URL": "http://erp.example.com", "ALLOW_INSECURE_ORACLE_HTTP": True})
@@ -131,6 +133,9 @@ def test_sanitize_float_val():
     assert sanitize_float_val("not a number") is None
     assert sanitize_float_val("") is None
     assert sanitize_float_val(None) is None
+    assert sanitize_float_val("1,234.56-") == -1234.56
+    assert sanitize_float_val("500-") == -500.0
+    assert sanitize_float_val("-500") == -500.0
 
 
 def test_sanitize_float_val_keeps_a_real_zero():
@@ -154,9 +159,7 @@ def test_format_oracle_date_rejects_impossible_values():
     assert format_oracle_date("2026-02-30") is None
 
 
-def test_a_non_numeric_cache_ttl_warns_and_defaults_instead_of_crashing_import(
-    monkeypatch, caplog
-):
+def test_a_non_numeric_cache_ttl_warns_and_defaults_instead_of_crashing_import(monkeypatch, caplog):
     # BIP_CACHE_TTL_SECONDS is parsed at module import, outside Settings validation, so
     # a value like "60s" used to kill startup with a bare ValueError before logging could
     # frame it. The TTL now falls back to 60 with a warning the operator can find.
@@ -166,6 +169,18 @@ def test_a_non_numeric_cache_ttl_warns_and_defaults_instead_of_crashing_import(
     try:
         assert constants.BIP_CACHE_TTL_SECONDS == 60
         assert "sixty" in caplog.text
+    finally:
+        monkeypatch.delenv("BIP_CACHE_TTL_SECONDS")
+        importlib.reload(constants)
+
+
+def test_a_non_positive_cache_ttl_warns_and_defaults(monkeypatch, caplog):
+    monkeypatch.setenv("BIP_CACHE_TTL_SECONDS", "-5")
+    with caplog.at_level(logging.WARNING, logger="reconciliation_api.constants"):
+        importlib.reload(constants)
+    try:
+        assert constants.BIP_CACHE_TTL_SECONDS == 60
+        assert "must be positive" in caplog.text
     finally:
         monkeypatch.delenv("BIP_CACHE_TTL_SECONDS")
         importlib.reload(constants)

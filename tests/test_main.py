@@ -84,3 +84,50 @@ def test_metrics_endpoint_serves_prometheus_output():
 def test_health_still_works_alongside_metrics():
     assert client.get("/health").status_code == 200
     assert client.get("/metrics").status_code == 200
+
+
+def test_responses_include_security_headers():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert response.headers["x-xss-protection"] == "0"
+    assert "x-request-id" in response.headers
+
+
+def test_metrics_middleware_normalizes_unmatched_paths_to_prevent_cardinality_explosion():
+    # Calling an unmatched/random route should be recorded as 'unmatched' in Prometheus labels
+    # to protect against memory exhaustion from high-cardinality attacker probes.
+    random_path = "/nonexistent-probe-for-cardinality-check-12345"
+    resp = client.get(random_path)
+    assert resp.status_code == 404
+
+    metrics_resp = client.get("/metrics")
+    assert metrics_resp.status_code == 200
+    assert 'path="unmatched"' in metrics_resp.text
+    assert random_path not in metrics_resp.text
+
+
+def test_validation_error_includes_security_headers():
+    response = client.post("/v1/reconcile/batch", json={"customer_name": "x" * 600})
+    assert response.status_code == 422
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert response.headers["x-xss-protection"] == "0"
+
+
+def test_global_exception_handler_includes_security_headers(monkeypatch):
+    async def broken_recon(*_args, **_kwargs):
+        raise RuntimeError("simulated disaster")
+
+    monkeypatch.setattr("src.api.routers.reconciliation.process_reconciliation_batch", broken_recon)
+    with TestClient(app, raise_server_exceptions=False) as http:
+        response = http.post("/v1/reconcile/batch", json={"customer_name": "Acme Corp"})
+        assert response.status_code == 500
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+        assert response.headers["x-xss-protection"] == "0"
+        assert response.json() == {"detail": "An unexpected internal server error occurred."}

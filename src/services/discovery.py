@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 import logging
 from collections.abc import Iterable, Iterator
 from typing import Any
@@ -72,7 +73,10 @@ async def _discover_by_receipt(client: httpx.AsyncClient, user: str, pwd: str, r
         logger.warning("Receipt reference matched more than one customer; refusing to choose.")
     return None
 
-async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pwd: str, invoices: list[Any]) -> str | None:
+
+async def _discover_by_invoice_sequence(
+    client: httpx.AsyncClient, user: str, pwd: str, invoices: list[Any]
+) -> str | None:
     levels = [
         {"desc": "Step 3 (Priority 1: Invoice Number)", "use_amt": False, "use_date": False},
         {"desc": "Step 3 (Priority 2: Invoice Number + Amount)", "use_amt": True, "use_date": False},
@@ -111,8 +115,6 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
             async with current_sem:
                 return await fetch_bip_invoices(client, user, pwd, **kw_args)
 
-        import itertools
-
         def chunked_iterable(iterable: Iterable[dict[str, Any]], size: int) -> Iterator[tuple[dict[str, Any], ...]]:
             it = iter(iterable)
             while True:
@@ -128,9 +130,7 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
                     i_res = await coro
                     invoices_raw = _filter_data_rows(i_res)
                     if invoices_raw:
-                        discovered_candidates.update(
-                            name for row in invoices_raw if (name := _customer_name(row))
-                        )
+                        discovered_candidates.update(name for row in invoices_raw if (name := _customer_name(row)))
                         if len(discovered_candidates) > 1:
                             break
             finally:
@@ -152,6 +152,7 @@ async def _discover_by_invoice_sequence(client: httpx.AsyncClient, user: str, pw
             logger.warning(f"No customers found at {level['desc']}")
 
     return None
+
 
 async def discover_potential_customers(
     client: httpx.AsyncClient, user: str, pwd: str, payload: ReconciliationRequest

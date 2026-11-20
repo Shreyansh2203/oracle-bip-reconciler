@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -47,9 +48,7 @@ class JsonFormatter(logging.Formatter):
 class RequestIdAdapter(logging.LoggerAdapter):
     """Bind a request ID to every log record emitted for one request."""
 
-    def process(
-        self, msg: str, kwargs: MutableMapping[str, Any]
-    ) -> tuple[str, MutableMapping[str, Any]]:
+    def process(self, msg: str, kwargs: MutableMapping[str, Any]) -> tuple[str, MutableMapping[str, Any]]:
         extra = kwargs.get("extra")
         if extra is None:
             extra = {}
@@ -67,6 +66,14 @@ logging.basicConfig(level=logging.INFO, handlers=[_handler])
 logger = logging.getLogger("reconciliation_api")
 
 
+SECURITY_HEADERS: dict[str, str] = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-XSS-Protection": "0",
+}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     client = httpx.AsyncClient(
@@ -78,9 +85,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        logger.info("Shutting down HTTP client")
-        await client.aclose()
-        await close_cache()
+        logger.info("Shutting down HTTP client and cache connections")
+        await asyncio.gather(client.aclose(), close_cache(), return_exceptions=True)
 
 
 app = FastAPI(
@@ -143,14 +149,18 @@ async def request_id_middleware(request: Request, call_next: Callable[[Request],
         )
 
     response.headers["X-Request-ID"] = request_id
+    for header_name, header_val in SECURITY_HEADERS.items():
+        response.headers[header_name] = header_val
     return response
 
 
 @app.middleware("http")
-async def metrics_middleware(
-    request: Request, call_next: Callable[[Request], Awaitable[Any]]
-) -> Any:
-    """Collect Prometheus metrics for every request."""
+async def metrics_middleware(request: Request, call_next: Callable[[Request], Awaitable[Any]]) -> Any:
+    """Collect Prometheus metrics for every request.
+
+    The path label is resolved from the matched route template (or 'unmatched'
+    for 404s/scanners) to eliminate Prometheus label cardinality explosion attacks.
+    """
     if request.url.path == "/metrics":
         return await call_next(request)
 
@@ -158,40 +168,36 @@ async def metrics_middleware(
     response = await call_next(request)
     duration = time.monotonic() - start
 
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", None) or "unmatched"
+
     REQUEST_COUNT.labels(
         method=request.method,
-        path=request.url.path,
+        path=route_path,
         status_code=response.status_code,
     ).inc()
     REQUEST_DURATION.labels(
         method=request.method,
-        path=request.url.path,
+        path=route_path,
     ).observe(duration)
 
     return response
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    request: Request, exc: RequestValidationError
-) -> JSONResponse:
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     logger.warning(
         "Request validation failed",
         extra={
             "request_id": getattr(request.state, "request_id", None),
-            "errors": [
-                {key: item[key] for key in ("type", "loc", "msg") if key in item}
-                for item in exc.errors()
-            ],
+            "errors": [{key: item[key] for key in ("type", "loc", "msg") if key in item} for item in exc.errors()],
         },
     )
     return JSONResponse(
         status_code=422,
+        headers=dict(SECURITY_HEADERS),
         content={
-            "detail": [
-                {key: item[key] for key in ("type", "loc", "msg") if key in item}
-                for item in exc.errors()
-            ]
+            "detail": [{key: item[key] for key in ("type", "loc", "msg") if key in item} for item in exc.errors()]
         },
     )
 
@@ -205,7 +211,7 @@ app.add_middleware(
     allow_origins=origins if origins else [],  # Fail closed if no origins provided
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-Request-ID", "Authorization", "Accept"],
 )
 app.add_middleware(RequestBodyLimitMiddleware)
 
@@ -226,6 +232,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     )
     return JSONResponse(
         status_code=500,
+        headers=dict(SECURITY_HEADERS),
         content={"detail": "An unexpected internal server error occurred."},
     )
 

@@ -29,16 +29,26 @@ class InvoiceItem(BaseModel):
 
     line_id: int | str | None = Field(default=None, alias="line_id", max_length=MAX_IDENTIFIER_LENGTH)
     invoice_number: str | int | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
-    fusion_invoice_number: str | None = None
+    fusion_invoice_number: str | None = Field(
+        default=None, description="Output field populated with matched Oracle invoice transaction number."
+    )
     invoice_date: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
-    fusion_invoice_date: str | None = None
+    fusion_invoice_date: str | None = Field(
+        default=None, description="Output field populated with Oracle ledger transaction date verbatim."
+    )
     invoice_amount: float | None = None
-    fusion_invoice_amount: float | None = None
+    fusion_invoice_amount: float | None = Field(
+        default=None, description="Output field populated with matched Oracle invoice total amount."
+    )
     description: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
     customer_invoice_number: str | int | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
     store_no: int | str | None = Field(default=None, alias="store_no", max_length=MAX_IDENTIFIER_LENGTH)
-    match_phase: Literal["MATCHED", "UNMATCHED"] | None = None
-    match_rule: str | None = None
+    match_phase: Literal["MATCHED", "UNMATCHED"] | None = Field(
+        default=None, description="Reconciliation status: MATCHED or UNMATCHED."
+    )
+    match_rule: str | None = Field(
+        default=None, description="The specific tiered matching rule that resolved this line."
+    )
 
     @field_validator("invoice_number", "invoice_date", "customer_invoice_number", mode="before")
     @classmethod
@@ -64,15 +74,27 @@ class ReconciliationRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     customer_name: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
-    fusion_customer_name: str | None = None
+    fusion_customer_name: str | None = Field(
+        default=None, description="Output field: Customer name identified in Oracle Cloud ledger."
+    )
     payment_reference: str | int | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
-    fusion_receipt_number: str | None = None
+    fusion_receipt_number: str | None = Field(
+        default=None, description="Output field: Receipt number identified in Oracle Cloud ledger."
+    )
     payment_date: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
-    fusion_receipt_date: str | None = None
-    fusion_customer_number: str | None = None
-    fusion_currency: str | None = None
-    fusion_receipt_status_code: str | None = None
-    fusion_applied_amount: float | None = None
+    fusion_receipt_date: str | None = Field(
+        default=None, description="Output field: Receipt date identified in Oracle Cloud ledger."
+    )
+    fusion_customer_number: str | None = Field(
+        default=None, description="Output field: Oracle account/customer number."
+    )
+    fusion_currency: str | None = Field(default=None, description="Output field: Ledger transaction currency code.")
+    fusion_receipt_status_code: str | None = Field(
+        default=None, description="Output field: Receipt status in Oracle ERP."
+    )
+    fusion_applied_amount: float | None = Field(
+        default=None, description="Output field: Receipt applied amount from Oracle ERP."
+    )
     # header_id is caller-supplied and echoed verbatim by the response model, so it is
     # bounded like the other caller-supplied strings even though it is not a fusion_* field.
     header_id: int | str | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
@@ -86,8 +108,10 @@ class ReconciliationRequest(BaseModel):
     invoice_count: int | None = None
     meta_data: MetaDataModel | None = None
     meta_extra: dict[str, Any] | None = Field(default=None, alias="_meta")
-    match_phase: Literal["MATCHED", "UNMATCHED"] | None = None
-    match_rule: str | None = None
+    match_phase: Literal["MATCHED", "UNMATCHED"] | None = Field(
+        default=None, description="Batch status: MATCHED or UNMATCHED."
+    )
+    match_rule: str | None = Field(default=None, description="Reconciliation rule applied to the batch or receipt.")
 
     @field_validator("customer_name", "payment_reference", "payment_date", mode="before")
     @classmethod

@@ -12,7 +12,9 @@ html_path = Path(__file__).parent.parent.parent / "templates" / "index.html"
 HTML_CONTENT = html_path.read_text(encoding="utf-8") if html_path.exists() else "<h1>API is running</h1>"
 
 
-@router.get("/", response_class=HTMLResponse, summary="API root", description="Welcome page for the reconciliation API.")
+@router.get(
+    "/", response_class=HTMLResponse, summary="API root", description="Welcome page for the reconciliation API."
+)
 async def root(request: Request) -> HTMLResponse:
     return HTMLResponse(content=HTML_CONTENT)
 

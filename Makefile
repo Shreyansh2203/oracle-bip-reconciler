@@ -1,4 +1,4 @@
-.PHONY: setup dev build test lint deadcode check clean
+.PHONY: setup dev build test lint format deadcode check clean
 
 # Install dependencies using uv
 setup:
@@ -16,9 +16,13 @@ build:
 test:
 	uv run task test
 
-# Run code linter
+# Run code linter and format check
 lint:
 	uv run task lint
+
+# Format code
+format:
+	uv run task format
 
 # Report unreferenced code
 deadcode:

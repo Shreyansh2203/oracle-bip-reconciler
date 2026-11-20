@@ -1,4 +1,3 @@
-
 import ast
 import json
 import os
@@ -41,10 +40,7 @@ def _requirements_pins() -> set[str]:
 def _declared_deps(group: str) -> set[str]:
     pyproject = tomllib.loads(_read("pyproject.toml"))
     specs = pyproject["project"]["dependencies"] if group == "runtime" else pyproject["dependency-groups"]["dev"]
-    return {
-        re.split(r"[<>=!~\[; ]", spec, maxsplit=1)[0].strip().lower().replace("_", "-")
-        for spec in specs
-    }
+    return {re.split(r"[<>=!~\[; ]", spec, maxsplit=1)[0].strip().lower().replace("_", "-") for spec in specs}
 
 
 def _render_env_keys() -> list[str]:
@@ -90,9 +86,7 @@ def test_requirements_is_a_hash_pinned_uv_export():
     assert "uv export" in text, "requirements.txt does not record its generating command"
 
     unpinned = [
-        line
-        for line in text.splitlines()
-        if line and not line.startswith(("#", " ", "--")) and "==" not in line
+        line for line in text.splitlines() if line and not line.startswith(("#", " ", "--")) and "==" not in line
     ]
     assert not unpinned, f"unpinned requirements: {unpinned}"
 
@@ -257,11 +251,7 @@ def _vercel_section() -> str:
     lines = _read("README.md").splitlines()
     start = next(i for i, line in enumerate(lines) if line.strip() == "### Vercel")
     end = next(
-        (
-            i
-            for i in range(start + 1, len(lines))
-            if re.match(r"^#{1,3}\s", lines[i])
-        ),
+        (i for i in range(start + 1, len(lines)) if re.match(r"^#{1,3}\s", lines[i])),
         len(lines),
     )
     return "\n".join(lines[start:end])
@@ -353,8 +343,7 @@ def test_vercel_opts_out_of_the_framework_preset_explicitly():
         "repository, and only `builds` is keeping it off."
     )
     assert vercel["framework"] is None, (
-        f'vercel.json pins framework {vercel["framework"]!r}; the preset must be opted out of, '
-        "not selected"
+        f"vercel.json pins framework {vercel['framework']!r}; the preset must be opted out of, not selected"
     )
 
 

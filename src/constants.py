@@ -26,8 +26,13 @@ BIP_MAX_WAIT_SECONDS = 10
 _ttl_str = os.getenv("BIP_CACHE_TTL_SECONDS", "60").strip()
 try:
     BIP_CACHE_TTL_SECONDS = int(_ttl_str) if _ttl_str else 60
+    if BIP_CACHE_TTL_SECONDS <= 0:
+        logger.warning("BIP_CACHE_TTL_SECONDS=%r must be positive; using 60.", _ttl_str)
+        BIP_CACHE_TTL_SECONDS = 60
 except ValueError:
     logger.warning("BIP_CACHE_TTL_SECONDS=%r is not a number of seconds; using 60.", _ttl_str)
     BIP_CACHE_TTL_SECONDS = 60
-DEFAULT_INVOICE_REPORT_PATH = "/Custom/Shreyansh/Financials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
+DEFAULT_INVOICE_REPORT_PATH = (
+    "/Custom/Shreyansh/Financials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo"
+)
 DEFAULT_RECEIPT_REPORT_PATH = "/Custom/Shreyansh/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo"

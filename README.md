@@ -48,12 +48,13 @@ Designed to run behind an authenticating proxy in enterprise environments, with 
 | **Structured logging** | `JsonFormatter` + `RequestIdAdapter` for request-traceable logs |
 | **Prometheus metrics** | `/metrics` endpoint with `REQUEST_COUNT` and `REQUEST_DURATION` |
 | **Rate limiting** | `slowapi` middleware with configurable limits |
-| **Request body limits** | Middleware-enforced max request size |
-| **CORS** | Configurable `CORSMiddleware` |
+| **Request body limits** | Middleware-enforced max request size (2 MiB) |
+| **Security headers** | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `X-XSS-Protection` |
+| **CORS** | Configurable `CORSMiddleware` (fail-closed by default) |
 | **Health / readiness** | `/health` and `/ready` endpoints |
 | **Dead-code detection** | `vulture` integrated into CI |
 | **Security scanning** | `bandit` SAST + `pip-audit` dependency audit |
-| **100% test coverage** | 1032/1032 tests passing on reconciliation layer |
+| **100% test coverage** | 317/317 tests passing, 100.00% statement coverage across 1,056 statements |
 
 ---
 
@@ -118,7 +119,7 @@ oracle-bip-reconciler/
 │   └── utils/
 │       ├── date_formatter.py
 │       └── validators.py
-├── tests/                      # 330 tests, 100% coverage
+├── tests/                      # 317 tests, 100% statement coverage
 ├── .github/workflows/
 │   ├── ci.yml
 │   └── codeql.yml
@@ -229,12 +230,13 @@ Oracle BIP reconciliation endpoints — see `src/api/routers/reconciliation.py` 
 | Control | Implementation |
 |---------|---------------|
 | **Fail-closed auth** | `ALLOW_UNAUTHENTICATED_ACCESS=false` by default; README §Security requires authenticating proxy |
+| **Security headers** | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-XSS-Protection: 0` |
 | **SAST** | `bandit` scans on every push |
 | **Dependency audit** | `pip-audit` in CI |
 | **Dead code** | `vulture` checks for unused code |
-| **Secrets never logged** | `JsonFormatter` scrubs sensitive fields |
+| **Secrets never logged** | `JsonFormatter` scrubs sensitive fields; `ORACLE_PASS` has `repr=False` |
 | **Rate limiting** | `slowapi` middleware |
-| **Body limits** | `RequestBodyLimitMiddleware` |
+| **Body limits** | `RequestBodyLimitMiddleware` (2 MiB limit) |
 
 Authentication must be handled by an authenticating proxy in front of this service. See [SECURITY policy](https://github.com/Shreyansh2203/oracle-bip-reconciler/security/policy).
 
@@ -243,7 +245,7 @@ Authentication must be handled by an authenticating proxy in front of this servi
 ## Testing
 
 ```bash
-# Full test suite (330 tests, 100% coverage)
+# Full test suite (317 tests, 100% statement coverage)
 uv run pytest tests/ -q
 
 # With coverage report
@@ -261,7 +263,7 @@ uv run bandit -r src/
 uv run pip-audit
 ```
 
-Coverage gate: 100% on reconciliation layer. CI enforces `1032/1032` tests passing.
+Coverage gate: 100.00% across all source packages (`fail_under = 100`). CI enforces 317/317 tests passing.
 
 ---
 
