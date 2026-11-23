@@ -54,7 +54,7 @@ Designed to run behind an authenticating proxy in enterprise environments, with 
 | **Health / readiness** | `/health` and `/ready` endpoints |
 | **Dead-code detection** | `vulture` integrated into CI |
 | **Security scanning** | `bandit` SAST + `pip-audit` dependency audit |
-| **100% test coverage** | 317/317 tests passing, 100.00% statement coverage across 1,056 statements |
+| **100% test coverage** | 321/321 tests passing, 100.00% statement coverage across 1,065 statements |
 
 ---
 
@@ -119,7 +119,7 @@ oracle-bip-reconciler/
 │   └── utils/
 │       ├── date_formatter.py
 │       └── validators.py
-├── tests/                      # 317 tests, 100% statement coverage
+├── tests/                      # 321 tests, 100% statement coverage
 ├── .github/workflows/
 │   ├── ci.yml
 │   └── codeql.yml
@@ -219,9 +219,9 @@ Prometheus-formatted metrics:
 request_count{method="GET",path="/health"} 1
 ```
 
-### `POST /reconcile` (and related)
+### `POST /v1/reconciliations` and `POST /v1/reconcile/batch`
 
-Oracle BIP reconciliation endpoints — see `src/api/routers/reconciliation.py` for full contract.
+Reconcile a batch of customer invoices against Oracle Cloud receipts using tiered matching. Both the canonical RESTful resource route (`/v1/reconciliations`) and the action route (`/v1/reconcile/batch`) are supported with full feature parity.
 
 ---
 
@@ -235,7 +235,7 @@ Oracle BIP reconciliation endpoints — see `src/api/routers/reconciliation.py` 
 | **Dependency audit** | `pip-audit` in CI |
 | **Dead code** | `vulture` checks for unused code |
 | **Secrets never logged** | `JsonFormatter` scrubs sensitive fields; `ORACLE_PASS` has `repr=False` |
-| **Rate limiting** | `slowapi` middleware |
+| **Rate limiting** | `slowapi` middleware (10/min) with `X-RateLimit-*` response headers |
 | **Body limits** | `RequestBodyLimitMiddleware` (2 MiB limit) |
 
 Authentication must be handled by an authenticating proxy in front of this service. See [SECURITY policy](https://github.com/Shreyansh2203/oracle-bip-reconciler/security/policy).
@@ -245,7 +245,7 @@ Authentication must be handled by an authenticating proxy in front of this servi
 ## Testing
 
 ```bash
-# Full test suite (317 tests, 100% statement coverage)
+# Full test suite (321 tests, 100% statement coverage)
 uv run pytest tests/ -q
 
 # With coverage report
@@ -263,7 +263,7 @@ uv run bandit -r src/
 uv run pip-audit
 ```
 
-Coverage gate: 100.00% across all source packages (`fail_under = 100`). CI enforces 317/317 tests passing.
+Coverage gate: 100.00% across all source packages (`fail_under = 100`). CI enforces 321/321 tests passing.
 
 ---
 

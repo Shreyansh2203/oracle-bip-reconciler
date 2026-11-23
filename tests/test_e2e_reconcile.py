@@ -84,3 +84,61 @@ def test_end_to_end_health_and_ready():
         assert http.get("/ready").status_code == 200
         assert http.get("/ready").json() == {"status": "ready"}
         assert http.get("/").status_code == 200
+
+
+def test_end_to_end_reconcile_restful_alias_and_rate_limit_headers():
+    def side_effect(request: httpx.Request) -> httpx.Response:
+        body = request.content or b""
+        if b"P_RECEIPT_NUMBER" in body:
+            csv_text = RECEIPT_CSV
+        else:
+            csv_text = INVOICE_CSV
+        return httpx.Response(200, text=_soap(csv_text))
+
+    with respx.mock as router:
+        router.post(SOAP_URL).mock(side_effect=side_effect)
+        with TestClient(app) as http:
+            response = http.post(
+                "/v1/reconciliations",
+                json={
+                    "customer_name": "Acme Corp",
+                    "payment_reference": "RCPT-45021",
+                    "invoices": [
+                        {
+                            "invoice_number": "INV-1",
+                            "invoice_date": "2026-08-14",
+                            "invoice_amount": 1250.0,
+                        }
+                    ],
+                },
+            )
+
+    assert response.status_code == 200, response.text
+    assert "x-ratelimit-limit" in response.headers
+    assert "x-ratelimit-remaining" in response.headers
+    assert "x-ratelimit-reset" in response.headers
+
+    data = response.json()
+    assert data["fusion_receipt_number"] == "RCPT-45021"
+    assert data["invoices"][0]["match_phase"] == "MATCHED"
+
+
+def test_openapi_schema_contains_response_contracts_and_models():
+    schema = app.openapi()
+    paths = schema.get("paths", {})
+    assert "/v1/reconcile/batch" in paths
+    assert "/v1/reconciliations" in paths
+
+    for path in ("/v1/reconcile/batch", "/v1/reconciliations"):
+        post_op = paths[path].get("post", {})
+        responses = post_op.get("responses", {})
+        for expected_code in ("200", "413", "422", "429", "502", "503"):
+            assert expected_code in responses, f"Missing {expected_code} in {path}"
+
+    ready_responses = paths["/ready"]["get"]["responses"]
+    assert "200" in ready_responses
+    assert "503" in ready_responses
+
+    schemas = schema.get("components", {}).get("schemas", {})
+    assert "ErrorResponse" in schemas
+    assert "ReconciliationRequest" in schemas

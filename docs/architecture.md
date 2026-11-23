@@ -175,3 +175,37 @@ flowchart LR
 - **Docker Container**: Rootless execution (`USER 10001:10001`), multi-stage build, base image and `uv` pinned to immutable SHA256 digests.
 - **Render (`render.yaml`)**: Pre-configured Blueprint with synchronized environment variable contracts and explicit non-root virtual environment bindings.
 - **Vercel (`vercel.json`)**: Serverless function routing via clean entrypoint shim (`api/index.py`).
+
+---
+
+## 9. API Design & Enterprise Integration Standards
+
+### 9.1 RESTful Routing & Versioning
+- **Canonical RESTful Resource Endpoint**: `POST /v1/reconciliations` treats reconciliation batches as first-class business resources.
+- **Backward-Compatible Action Alias**: `POST /v1/reconcile/batch` remains supported with full feature parity.
+- **Operational Endpoints**: `/health` (liveness), `/ready` (readiness), and `/metrics` (Prometheus) reside outside the versioned namespace to conform with cloud orchestrator standards (Kubernetes, AWS ECS).
+
+### 9.2 Rate Limiting & IETF Header Telemetry
+The service enforces a rate limit of 10 requests/minute per client IP (or trusted proxy header). When rate limiting is evaluated, the API automatically emits standard telemetry headers:
+- `X-RateLimit-Limit`: Maximum permitted request quota within the active time window.
+- `X-RateLimit-Remaining`: Remaining request quota before rejection.
+- `X-RateLimit-Reset`: Unix epoch timestamp when the current quota window resets.
+
+### 9.3 Synchronous vs. Asynchronous Batch Processing
+- **Synchronous Batches ($\le 100$ lines)**: Recommended for interactive workflows, immediate customer payment matching, and automated OCR ingestion pipelines within standard HTTP gateway timeouts (30s).
+- **Upper Safety Ceiling (2,500 lines)**: Enforced via Pydantic model bounds to prevent server memory exhaustion.
+- **Asynchronous Architecture Blueprint for Massive Runs ($>2,500$ lines)**:
+  1. `POST /v1/reconciliations/jobs` $\rightarrow$ Accepts payload, writes to Redis/BullMQ task queue, returns `202 Accepted` with `Location: /v1/reconciliations/jobs/{job_id}`.
+  2. Background Worker decomposes invoices into parallel chunks against Oracle BIP with cached customer discovery.
+  3. `GET /v1/reconciliations/jobs/{job_id}` $\rightarrow$ Returns job status (`QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED`) and reconciled result.
+
+### 9.4 Comprehensive HTTP Status Code Contract
+| Status | Meaning | Typical Trigger | Response Model |
+| :---: | :--- | :--- | :--- |
+| **`200 OK`** | Reconciliation Successful | Matched batch returned (or `null` if customer identity cannot be isolated). | `ReconciliationRequest` / `ReconciliationBatchResponse` |
+| **`413 Content Too Large`** | Request Body Exceeded | Payload exceeds streaming 2 MiB ceiling before parsing. | `ErrorResponse` |
+| **`422 Unprocessable`** | Validation or Rule Limit Error | Pydantic validation failure or invoice-only discovery line limit exceeded (>100 lines). | `ErrorResponse` |
+| **`429 Too Many Requests`** | Rate Limit Exceeded | Exceeded 10 requests per minute quota window. | `ErrorResponse` |
+| **`502 Bad Gateway`** | Upstream Oracle Failure | Oracle ERP Cloud SOAP endpoint unreachable, timeout, or invalid authentication. | `ErrorResponse` |
+| **`503 Service Unavailable`** | Proxy Required / Unready | Service running with default fail-closed security (`ALLOW_UNAUTHENTICATED_ACCESS=false`) or credentials missing. | `ErrorResponse` |
+

@@ -119,6 +119,7 @@ ignore_names = [
     "readiness_check",
     "reconcile_data_batch",
     "request",
+    "response",
     "root",
     "sanitize_floats",
     "sanitize_strings",

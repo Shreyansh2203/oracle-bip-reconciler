@@ -16,6 +16,17 @@ MAX_TEXT_LENGTH = 512
 MAX_IDENTIFIER_LENGTH = 256
 
 
+class ErrorResponse(BaseModel):
+    """Standard error response payload for client error reporting."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    detail: str | list[dict[str, Any]] = Field(
+        ...,
+        description="Error detail message or validation failure breakdown.",
+    )
+
+
 class InvoiceItem(BaseModel):
     # validate_assignment makes the declared types load-bearing for writes as well as reads.
     # map_ledger_to_payload assigns the raw Oracle CSV cell straight onto fusion_invoice_amount
@@ -25,7 +36,19 @@ class InvoiceItem(BaseModel):
     # model validator that assigns a field, and an after-validator that re-enters itself on
     # every assignment recurses until the stack overflows. Its float fields are coerced at
     # their single assignment site instead.
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        validate_assignment=True,
+        json_schema_extra={
+            "example": {
+                "line_id": "L1",
+                "invoice_number": "INV-2026-00881",
+                "invoice_date": "2026-08-14",
+                "invoice_amount": 9500.25,
+                "description": "Consulting Services",
+            }
+        },
+    )
 
     line_id: int | str | None = Field(default=None, alias="line_id", max_length=MAX_IDENTIFIER_LENGTH)
     invoice_number: str | int | None = Field(default=None, max_length=MAX_IDENTIFIER_LENGTH)
@@ -71,7 +94,33 @@ class MetaDataModel(BaseModel):
 
 
 class ReconciliationRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "customer_name": "Acme Corp",
+                "payment_reference": "RCPT-45021",
+                "payment_date": "2026-08-14",
+                "total_amount": 14250.75,
+                "invoices": [
+                    {
+                        "line_id": "L1",
+                        "invoice_number": "INV-2026-00881",
+                        "invoice_date": "2026-08-14",
+                        "invoice_amount": 9500.25,
+                        "description": "Consulting Services",
+                    },
+                    {
+                        "line_id": "L2",
+                        "invoice_number": "INV-2026-00882",
+                        "invoice_date": "2026-08-14",
+                        "invoice_amount": 4750.50,
+                        "description": "Platform License",
+                    },
+                ],
+            }
+        },
+    )
 
     customer_name: str | None = Field(default=None, max_length=MAX_TEXT_LENGTH)
     fusion_customer_name: str | None = Field(
@@ -132,3 +181,8 @@ class ReconciliationRequest(BaseModel):
         """Auto-populate invoice_count from actual invoices list length."""
         self.invoice_count = len(self.invoices)
         return self
+
+
+# Explicit semantic aliases for API consumers preferring separate request / response types
+ReconciliationBatchRequest = ReconciliationRequest
+ReconciliationBatchResponse = ReconciliationRequest

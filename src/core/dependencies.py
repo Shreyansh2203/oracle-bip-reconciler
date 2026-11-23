@@ -41,7 +41,11 @@ def rate_limit_key(request: Request) -> str:
     return forwarded.split(",")[-1].strip() or peer
 
 
-limiter = Limiter(key_func=rate_limit_key, storage_uri=settings.REDIS_URL or "memory://")
+limiter = Limiter(
+    key_func=rate_limit_key,
+    storage_uri=settings.REDIS_URL or "memory://",
+    headers_enabled=True,
+)
 
 
 def require_public_access_opt_in() -> None:

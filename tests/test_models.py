@@ -121,3 +121,22 @@ def test_every_declared_amount_type_holds_after_assignment():
 
     for field in ("invoice_date", "fusion_invoice_date", "invoice_number", "fusion_invoice_number"):
         assert isinstance(getattr(invoice, field), str), field
+
+
+def test_error_response_model():
+    from src.models import ErrorResponse, ReconciliationBatchRequest, ReconciliationBatchResponse
+
+    err = ErrorResponse(detail="Upstream error")
+    assert err.detail == "Upstream error"
+    err_list = ErrorResponse(detail=[{"msg": "invalid field"}])
+    assert isinstance(err_list.detail, list)
+
+    assert ReconciliationBatchRequest is ReconciliationRequest
+    assert ReconciliationBatchResponse is ReconciliationRequest
+
+
+def test_schema_examples_present():
+    invoice_extra = InvoiceItem.model_config.get("json_schema_extra")
+    assert invoice_extra is not None and "example" in invoice_extra
+    recon_extra = ReconciliationRequest.model_config.get("json_schema_extra")
+    assert recon_extra is not None and "example" in recon_extra
